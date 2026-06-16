@@ -1,21 +1,8 @@
-VERSION 5.00
-Begin {C62A69C0-16DC-11CE-9E98-00AA00574A4F} frmToolSort 
-   Caption         =   "排版刀具排序"
-   ClientHeight    =   3540
-   ClientLeft      =   120
-   ClientTop       =   465
-   ClientWidth     =   5760
-   OleObjectBlob   =   "frmToolSort.frx":0000
-   StartUpPosition =   1  'CenterOwner
-End
-Attribute VB_Name = "frmToolSort"
-Attribute VB_GlobalNameSpace = False
-Attribute VB_Creatable = False
-Attribute VB_PredeclaredId = True
-Attribute VB_Exposed = False
 ' ==============================================================================
 ' frmToolSort — 排版刀具排序 对话框
 ' 修复：cmdOK_Click 不再 Unload Me，保持窗体打开便于连续调整
+' ==============================================================================
+' 使用方法：在 VBA 编辑器中双击 frmToolSort 窗体，全选原代码粘贴替换
 ' ==============================================================================
 
 Private Declare PtrSafe Function FindWindow Lib "user32" Alias "FindWindowA" (ByVal lpClassName As String, ByVal lpWindowName As String) As Long
