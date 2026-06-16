@@ -150,33 +150,12 @@ End Function
 
 
 ' ★ 全局排序版：按刀具顺序全局分配OpNo，不按排版分组
+
 Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     On Error GoTo ErrHandler3
     Dim drw As Drawing: Set drw = App.ActiveDrawing
     If drw Is Nothing Then Exit Sub
     Dim ops As Operations: Set ops = drw.Operations
-    If ops Is Nothing Then Exit Sub
-    
-    ' 清空旧 OpNo
-    Dim opX As Long, subX As Long, tpX As Long
-    For opX = 1 To ops.count
-        Dim opClear As Operation: Set opClear = ops(opX)
-        Dim subsClear As SubOperations: Set subsClear = opClear.SubOperations
-        If Not (subsClear Is Nothing) Then
-            For subX = 1 To subsClear.count
-                Dim subClear As SubOperation: Set subClear = subsClear(subX)
-                Dim tpsClear As paths: Set tpsClear = subClear.ToolPaths
-                If Not (tpsClear Is Nothing) Then
-                    For tpX = 1 To tpsClear.count
-                        Dim tpClear As Path: Set tpClear = tpsClear(tpX)
-                        If Not (tpClear Is Nothing) Then tpClear.OpNo = 0
-                    Next tpX
-                End If
-            Next subX
-        End If
-    Next opX
-    
-    Set ops = drw.Operations
     If ops Is Nothing Then Exit Sub
     
     ' 按 toolKey 收集所有工具路径
@@ -198,7 +177,6 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
                     
                     Dim toolKey As String: toolKey = mName & " T" & CStr(tN.Number) & " " & tN.Name
                     
-                    ' 存所有工具路径引用
                     Dim tps As paths: Set tps = subN.ToolPaths
                     If Not (tps Is Nothing) Then
                         Dim mm As Long
@@ -209,7 +187,8 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
                                     Dim col As Collection: Set col = New Collection
                                     tpDict.Add toolKey, col
                                 End If
-                                tpDict(toolKey).Add tp
+                                Dim tpCol As Collection: Set tpCol = tpDict(toolKey)
+                                tpCol.Add tp
                             End If
                         Next mm
                     End If
@@ -224,7 +203,6 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     App.SetUndoPoint
     drw.ScreenUpdating = False
     
-    ' ★ 全局分配：按用户排序顺序，逐刀分配连续 OpNo
     Dim baseOpNo As Long: baseOpNo = 1
     Dim sj As Long
     For sj = 0 To UBound(sortedKeys)
@@ -249,6 +227,7 @@ ErrHandler3:
     drw.ScreenUpdating = True
     MsgBox "排版刀具排序出错：" & Err.Description, vbCritical
 End Sub
+
 
 
 
