@@ -343,7 +343,7 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     Next opIdx
     
     ' 检测排版数量（从几何或固定值）
-    Dim sheetCount As Long: sheetCount = 10  ' 默认10张
+    Dim sheetCount As Long: sheetCount = 0
     Dim gi As Long
     For gi = 1 To drw.Geometries.count
         If drw.Geometries(gi).Closed And drw.Geometries(gi).Sheet Then sheetCount = sheetCount + 1
