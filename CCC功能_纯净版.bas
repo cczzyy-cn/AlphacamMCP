@@ -499,7 +499,6 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     
     For sheetId = 1 To sheetCount
         Dim pos As Long: pos = 0
-        Dim sj As Long
         
         ' 收集属于当前排版的所有 OP
         Dim sheetOpIdxs As New Collection
