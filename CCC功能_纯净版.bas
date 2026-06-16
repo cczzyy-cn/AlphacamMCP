@@ -376,7 +376,7 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     
     Dim totalOps As Long: totalOps = ops.count
     Dim opsPerSheet As Long: opsPerSheet = 1
-    If sheetCount > 0 And (totalOps Mod sheetCount) = 0 Then opsPerSheet = totalOps / sheetCount
+    If sheetCount > 0 Then opsPerSheet = (totalOps + sheetCount - 1) \ sheetCount
     
     App.SetUndoCommandName "排版刀具排序"
     App.SetUndoPoint
