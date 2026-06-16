@@ -73,6 +73,7 @@ Private Sub cmdOK_Click()
     For i = 0 To count - 1: sortedKeys(i) = lstTools.List(i): Next i
     ApplySortToDrawing sortedKeys
     MsgBox "排序已应用！共 " & count & " 个加工步骤。", vbInformation, "排版刀具排序"
+    Unload Me
     ' ★ 保持列表不变，不重新扫描
 End Sub
 
