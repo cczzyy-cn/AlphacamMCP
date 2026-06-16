@@ -2,8 +2,6 @@
 ' frmToolSort — 排版刀具排序 对话框
 ' 修复：cmdOK_Click 不再 Unload Me，保持窗体打开便于连续调整
 ' ==============================================================================
-' 使用方法：在 VBA 编辑器中双击 frmToolSort 窗体，全选原代码粘贴替换
-' ==============================================================================
 
 Private Declare PtrSafe Function FindWindow Lib "user32" Alias "FindWindowA" (ByVal lpClassName As String, ByVal lpWindowName As String) As Long
 Private Declare PtrSafe Function GetWindowLong Lib "user32" Alias "GetWindowLongA" (ByVal hWnd As Long, ByVal nIndex As Long) As Long
