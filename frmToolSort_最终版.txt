@@ -1,79 +1,79 @@
-' ==============================================================================
-' frmToolSort — 排版刀具排序 对话框
-' 修复：cmdOK_Click 保持当前列表顺序（不重新扫描）
-' ==============================================================================
-
-Private Declare PtrSafe Function FindWindow Lib "user32" Alias "FindWindowA" (ByVal lpClassName As String, ByVal lpWindowName As String) As Long
-Private Declare PtrSafe Function GetWindowLong Lib "user32" Alias "GetWindowLongA" (ByVal hWnd As Long, ByVal nIndex As Long) As Long
-Private Declare PtrSafe Function SetWindowLong Lib "user32" Alias "SetWindowLongA" (ByVal hWnd As Long, ByVal nIndex As Long, ByVal dwNewLong As Long) As Long
-Private Declare PtrSafe Function SetWindowPos Lib "user32" (ByVal hWnd As Long, ByVal hWndInsertAfter As Long, ByVal X As Long, ByVal Y As Long, ByVal cx As Long, ByVal cy As Long, ByVal wFlags As Long) As Long
-Private Const GWL_STYLE As Long = (-16)
-Private Const WS_MINIMIZEBOX As Long = &H20000
-Private Const SWP_NOSIZE As Long = &H1
-Private Const SWP_NOMOVE As Long = &H2
-Private Const SWP_NOZORDER As Long = &H4
-Private Const SWP_FRAMECHANGED As Long = &H20
-
-Private Sub AddMinButton(frm As Object)
-    Dim hWnd As Long
-    hWnd = FindWindow("ThunderDFrame", frm.Caption)
-    If hWnd = 0 Then hWnd = FindWindow("ThunderRT5Form", frm.Caption)
-    If hWnd = 0 Then Exit Sub
-    Dim style As Long
-    style = GetWindowLong(hWnd, GWL_STYLE)
-    style = style Or WS_MINIMIZEBOX
-    SetWindowLong hWnd, GWL_STYLE, style
-    SetWindowPos hWnd, 0, 0, 0, 0, 0, SWP_NOMOVE Or SWP_NOSIZE Or SWP_NOZORDER Or SWP_FRAMECHANGED
-End Sub
-
-Private Sub UserForm_Activate(): AddMinButton Me: End Sub
-
-Private Sub UserForm_Initialize()
-    Me.Caption = "排版刀具排序"
-    RefreshOpList
-End Sub
-
-Private Sub cmdRefresh_Click(): RefreshOpList: End Sub
-
-Public Sub RefreshOpList()
-    lstTools.Clear
-    Dim rawList As Collection: Set rawList = ScanOperations()
-    If rawList Is Nothing Or rawList.count = 0 Then lstTools.AddItem "(未找到操作)": Exit Sub
-    Dim k As Long
-    For k = 1 To rawList.count: lstTools.AddItem rawList(k): Next k
-    If lstTools.ListCount > 0 Then lstTools.ListIndex = 0
-End Sub
-
-Private Sub cmdUp_Click()
-    If lstTools.ListIndex < 1 Then Exit Sub
-    Dim idx As Long: idx = lstTools.ListIndex
-    Dim txt As String: txt = lstTools.List(idx)
-    lstTools.RemoveItem idx: lstTools.AddItem txt, idx - 1
-    lstTools.ListIndex = idx - 1
-End Sub
-
-Private Sub cmdDown_Click()
-    If lstTools.ListIndex < 0 Then Exit Sub
-    If lstTools.ListIndex >= lstTools.ListCount - 1 Then Exit Sub
-    Dim idx As Long: idx = lstTools.ListIndex
-    Dim txt As String: txt = lstTools.List(idx)
-    lstTools.RemoveItem idx: lstTools.AddItem txt, idx + 1
-    lstTools.ListIndex = idx + 1
-End Sub
-
-' ★ 修复：cmdOK_Click 保持当前列表顺序（不重新扫描）
-Private Sub cmdOK_Click()
-    If lstTools.ListCount = 0 Or lstTools.List(0) = "(未找到操作)" Then
-        MsgBox "没有可排序的操作！请先点击【刷新】扫描图纸。", vbExclamation
-        Exit Sub
-    End If
-    Dim count As Long: count = lstTools.ListCount
-    ReDim sortedKeys(0 To count - 1) As String
-    Dim i As Long
-    For i = 0 To count - 1: sortedKeys(i) = lstTools.List(i): Next i
-    ApplySortToDrawing sortedKeys
-    MsgBox "排序已应用！共 " & count & " 个加工步骤。", vbInformation, "排版刀具排序"
-    ' ★ 保持列表不变，不重新扫描
-End Sub
-
-Private Sub cmdClose_Click(): Unload Me: End Sub
+' ==============================================================================
+' frmToolSort — 排版刀具排序 对话框
+' 修复：cmdOK_Click 保持当前列表顺序（不重新扫描）
+' ==============================================================================
+
+Private Declare PtrSafe Function FindWindow Lib "user32" Alias "FindWindowA" (ByVal lpClassName As String, ByVal lpWindowName As String) As Long
+Private Declare PtrSafe Function GetWindowLong Lib "user32" Alias "GetWindowLongA" (ByVal hWnd As Long, ByVal nIndex As Long) As Long
+Private Declare PtrSafe Function SetWindowLong Lib "user32" Alias "SetWindowLongA" (ByVal hWnd As Long, ByVal nIndex As Long, ByVal dwNewLong As Long) As Long
+Private Declare PtrSafe Function SetWindowPos Lib "user32" (ByVal hWnd As Long, ByVal hWndInsertAfter As Long, ByVal X As Long, ByVal Y As Long, ByVal cx As Long, ByVal cy As Long, ByVal wFlags As Long) As Long
+Private Const GWL_STYLE As Long = (-16)
+Private Const WS_MINIMIZEBOX As Long = &H20000
+Private Const SWP_NOSIZE As Long = &H1
+Private Const SWP_NOMOVE As Long = &H2
+Private Const SWP_NOZORDER As Long = &H4
+Private Const SWP_FRAMECHANGED As Long = &H20
+
+Private Sub AddMinButton(frm As Object)
+    Dim hWnd As Long
+    hWnd = FindWindow("ThunderDFrame", frm.Caption)
+    If hWnd = 0 Then hWnd = FindWindow("ThunderRT5Form", frm.Caption)
+    If hWnd = 0 Then Exit Sub
+    Dim style As Long
+    style = GetWindowLong(hWnd, GWL_STYLE)
+    style = style Or WS_MINIMIZEBOX
+    SetWindowLong hWnd, GWL_STYLE, style
+    SetWindowPos hWnd, 0, 0, 0, 0, 0, SWP_NOMOVE Or SWP_NOSIZE Or SWP_NOZORDER Or SWP_FRAMECHANGED
+End Sub
+
+Private Sub UserForm_Activate(): AddMinButton Me: End Sub
+
+Private Sub UserForm_Initialize()
+    Me.Caption = "排版刀具排序"
+    RefreshOpList
+End Sub
+
+Private Sub cmdRefresh_Click(): RefreshOpList: End Sub
+
+Public Sub RefreshOpList()
+    lstTools.Clear
+    Dim rawList As Collection: Set rawList = ScanOperations()
+    If rawList Is Nothing Or rawList.count = 0 Then lstTools.AddItem "(未找到操作)": Exit Sub
+    Dim k As Long
+    For k = 1 To rawList.count: lstTools.AddItem rawList(k): Next k
+    If lstTools.ListCount > 0 Then lstTools.ListIndex = 0
+End Sub
+
+Private Sub cmdUp_Click()
+    If lstTools.ListIndex < 1 Then Exit Sub
+    Dim idx As Long: idx = lstTools.ListIndex
+    Dim txt As String: txt = lstTools.List(idx)
+    lstTools.RemoveItem idx: lstTools.AddItem txt, idx - 1
+    lstTools.ListIndex = idx - 1
+End Sub
+
+Private Sub cmdDown_Click()
+    If lstTools.ListIndex < 0 Then Exit Sub
+    If lstTools.ListIndex >= lstTools.ListCount - 1 Then Exit Sub
+    Dim idx As Long: idx = lstTools.ListIndex
+    Dim txt As String: txt = lstTools.List(idx)
+    lstTools.RemoveItem idx: lstTools.AddItem txt, idx + 1
+    lstTools.ListIndex = idx + 1
+End Sub
+
+' ★ 修复：cmdOK_Click 保持当前列表顺序（不重新扫描）
+Private Sub cmdOK_Click()
+    If lstTools.ListCount = 0 Or lstTools.List(0) = "(未找到操作)" Then
+        MsgBox "没有可排序的操作！请先点击【刷新】扫描图纸。", vbExclamation
+        Exit Sub
+    End If
+    Dim count As Long: count = lstTools.ListCount
+    ReDim sortedKeys(0 To count - 1) As String
+    Dim i As Long
+    For i = 0 To count - 1: sortedKeys(i) = lstTools.List(i): Next i
+    ApplySortToDrawing sortedKeys
+    MsgBox "排序已应用！共 " & count & " 个加工步骤。", vbInformation, "排版刀具排序"
+    ' ★ 保持列表不变，不重新扫描
+End Sub
+
+Private Sub cmdClose_Click(): Unload Me: End Sub
