@@ -306,171 +306,16 @@ End Function
 ' 排序前的 OpNo 值（或上一次排序的 OpNo）已经隐含了排版分组信息。
 ' 同一排版的 OP 具有连续的 OpNo，检测 OpNo 变化趋势即可重建分组。
 ' ==============================================================================
+
+' ★ 最终版：原始算法 + OpNo清零
 Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     On Error GoTo ErrHandler3
     Dim drw As Drawing: Set drw = App.ActiveDrawing
     If drw Is Nothing Then Exit Sub
-    
     Dim ops As Operations: Set ops = drw.Operations
     If ops Is Nothing Then Exit Sub
     
-    ' ===== 阶段0：从 OpNo 推断排版分组 =====
-    ' 先读取每个 OP 第一个 ToolPath 的当前 OpNo（作为该 OP 的 OpNo）
-    Dim opNos() As Long: ReDim opNos(1 To ops.count)
-    Dim opIdx As Long, subIdx As Long
-    For opIdx = 1 To ops.count
-        Dim op0 As Operation: Set op0 = ops(opIdx)
-        Dim subs0 As SubOperations: Set subs0 = op0.SubOperations
-        opNos(opIdx) = 0
-        If Not (subs0 Is Nothing) Then
-            If subs0.count > 0 Then
-                Dim sub0 As SubOperation: Set sub0 = subs0(1)
-                Dim tps0 As paths: Set tps0 = sub0.ToolPaths
-                If Not (tps0 Is Nothing) Then
-                    If tps0.count > 0 Then
-                        Dim tp0 As Path: Set tp0 = tps0(1)
-                        If Not (tp0 Is Nothing) Then opNos(opIdx) = tp0.OpNo
-                    End If
-                End If
-            End If
-        End If
-    Next opIdx
-    
-    ' 如果 OpNo 全为 0（首次排序），用位置推断排版
-    Dim allZero As Boolean: allZero = True
-    For opIdx = 1 To ops.count
-        If opNos(opIdx) <> 0 Then allZero = False: Exit For
-    Next opIdx
-    
-    ' 检测排版数量（从几何或固定值）
-    Dim sheetCount As Long: sheetCount = 0
-    Dim gi As Long
-    For gi = 1 To drw.Geometries.count
-        If drw.Geometries(gi).Closed And drw.Geometries(gi).Sheet Then sheetCount = sheetCount + 1
-    Next gi
-    ' 如果geometry没检测到，尝试从NestInformation获取
-    If sheetCount = 0 Then
-        On Error Resume Next
-        Dim niTmp As Object: Set niTmp = drw.GetNestInformation()
-        If Not (niTmp Is Nothing) Then sheetCount = niTmp.Sheets.count
-        On Error GoTo ErrHandler3
-    End If
-    If sheetCount = 0 Then sheetCount = 1
-    
-    ' 构建 OP→Sheet 映射
-    Dim opSheetMap As Object: Set opSheetMap = CreateObject("Scripting.Dictionary")
-    
-    If allZero Then
-        ' 首次排序：按位置均分
-        Dim opsPerSheet As Long: opsPerSheet = (ops.count + sheetCount - 1) \ sheetCount
-        For opIdx = 1 To ops.count
-            Dim inferredSheet As Long: inferredSheet = ((opIdx - 1) \ opsPerSheet) + 1
-            If inferredSheet > sheetCount Then inferredSheet = sheetCount
-            opSheetMap.Add opIdx, inferredSheet
-        Next opIdx
-    Else
-        ' 非首次排序：用 OpNo 分组，连续 OpNo 属于同一排版
-        ' 先按 OpNo 排序 OP
-        Dim sortedOps As Object: Set sortedOps = CreateObject("Scripting.Dictionary")
-        For opIdx = 1 To ops.count
-            If opNos(opIdx) > 0 Then
-                If Not sortedOps.Exists(opNos(opIdx)) Then
-                    sortedOps.Add opNos(opIdx), opIdx
-                End If
-            End If
-        Next opIdx
-        
-        Dim sortedOpNos: sortedOpNos = sortedOps.Keys
-        ' 对 keys 排序（VBA Dictionary 不保证顺序，需要冒泡排序）
-        Dim si As Long, sj As Long
-        For si = 0 To UBound(sortedOpNos) - 1
-            For sj = si + 1 To UBound(sortedOpNos)
-                If sortedOpNos(si) > sortedOpNos(sj) Then
-                    Dim tmp As Long: tmp = sortedOpNos(si)
-                    sortedOpNos(si) = sortedOpNos(sj)
-                    sortedOpNos(sj) = tmp
-                End If
-            Next sj
-        Next si
-        
-        ' 按 OpNo 顺序分组，检测 OpNo 不连续的地方作为排版边界
-        Dim currentSheet As Long: currentSheet = 1
-        If UBound(sortedOpNos) >= 0 Then
-            Dim prevOpNo As Long: prevOpNo = sortedOpNos(0)
-            Dim firstOpIdx As Long: firstOpIdx = sortedOps(sortedOpNos(0))
-            opSheetMap.Add firstOpIdx, currentSheet
-            
-            For si = 1 To UBound(sortedOpNos)
-                Dim curOpNo As Long: curOpNo = sortedOpNos(si)
-                Dim curOpIdx As Long: curOpIdx = sortedOps(curOpNo)
-                
-                ' 如果 OpNo 不连续（跳跃 > 1），认为是新排版
-                If curOpNo > prevOpNo + 1 Then
-                    currentSheet = currentSheet + 1
-                    If currentSheet > sheetCount Then currentSheet = sheetCount
-                End If
-                
-                opSheetMap.Add curOpIdx, currentSheet
-                prevOpNo = curOpNo
-            Next si
-        End If
-        
-        ' 覆盖未匹配的 OP（OpNo=0 的），分到最近有值的排版
-        For opIdx = 1 To ops.count
-            If Not opSheetMap.Exists(opIdx) Then
-                ' 找最近的已匹配 OP
-                Dim nearestSheet As Long: nearestSheet = 1
-                Dim dist As Long: dist = 9999
-                Dim oi As Long
-                For oi = 1 To ops.count
-                    If opSheetMap.Exists(oi) Then
-                        Dim d As Long: d = Abs(oi - opIdx)
-                        If d < dist Then dist = d: nearestSheet = opSheetMap(oi)
-                    End If
-                Next oi
-                opSheetMap.Add opIdx, nearestSheet
-            End If
-        Next opIdx
-    End If
-    
-    ' ===== 阶段1：构建 mergeDict =====
-    Dim mergeDict As Object: Set mergeDict = CreateObject("Scripting.Dictionary")
-    
-    For opIdx = 1 To ops.count
-        Dim opN As Operation: Set opN = ops(opIdx)
-        Dim subsN As SubOperations: Set subsN = opN.SubOperations
-        If Not (subsN Is Nothing) Then
-            For subIdx = 1 To subsN.count
-                Dim subN As SubOperation: Set subN = subsN(subIdx)
-                Dim tN As MillTool: Set tN = subN.Tool
-                If Not (tN Is Nothing) Then
-                    Dim mName As String: mName = subN.Name
-                    Dim sp As Integer
-                    sp = InStr(mName, "  ")
-                    If sp > 0 Then mName = Left(mName, sp - 1) Else: sp = InStr(mName, " "): If sp > 0 Then mName = Left(mName, sp - 1)
-                    
-                    Dim toolKey As String: toolKey = mName & " T" & CStr(tN.Number) & " " & tN.Name
-                    Dim dictKey As String: dictKey = CStr(opIdx) & "|" & toolKey
-                    
-                    If mergeDict.Exists(dictKey) Then
-                        mergeDict(dictKey) = mergeDict(dictKey) & "," & CStr(subIdx)
-                    Else
-                        mergeDict.Add dictKey, CStr(subIdx)
-                    End If
-                End If
-            Next subIdx
-        End If
-    Next opIdx
-    
-    Dim allSubOps As New Collection
-    Dim keysArr: keysArr = mergeDict.Keys
-    Dim ki As Long
-    For ki = 0 To UBound(keysArr)
-        allSubOps.Add keysArr(ki) & "|" & mergeDict(keysArr(ki))
-    Next ki
-    If allSubOps.count = 0 Then Exit Sub
-    
-    ' ===== 阶段2：清空旧 OpNo =====
+    ' ★ 清空旧 OpNo
     Dim opX As Long, subX As Long, tpX As Long
     For opX = 1 To ops.count
         Dim opClear As Operation: Set opClear = ops(opX)
@@ -489,47 +334,72 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
         End If
     Next opX
     
-    ' ===== 阶段3：按排版分组分配 OpNo =====
+    Set ops = drw.Operations
+    If ops Is Nothing Then Exit Sub
+    
+    ' ↓↓↓ 原始算法（完全一致）↓↓↓
+    Dim mergeDict As Object: Set mergeDict = CreateObject("Scripting.Dictionary")
+    Dim opIdx As Long, subIdx As Long
+    For opIdx = 1 To ops.count
+        Dim opN As Operation: Set opN = ops(opIdx)
+        Dim subsN As SubOperations: Set subsN = opN.SubOperations
+        If Not (subsN Is Nothing) Then
+            For subIdx = 1 To subsN.count
+                Dim subN As SubOperation: Set subN = subsN(subIdx)
+                Dim tN As MillTool: Set tN = subN.Tool
+                If Not (tN Is Nothing) Then
+                    Dim mName As String: mName = subN.Name
+                    Dim sp As Integer
+                    sp = InStr(mName, "  ")
+                    If sp > 0 Then mName = Left(mName, sp - 1) Else: sp = InStr(mName, " "): If sp > 0 Then mName = Left(mName, sp - 1)
+                    Dim toolKey As String: toolKey = mName & " T" & CStr(tN.Number) & " " & tN.Name
+                    Dim dictKey As String: dictKey = CStr(opIdx) & "|" & toolKey
+                    If mergeDict.Exists(dictKey) Then mergeDict(dictKey) = mergeDict(dictKey) & "," & CStr(subIdx) Else: mergeDict.Add dictKey, CStr(subIdx)
+                End If
+            Next subIdx
+        End If
+    Next opIdx
+    
+    Dim allSubOps As New Collection
+    Dim keysArr: keysArr = mergeDict.Keys
+    Dim ki As Long
+    For ki = 0 To UBound(keysArr)
+        allSubOps.Add keysArr(ki) & "|" & mergeDict(keysArr(ki))
+    Next ki
+    If allSubOps.count = 0 Then Exit Sub
+    
+    Dim sheetCount As Long: sheetCount = 0
+    Dim gi As Long
+    For gi = 1 To drw.Geometries.count
+        If drw.Geometries(gi).Closed And drw.Geometries(gi).Sheet Then sheetCount = sheetCount + 1
+    Next gi
+    
+    Dim totalOps As Long: totalOps = ops.count
+    Dim opsPerSheet As Long: opsPerSheet = 1
+    If sheetCount > 0 And (totalOps Mod sheetCount) = 0 Then opsPerSheet = totalOps / sheetCount
+    
     App.SetUndoCommandName "排版刀具排序"
     App.SetUndoPoint
     drw.ScreenUpdating = False
     
     Dim baseOpNo As Long: baseOpNo = 1
-    Dim sheetId As Long
-    
-    For sheetId = 1 To sheetCount
+    Dim sheetStart As Long
+    For sheetStart = 1 To totalOps Step opsPerSheet
+        Dim sheetEnd As Long: sheetEnd = sheetStart + opsPerSheet - 1
+        If sheetEnd > totalOps Then sheetEnd = totalOps
         Dim pos As Long: pos = 0
-        
-        ' 收集属于当前排版的所有 OP
-        Dim sheetOpIdxs As New Collection
-        For opIdx = 1 To ops.count
-            If opSheetMap.Exists(opIdx) Then
-                If opSheetMap(opIdx) = sheetId Then
-                    sheetOpIdxs.Add opIdx
-                End If
-            End If
-        Next opIdx
-        
-        If sheetOpIdxs.count = 0 Then GoTo NextSheet2
-        
-        ' 按用户排序顺序分配
+        Dim sj As Long
         For sj = 0 To UBound(sortedKeys)
             Dim targetKey As String: targetKey = sortedKeys(sj)
-            
-            Dim si2 As Long
-            For si2 = 1 To sheetOpIdxs.count
-                Dim currentOpIdx As Long: currentOpIdx = sheetOpIdxs(si2)
-                
+            For opIdx = sheetStart To sheetEnd
                 Dim jj As Long
                 For jj = 1 To allSubOps.count
                     Dim parts() As String: parts = Split(allSubOps(jj), "|")
                     Dim recOp As Long: recOp = CLng(parts(0))
                     Dim subKey As String: subKey = parts(1)
-                    
-                    If recOp = currentOpIdx And subKey = targetKey Then
+                    If recOp = opIdx And subKey = targetKey Then
                         Dim newOpNo As Long: newOpNo = baseOpNo + pos
                         pos = pos + 1
-                        
                         Dim subParts() As String: subParts = Split(parts(2), ",")
                         Dim nn As Long
                         For nn = 0 To UBound(subParts)
@@ -547,21 +417,19 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
                         Next nn
                     End If
                 Next jj
-            Next si2
+            Next opIdx
         Next sj
-        
         baseOpNo = baseOpNo + pos
-NextSheet2:
-    Next sheetId
+    Next sheetStart
     
     ops.OrderAll
     drw.ScreenUpdating = True: drw.Redraw
     Exit Sub
-    
 ErrHandler3:
     drw.ScreenUpdating = True
-    MsgBox "排版刀具排序出错：" & Err.Description & " (0x" & Hex(Err.Number) & ")", vbCritical
+    MsgBox "排版刀具排序出错：" & Err.Description, vbCritical
 End Sub
+
 
 
 
