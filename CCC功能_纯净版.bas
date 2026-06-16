@@ -152,6 +152,7 @@ End Function
 ' ★ 全局排序版：按刀具顺序全局分配OpNo，不按排版分组
 
 
+
 Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     On Error GoTo ErrHandler3
     Dim drw As Drawing: Set drw = App.ActiveDrawing
@@ -159,89 +160,70 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     Dim ops As Operations: Set ops = drw.Operations
     If ops Is Nothing Then Exit Sub
     
-    ' ===== 从 NestInformation 获取精确排版数 =====
+    ' ===== 用 NestInformation 精确匹配 =====
     Dim ni As NestInformation: Set ni = drw.GetNestInformation()
     Dim sheetCount As Long: sheetCount = ni.Sheets.count
     If sheetCount = 0 Then sheetCount = 1
     
-    ' ===== 读取每个 OP 当前 OpNo 推断排版归属 =====
+    ' 提前保存每张排版的所有路径名到字典
+    Dim sheetDict() As Object: ReDim sheetDict(1 To sheetCount)
+    Dim s As Long
+    For s = 1 To sheetCount
+        Dim nameDict As Object: Set nameDict = CreateObject("Scripting.Dictionary")
+        Dim paths As paths: Set paths = ni.Sheets(s).paths
+        Dim p As Long
+        For p = 1 To paths.count
+            If Not nameDict.Exists(paths(p).Name) Then nameDict.Add paths(p).Name, True
+        Next p
+        Set sheetDict(s) = nameDict
+    Next s
+    
+    ' 遍历每个 OP，精确匹配排版
     Dim opSheetMap As Object: Set opSheetMap = CreateObject("Scripting.Dictionary")
     Dim opIdx As Long
-    Dim opNoValues() As Long: ReDim opNoValues(1 To ops.count)
-    Dim maxOpNo As Long: maxOpNo = 0
     
     For opIdx = 1 To ops.count
-        Dim op0 As Operation: Set op0 = ops(opIdx)
-        Dim subs0 As SubOperations: Set subs0 = op0.SubOperations
-        opNoValues(opIdx) = 0
-        If Not (subs0 Is Nothing) Then
-            If subs0.count > 0 Then
-                Dim sub0 As SubOperation: Set sub0 = subs0(1)
-                Dim tps0 As paths: Set tps0 = sub0.ToolPaths
-                If Not (tps0 Is Nothing) Then
-                    If tps0.count > 0 Then
-                        Dim tp0 As Path: Set tp0 = tps0(1)
-                        If Not (tp0 Is Nothing) Then
-                            opNoValues(opIdx) = tp0.OpNo
-                            If tp0.OpNo > maxOpNo Then maxOpNo = tp0.OpNo
-                        End If
-                    End If
+        Dim opN As Operation: Set opN = ops(opIdx)
+        Dim subsN As SubOperations: Set subsN = opN.SubOperations
+        Dim matchedSheet As Long: matchedSheet = 0
+        
+        If Not (subsN Is Nothing) Then
+            Dim subN As SubOperation
+            For Each subN In subsN
+                Dim tpsN As paths: Set tpsN = subN.ToolPaths
+                If Not (tpsN Is Nothing) Then
+                    Dim tpN As Path
+                    For Each tpN In tpsN
+                        For s = 1 To sheetCount
+                            If sheetDict(s).Exists(tpN.Name) Then
+                                matchedSheet = s
+                                Exit For
+                            End If
+                        Next s
+                        If matchedSheet > 0 Then Exit For
+                    Next tpN
                 End If
-            End If
+                If matchedSheet > 0 Then Exit For
+            Next subN
         End If
+        
+        ' 没匹配到的（T3路径），用上一个OP的排版
+        If matchedSheet = 0 Then
+            Dim prev As Long
+            For prev = opIdx - 1 To 1 Step -1
+                If opSheetMap.Exists(prev) Then
+                    matchedSheet = opSheetMap(prev)
+                    Exit For
+                End If
+            Next prev
+        End If
+        If matchedSheet = 0 Then matchedSheet = 1
+        
+        opSheetMap.Add opIdx, matchedSheet
     Next opIdx
     
-    ' 推断 opsPerSheet
-    Dim opsPerSheet As Long: opsPerSheet = 1
-    If maxOpNo > 0 And sheetCount > 0 Then
-        opsPerSheet = (maxOpNo + sheetCount - 1) \ sheetCount
-        If opsPerSheet < 1 Then opsPerSheet = 1
-    End If
-    
-    ' 用 OpNo 推断排版
-    For opIdx = 1 To ops.count
-        Dim sheetId As Long: sheetId = 1
-        If opNoValues(opIdx) > 0 And opsPerSheet > 0 Then
-            sheetId = ((opNoValues(opIdx) - 1) \ opsPerSheet) + 1
-            If sheetId > sheetCount Then sheetId = sheetCount
-        Else
-            ' OpNo=0 的 OP，用 NestInformation 匹配
-            Dim matched As Boolean: matched = False
-            Dim opNest As Operation: Set opNest = ops(opIdx)
-            Dim subsNest As SubOperations: Set subsNest = opNest.SubOperations
-            If Not (subsNest Is Nothing) Then
-                Dim subNest2 As SubOperation
-                For Each subNest2 In subsNest
-                    Dim tpsNest As paths: Set tpsNest = subNest2.ToolPaths
-                    If Not (tpsNest Is Nothing) Then
-                        Dim tpNest2 As Path
-                        For Each tpNest2 In tpsNest
-                            Dim s As Long
-                            For s = 1 To sheetCount
-                                Dim sheetPs As paths: Set sheetPs = ni.Sheets(s).paths
-                                Dim p As Long
-                                For p = 1 To sheetPs.count
-                                    If sheetPs(p).Name = tpNest2.Name Then
-                                        sheetId = s: matched = True: Exit For
-                                    End If
-                                Next p
-                                If matched Then Exit For
-                            Next s
-                            If matched Then Exit For
-                        Next tpNest2
-                    End If
-                    If matched Then Exit For
-                Next subNest2
-            End If
-            If Not matched And opIdx > 1 And opSheetMap.Exists(opIdx - 1) Then
-                sheetId = opSheetMap(opIdx - 1)
-            End If
-        End If
-        opSheetMap.Add opIdx, sheetId
-    Next opIdx
-    
-    ' ===== 按 (sheet, toolKey) 分组 =====
-    Dim sheetToolDict As Object: Set sheetToolDict = CreateObject("Scripting.Dictionary")
+    ' ===== 按 (排版, 刀具) 分组收集路径 =====
+    Dim stDict As Object: Set stDict = CreateObject("Scripting.Dictionary")
     
     For opIdx = 1 To ops.count
         Dim opM As Operation: Set opM = ops(opIdx)
@@ -256,10 +238,9 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
                     Dim sp As Integer
                     sp = InStr(mName, "  ")
                     If sp > 0 Then mName = Left(mName, sp - 1) Else: sp = InStr(mName, " "): If sp > 0 Then mName = Left(mName, sp - 1)
-                    
                     Dim toolKey As String: toolKey = mName & " T" & CStr(tM.Number) & " " & tM.Name
                     Dim sId As Long: If opSheetMap.Exists(opIdx) Then sId = opSheetMap(opIdx) Else sId = 1
-                    Dim comboKey As String: comboKey = CStr(sId) & "|" & toolKey
+                    Dim ck As String: ck = CStr(sId) & "|" & toolKey
                     
                     Dim tpsM As paths: Set tpsM = subM.ToolPaths
                     If Not (tpsM Is Nothing) Then
@@ -267,12 +248,12 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
                         For mm = 1 To tpsM.count
                             Dim tpM As Path: Set tpM = tpsM(mm)
                             If Not (tpM Is Nothing) Then
-                                If Not sheetToolDict.Exists(comboKey) Then
-                                    Dim newCol As Collection: Set newCol = New Collection
-                                    sheetToolDict.Add comboKey, newCol
+                                If Not stDict.Exists(ck) Then
+                                    Dim nc As Collection: Set nc = New Collection
+                                    stDict.Add ck, nc
                                 End If
-                                Dim col2 As Collection: Set col2 = sheetToolDict(comboKey)
-                                col2.Add tpM
+                                Dim c2 As Collection: Set c2 = stDict(ck)
+                                c2.Add tpM
                             End If
                         Next mm
                     End If
@@ -281,7 +262,7 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
         End If
     Next opIdx
     
-    If sheetToolDict.count = 0 Then Exit Sub
+    If stDict.count = 0 Then Exit Sub
     
     ' ===== 清空旧 OpNo =====
     Dim opX As Long, subX As Long, tpX As Long
@@ -302,35 +283,31 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
         End If
     Next opX
     
-    ' ===== 重新分配 OpNo =====
+    ' ===== 按排版逐张分配 OpNo =====
     App.SetUndoCommandName "排版刀具排序"
     App.SetUndoPoint
     drw.ScreenUpdating = False
     
-    Dim baseOpNo As Long: baseOpNo = 1
-    Dim sheetId2 As Long
-    
-    For sheetId2 = 1 To sheetCount
+    Dim b As Long: b = 1
+    Dim si As Long
+    For si = 1 To sheetCount
         Dim pos As Long: pos = 0
         Dim sj As Long
-        
         For sj = 0 To UBound(sortedKeys)
-            Dim targetKey As String: targetKey = sortedKeys(sj)
-            Dim comboKey2 As String: comboKey2 = CStr(sheetId2) & "|" & targetKey
-            
-            If sheetToolDict.Exists(comboKey2) Then
-                Dim tpCol2 As Collection: Set tpCol2 = sheetToolDict(comboKey2)
-                Dim t As Long
-                For t = 1 To tpCol2.count
-                    Dim tpAssign As Path: Set tpAssign = tpCol2(t)
-                    If Not (tpAssign Is Nothing) Then tpAssign.OpNo = baseOpNo + pos
-                Next t
+            Dim tk As String: tk = sortedKeys(sj)
+            Dim ck2 As String: ck2 = CStr(si) & "|" & tk
+            If stDict.Exists(ck2) Then
+                Dim tc As Collection: Set tc = stDict(ck2)
+                Dim tt As Long
+                For tt = 1 To tc.count
+                    Dim ta As Path: Set ta = tc(tt)
+                    If Not (ta Is Nothing) Then ta.OpNo = b + pos
+                Next tt
                 pos = pos + 1
             End If
         Next sj
-        
-        baseOpNo = baseOpNo + pos
-    Next sheetId2
+        b = b + pos
+    Next si
     
     ops.OrderAll
     drw.ScreenUpdating = True: drw.Redraw
@@ -340,6 +317,7 @@ ErrHandler3:
     drw.ScreenUpdating = True
     MsgBox "排版刀具排序出错：" & Err.Description, vbCritical
 End Sub
+
 
 
 
