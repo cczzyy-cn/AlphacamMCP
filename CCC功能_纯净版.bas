@@ -1,3 +1,5 @@
+Dim g_opsPerSheet As Long
+
 ' ==============================================================================
 ' CCC功能 合集 — 最终版
 ' ==============================================================================
@@ -187,8 +189,9 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
         If drw.Geometries(gi).Closed And drw.Geometries(gi).Sheet Then sheetCount = sheetCount + 1
     Next gi
     Dim totalOps As Long: totalOps = ops.count
-    Dim opsPerSheet As Long: opsPerSheet = 1
+    Dim opsPerSheet As Long: opsPerSheet = g_opsPerSheet
     If sheetCount > 0 Then opsPerSheet = (totalOps + sheetCount - 1) \ sheetCount
+    If g_opsPerSheet = 0 And opsPerSheet > 0 Then g_opsPerSheet = opsPerSheet
     App.SetUndoCommandName "排版刀具排序"
     App.SetUndoPoint
     drw.ScreenUpdating = False
