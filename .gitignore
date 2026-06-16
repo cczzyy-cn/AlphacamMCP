@@ -1,0 +1,11 @@
+# Reasonix workspace artifacts
+api_raw.bin
+api_result.txt
+api_trim.txt
+nul
+*.log
+.vs/
+*.suo
+*.user
+.DS_Store
+Thumbs.db
