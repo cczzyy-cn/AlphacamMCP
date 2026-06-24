@@ -9,3 +9,17 @@ nul
 *.user
 .DS_Store
 Thumbs.db
+
+# Temporary scripts & experiments
+*.vbs
+*.py
+__pycache__/
+Users/
+root/
+.codegraph/
+api_help/
+api_out/
+nul
+
+# Extracted binary streams (raw OLE, not source)
+ReverseNest_extracted/

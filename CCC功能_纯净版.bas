@@ -109,9 +109,8 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
                 Dim tM As MillTool: Set tM = subM.Tool
                 If Not (tM Is Nothing) Then
                     Dim mn As String: mn = subM.Name
-                    Dim sp As Integer
-                    sp = InStr(mn, "  ")
-                    If sp > 0 Then mn = Left(mn, sp - 1) Else: sp = InStr(mn, " "): If sp > 0 Then mn = Left(mn, sp - 1)
+                    Dim spInt As Integer: spInt = InStr(mn, "  ")
+                    If spInt > 0 Then mn = Left(mn, spInt - 1) Else: spInt = InStr(mn, " "): If spInt > 0 Then mn = Left(mn, spInt - 1)
                     Dim tk As String: tk = mn & " T" & CStr(tM.Number) & " " & tM.Name
                     Dim sid As Long: If shMap.Exists(opIdx) Then sid = shMap(opIdx) Else sid = 1
                     Dim ck As String: ck = CStr(sid) & "|" & tk
