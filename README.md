@@ -1,193 +1,106 @@
-# AlphaCAM MCP Bridge — AI-Powered CAM Automation
+# AlphaCAM MCP 桥接器 — AI 驱动的 CAM 自动化
 
-Connect AI assistants to **AlphaCAM 2016 R1** via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/).
+通过 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) 让 AI 助手直接操作 **AlphaCAM 2016 R1**。
 
-## Overview
+## 概述
 
-```
-┌─────────────┐     MCP/stdio      ┌──────────────────┐     COM      ┌─────────────────┐
-│  AI Agent   │ ◄──────────────────►│  alphacam-bridge │◄────────────►│  AlphaCAM 2016  │
-│  (Reasonix) │                     │  (server.py)     │   win32com   │  (Acam.exe)     │
-└─────────────┘                     └──────────────────┘              └─────────────────┘
-```
+本桥接器将 AlphaCAM 2016 R1 的 COM API 封装为 MCP 工具，使 AI 能够实时：
+- 创建/读取/修改几何图形（线、圆、矩形、多边形、椭圆）
+- 执行加工操作（粗精加工、轮廓铣槽、雕刻、钻孔等）
+- 管理刀具和刀具路径
+- 处理排版嵌套（Nesting）
+- 运行 VBA 宏
+- 输出 NC 代码
 
-The bridge wraps AlphaCAM's COM Automation API (`AcamAddIns.tlb`) as **29 MCP tools** that an AI can call to read, create, modify, machine, and output NC code — all without touching the UI.
+## 文件说明
 
-## Files
+| 文件 | 说明 |
+|---|---|
+| `server.py` | MCP 桥接器主程序（Python），通过 STDIO 协议与 AI 通信 |
+| `alphacam_com.py` | AlphaCAM COM 自动化封装层 |
+| `CCC功能合集.bas` | VBA 插件模块（依边界裁剪、全排版刀具偏移、排版刀具排序） |
+| `frmToolOffset.txt` | 刀具偏移对话框的窗体定义（VBA UserForm） |
+| `frmToolSort.txt` | 刀具排序对话框的窗体定义（VBA UserForm） |
+| `install.bat` | Windows 一键安装脚本 |
+| `install_vba.py` | VBA 代码安装到 AlphaCAM 的 Python 脚本 |
+| `make_icons.py` | 生成工具栏 BMP 图标的工具 |
+| `SKILL.md` | MCP 技能定义 |
+| `requirements.txt` | Python 依赖 |
 
-| File | Purpose |
-|------|---------|
-| `server.py` | MCP server — runs in stdio (Reasonix) or SSE (HTTP) mode |
-| `alphacam_com.py` | Pythonic COM wrapper for AlphaCAM |
-| `requirements.txt` | Python dependencies |
-| `install.bat` | Windows installer (run as Admin) |
+## 安装
 
-## Requirements
+### 前提条件
 
-- **Windows** (COM is Windows-only)
-- **AlphaCAM 2016 R1** installed
-- **Python 3.9+** with pip
-- **AlphaCAM must have been run at least once** (to register COM)
+- Windows 7+ / 10 / 11
+- AlphaCAM 2016 R1 已安装
+- Python 3.10+（需要 `pywin32` 和 `mcp` 库）
 
-## Installation
-
-```bash
-# 1. Install Python packages
-pip install mcp pywin32
-
-# 2. Test the connection
-python -c "import sys; sys.path.insert(0, '.'); from alphacam_com import AlphaCAM; a=AlphaCAM(); print(a.get_info())"
-```
-
-Or just double-click `install.bat`.
-
-## ProgID 说明
-
-| 模块 | ProgID |
-|------|--------|
-| **Router / 鉋花机**（你用的） | `aroutaps.Application` |
-| Mill / 铣床 | `am5axaps.Application` |
-| Lathe / 车床 | `aturhaps.Application` |
-| Wire EDM / 线切割 | `awireaps.Application` |
-
-可通过 `--progid` 参数指定模块：`python server.py --progid aroutaps.Application`
-
-### Method 1: Reasonix MCP Integration
-
-Add to your Reasonix `config.toml`:
-
-```toml
-[mcpServers.alphacam-bridge]
-command = "python"
-args = ["C:\\path\\to\\alphacam-bridge\\server.py"]
-```
-
-Then the AI can call any tool described below.
-
-### Method 2: Standalone Test
+### 快速安装
 
 ```bash
-python server.py
+# 安装 Python 依赖
+pip install -r requirements.txt
+
+# 双击运行 install.bat，或手动注册到 AI 客户端的 MCP 配置
 ```
 
-### Method 3: HTTP/SSE Mode (remote clients)
+### 手动配置
 
-```bash
-pip install uvicorn starlette
-python server.py --port 8080
+在 AI 客户端的 MCP 配置文件中添加：
+
+```json
+{
+  "mcpServers": {
+    "alphacam-bridge": {
+      "command": "python",
+      "args": [
+        "C:\path\to\server.py",
+        "--progid",
+        "aroutaps.Application"
+      ]
+    }
+  }
+}
 ```
 
-Connect MCP clients to `http://127.0.0.1:8080/sse`.
+## 可用功能
 
-## Available MCP Tools
+### 状态与信息
+- 检查 AlphaCAM 连接状态
+- 获取当前图纸信息（几何、刀具路径、操作、图层）
 
-### Status & Info
-| Tool | Description |
-|------|-------------|
-| `get_status` | Check AlphaCAM version, path, connection status |
-| `get_drawing_info` | Active drawing: geo count, toolpaths, layers, operations |
+### 几何创建
+- 矩形、圆、直线、多边形、椭圆、文本
 
-### File Operations
-| Tool | Description |
-|------|-------------|
-| `new_drawing` | Clear and start new drawing |
-| `open_drawing` | Open `.amd` file |
-| `open_dxf` | Open DXF/DWG file |
-| `open_step` | Open STEP file |
-| `open_stl` | Open STL file |
-| `save_drawing` | Save (or Save As) active drawing |
+### 加工操作
+- 粗精加工、轮廓铣槽、雕刻、钻孔、啄钻、攻丝、镗孔
+- 完整的进给/转速/深度控制
 
-### Geometry Creation
-| Tool | Description |
-|------|-------------|
-| `create_rectangle` | Rectangle by 2 corners |
-| `create_circle` | Circle by diameter + center |
-| `create_line` | 2D line between 2 points |
-| `create_polygon` | Regular polygon |
-| `create_ellipse` | Ellipse |
-| `create_text` | Text annotation |
+### 刀具与路径
+- 选择刀具、获取当前刀具信息
+- 列出/管理操作和刀具路径
 
-### Work Plane & Layer
-| Tool | Description |
-|------|-------------|
-| `create_workplane` | Named work plane with origin/orientation |
-| `set_workplane` | Activate work plane by name |
-| `create_layer` | Create or get layer, set color |
+### 排版嵌套
+- 读取 NestInformation
+- 遍历 Sheet 和 Part
 
-### Tool Management
-| Tool | Description |
-|------|-------------|
-| `select_tool` | Select tool from library or show dialog |
-| `get_current_tool` | Currently selected tool info |
+### VBA 与插件
+- 运行 VBA 宏
+- 加载/启用插件
 
-### Machining
-| Tool | Description |
-|------|-------------|
-| `run_machining` | Full machining operation (Rough/Finish, Pocket, Drill, Engrave) with feeds, speeds, depth etc. |
-| `output_nc` | Output NC code to file |
+### 实用工具
+- 设置撤销点、缩放全图、选择后处理器
+- 批量工作流（`run_workflow`）
 
-### VBA / Add-ins
-| Tool | Description |
-|------|-------------|
-| `run_vba_macro` | Run a VBA macro by name |
-| `load_addin` | Load add-in DLL or VBA project |
-| `enable_addin` | Enable/disable add-in |
+## VBA 插件功能
 
-### Utility
-| Tool | Description |
-|------|-------------|
-| `set_undo_point` | Mark undo point |
-| `zoom_all` | Fit view |
-| `select_post` | Select post-processor |
-| `list_geometries` | List all geometries |
-| `list_operations` | List all operations |
-| `list_toolpaths` | List all toolpaths |
+`CCC功能合集.bas` 包含三个工具（通过 AlphaCAM 菜单栏 "CCC功能" 访问）：
 
-### Batch
-| Tool | Description |
-|------|-------------|
-| `run_workflow` | Multi-step batch: `[{"action":"create_rectangle", "params":{...}}, {"action":"run_machining", ...}]` |
+1. **依边界裁剪** — 选择边界和线段，将线段超出边界的部分裁剪
+2. **全排版刀具偏移** — 按刀具名称选择，整体偏移 X/Y/Z
+3. **排版刀具排序** — 按加工方式+刀具分组，拖拽调整加工顺序
 
-## Example Workflow
+## 项目链接
 
-**User says:** "Create a 100x80 rectangle, then rough-finish it with a 10mm flat endmill to depth -5mm, and output NC."
-
-The AI calls these tools sequentially:
-
-```
-1. set_undo_point("Create rectangle + RoughFinish")
-2. create_rectangle(x1=0, y1=0, x2=100, y2=80)
-3. select_tool(name_or_path="$USER")  # user picks tool
-4. run_machining(process_type=1, safe_rapid_level=20, final_depth=-5,
-                  cut_feed=1000, spindle_speed=6000)
-5. output_nc(file_path="D:\\nc\\part.nc")
-6. zoom_all()
-```
-
-## Generating VBA Code with the Skill
-
-Use the companion Reasonix skill **`alphacam-coding`** to generate VBA code:
-
-```bash
-# In Reasonix:
-/alphacam-coding "Create a macro that generates a gear profile and machines it"
-```
-
-The skill will output ready-to-use VBA code using the correct API calls.
-
-## Architecture Notes
-
-- **Thread Safety**: AlphaCAM COM is single-threaded. The server serializes all calls.
-- **Error Handling**: Each tool catches COM errors and returns descriptive messages.
-- **Undo**: Use `set_undo_point` before operations for safe rollback.
-- **Screen Updating**: For batch operations, set `drw.ScreenUpdating = False` via VBA for speed.
-
-## Troubleshooting
-
-| Problem | Solution |
-|---------|----------|
-| `pywin32` not found | `pip install pywin32` |
-| `CLASS_E_NOTREGISTERED` | Run AlphaCAM once manually to register COM |
-| `Access Denied` | Run the server as Administrator |
-| `ServerNotFoundException` | Make sure AlphaCAM is installed and licensed |
-| COM call hangs | AlphaCAM may have a modal dialog open — close it |
+- GitHub: https://github.com/cczzyy-cn/AlphacamMCP
+- 问题反馈: https://github.com/cczzyy-cn/AlphacamMCP/issues
