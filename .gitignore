@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Temp scripts & experiments
+*.vbs
+*.log
+.vs/
+*.suo
+*.user
+.DS_Store
+Thumbs.db
+nul
