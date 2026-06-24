@@ -1,14 +1,25 @@
-# Python
-__pycache__/
-*.pyc
-*.pyo
-
-# Temp scripts & experiments
-*.vbs
+# Reasonix workspace artifacts
+api_raw.bin
+api_result.txt
+api_trim.txt
+nul
 *.log
 .vs/
 *.suo
 *.user
 .DS_Store
 Thumbs.db
+
+# Temporary scripts & experiments
+*.vbs
+*.py
+__pycache__/
+Users/
+root/
+.codegraph/
+api_help/
+api_out/
 nul
+
+# Extracted binary streams (raw OLE, not source)
+ReverseNest_extracted/

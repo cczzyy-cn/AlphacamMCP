@@ -1,0 +1,285 @@
+Option Explicit
+
+    ' ~~ DIMENSION CONVERSION ORDER ~~
+    '
+    '1:  Right Stile
+    '2:  Top Rail
+    '3:  Left Stile
+    '4:  Bottom Rail
+    '5:  Arch Height
+    '6:  Leg Length
+    '7:  Blend Radius
+    '8:  图形内偏移
+    '9:  网格间隔
+    '10: 下矩形高度
+    '11: 中部间隔
+
+Private Enum AdoorStyleDimensions
+
+    adoorDimSTILE = 1
+    adoorDimRAIL = 2
+    adoorDimSTILE_LEFT = 3
+    adoorDimRAIL_BOTTOM = 4
+    adoorDimARCH_HEIGHT = 5
+    adoorDimLEG_LENGTH = 6
+    adoorDimBLEND_RADIUS = 7
+    adoorDimINNER_OFFSET = 8
+    adoorDimGRID_SPACING = 9
+    adoorDimLOWER_RECT_HEIGHT = 10
+    adoorDimMIDDLE_SPACING = 11
+    
+End Enum
+
+Public Sub AdoorMain(RequiredData As Object, _
+                     User_1 As Variant, User_2 As Variant, _
+                     User_3 As Variant, User_4 As Variant, _
+                     User_5 As Variant, User_6 As Variant, _
+                     User_7 As Variant)
+    
+    ' ~~~~ USER CREATED VARIABLES FOR GEOMETRY CREATION
+    
+    Dim geoIn                   As Geo2D
+    Dim pthIn                   As Path
+    Dim geoLower                As Geo2D
+    Dim pthLower                As Path
+    Dim pthOffset               As Path
+    
+    Dim dblWidth                As Double
+    Dim dblLength               As Double
+    Dim dblCornerRad            As Double
+
+    Dim dblStile                As Double
+    Dim dblRail                 As Double
+    Dim dblStileLeft            As Double
+    Dim dblRailBottom           As Double
+    Dim dblArchHeight           As Double
+    Dim dblLeg                  As Double
+    Dim dblBlend                As Double
+    Dim dblInnerOffset          As Double
+    Dim dblGridSpacing          As Double
+    Dim dblLowerRectHeight      As Double
+    Dim dblMiddleSpacing        As Double
+    Dim dblUpperBottom          As Double
+    Dim dr                      As Drawing
+    Dim g As Path, guard As Long, fe As Element, le As Element
+    Dim sx As Double, sy As Double, ex As Double, ey As Double
+    Dim XInt As Variant, YInt As Variant, lngCnt As Long
+    Dim newLine As Path
+    Dim mx As Double, my As Double, mz As Double
+    Dim elemDummy As Element
+    Dim ok As Boolean
+
+    Dim UserDims                As Collection
+   
+On Error GoTo AdoorMain_Error
+    
+    '..fill detail variables
+    With RequiredData
+    
+        Set UserDims = .UserVariables
+        
+        '..assign panel dimensions
+        dblWidth = .width
+        dblLength = .length
+        dblCornerRad = .CornerRadius
+    
+    End With
+    
+    '..assign detail dimensions
+    dblStile = UserDims(adoorDimSTILE)
+    dblRail = UserDims(adoorDimRAIL)
+    dblStileLeft = UserDims(adoorDimSTILE_LEFT)
+    dblRailBottom = UserDims(adoorDimRAIL_BOTTOM)
+    dblArchHeight = UserDims(adoorDimARCH_HEIGHT)
+    dblLeg = UserDims(adoorDimLEG_LENGTH)
+    dblBlend = UserDims(adoorDimBLEND_RADIUS)
+    dblInnerOffset = UserDims(adoorDimINNER_OFFSET)
+    dblGridSpacing = UserDims(adoorDimGRID_SPACING)
+    dblLowerRectHeight = UserDims(adoorDimLOWER_RECT_HEIGHT)
+    dblMiddleSpacing = UserDims(adoorDimMIDDLE_SPACING)
+    
+    '..计算长门模式下上方图形底部位置
+    dblUpperBottom = dblRailBottom
+    If dblLowerRectHeight > 0 Then
+        dblUpperBottom = dblRailBottom + dblLowerRectHeight + dblMiddleSpacing
+    End If
+    
+    '..create the upper inner geo（拱形门板）
+    Set geoIn = App.ActiveDrawing.Create2DGeometry(dblStileLeft, dblUpperBottom)
+    
+    With geoIn
+
+        .AddLine dblStileLeft, (dblLength - (dblRail + dblArchHeight))
+        .AddLine (dblStileLeft + dblLeg + (dblBlend / 2)), (dblLength - (dblRail + dblArchHeight))
+        .AddArc2Point (dblStileLeft + ((dblWidth - (dblStile + dblStileLeft)) / 2)), (dblLength - dblRail), (dblWidth - (dblStile + dblLeg + (dblBlend / 2))), (dblLength - (dblRail + dblArchHeight))
+        .AddLine (dblWidth - dblStile), (dblLength - (dblRail + dblArchHeight))
+        .AddLine (dblWidth - dblStile), dblUpperBottom
+
+        Set pthIn = .CloseAndFinishLine
+
+    End With
+
+    '..create the blend radius
+    With pthIn
+        
+        .Group = 1
+        .ToolInOut = acamINSIDE
+        .CW = False
+        .Fillet dblBlend
+
+        .ToolInOut = acamON_CENTER
+
+    End With
+
+    RequiredData.PathsToReturn.Add pthIn
+    
+    '..如果下矩形高度大于0，在底部添加矩形
+    If dblLowerRectHeight > 0 Then
+        
+        Set geoLower = App.ActiveDrawing.Create2DGeometry(dblStileLeft, dblRailBottom)
+        With geoLower
+            .AddLine dblStileLeft, (dblRailBottom + dblLowerRectHeight)
+            .AddLine (dblWidth - dblStile), (dblRailBottom + dblLowerRectHeight)
+            .AddLine (dblWidth - dblStile), dblRailBottom
+            Set pthLower = .CloseAndFinishLine
+        End With
+        
+        With pthLower
+            .Group = 1
+            .ToolInOut = acamINSIDE
+            .CW = False
+        End With
+        
+        RequiredData.PathsToReturn.Add pthLower
+        
+    End If
+    
+    '..如果内偏移大于0，对上方的图形进行向内偏移
+    If dblInnerOffset > 0 Then
+        Dim offsetPaths As Paths
+        
+        Set offsetPaths = pthIn.Offset(dblInnerOffset, 1)
+        
+        If Not (offsetPaths Is Nothing) Then
+            Dim o As Long
+            For o = 1 To offsetPaths.Count
+                Set pthOffset = offsetPaths(o)
+                pthOffset.Group = 2
+                pthOffset.ToolInOut = acamINSIDE
+                RequiredData.PathsToReturn.Add pthOffset
+            Next o
+        End If
+    End If
+    
+    '..如果网格间隔大于0，绘制45度网格线
+    If dblGridSpacing > 0 And dblUpperBottom < (dblLength - dblRail) Then
+        
+        Dim leftEdge As Double, rightEdge As Double
+        Dim gridTop As Double, gridBottom As Double
+        Dim cx As Double
+        
+        leftEdge = dblStileLeft
+        rightEdge = dblWidth - dblStile
+        gridBottom = dblUpperBottom
+        gridTop = dblLength - dblRail
+        cx = (leftEdge + rightEdge) / 2
+        
+        
+        ' 先画底部第一条X（四臂到左右边界）
+        Dim base(1 To 4) As Path
+        Set base(1) = App.ActiveDrawing.Create2DLine(cx, gridBottom, rightEdge, gridBottom + (rightEdge - cx))
+        Set base(2) = App.ActiveDrawing.Create2DLine(cx, gridBottom, leftEdge, gridBottom + (cx - leftEdge))
+        Set base(3) = App.ActiveDrawing.Create2DLine(cx, gridBottom, rightEdge, gridBottom - (rightEdge - cx))
+        Set base(4) = App.ActiveDrawing.Create2DLine(cx, gridBottom, leftEdge, gridBottom - (cx - leftEdge))
+        
+        Dim i As Long
+        For i = 1 To 4
+            ' 暂不设组，先看裁剪效果
+        Next i
+        
+        ' 向上复制
+        Dim n As Long
+        Dim dy As Double
+        n = 1
+        Do While True
+            dy = n * dblGridSpacing
+            If gridBottom + dy > dblLength Then Exit Do
+            For i = 1 To 4
+                Dim cp As Path
+                Set cp = base(i).Copy
+                cp.MoveG 0, dy, 0
+            Next i
+            n = n + 1
+        Loop
+        
+        '..用图形3裁剪网格线（BreakWithCuttingGeos切分后取内部段）
+        If dblInnerOffset > 0 Then
+            If Not (pthOffset Is Nothing) Then
+                Set dr = App.ActiveDrawing
+                
+                Set g = dr.GetFirstGeo
+                guard = 0
+                Do While Not (g Is Nothing) And guard < 5000
+                    guard = guard + 1
+                    If Not g.Closed Then
+                        If g.TestIntersectPath(pthOffset, 0, 0) Then
+                            ' 选中边界 → 截断网格线 → 返回各段
+                            dr.SetGeosSelected False
+                            pthOffset.Selected = True
+                            
+                            Dim segs As Paths
+                            Set segs = g.BreakWithCuttingGeos
+                            
+                            dr.SetGeosSelected False
+                            
+                            If Not (segs Is Nothing) Then
+                                Dim si As Long
+                                For si = 1 To segs.Count
+                                    Dim seg As Path
+                                    Set seg = segs(si)
+                                    ' 取中点判断内外
+                                    Dim hLen As Double
+                                    hLen = seg.Length / 2
+                                    Dim hx As Double, hy As Double, hz As Double
+                                    Dim helem As Element
+                                    If seg.PointAtDistanceAlongPathG(hLen, hx, hy, hz, helem) Then
+                                        If Not pthOffset.IsPointInside(hx, hy) Then
+                                            seg.Erase  ' 外部段删除
+                                        End If
+                                    End If
+                                Next si
+                            End If
+                        Else
+                            g.Erase  ' 不相交的直接删除
+                        End If
+                    End If
+                    Set g = dr.GetFirstGeo
+                Loop
+            End If
+        End If
+        
+    End If
+
+Controlled_Exit:
+
+    '..clean up
+    Set pthIn = Nothing
+    Set geoIn = Nothing
+    Set pthLower = Nothing
+    Set geoLower = Nothing
+    Set pthOffset = Nothing
+    
+    With RequiredData
+        If .PathsToReturn.Count = 0 Then Set .PathsToReturn = Nothing
+    End With
+    
+Exit Sub
+
+AdoorMain_Error:
+    
+    MsgBox Err.Description, vbExclamation, Err.Source
+    Set RequiredData.PathsToReturn = Nothing
+    RequiredData.Success = False
+    Resume Controlled_Exit
+
+End Sub
