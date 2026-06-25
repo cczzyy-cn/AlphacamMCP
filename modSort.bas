@@ -183,11 +183,11 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
                         For mi = 1 To tpsM.count
                             Set tpM = tpsM(mi)
                             If Not (tpM Is Nothing) Then
-                                If Not stD.Exists(ck) Then
+                                If Not stD.Exists(cKey) Then
                                     Set nc = New Collection
-                                    stD.Add ck, nc
+                                    stD.Add cKey, nc
                                 End If
-                                Set c2 = stD(ck)
+                                Set c2 = stD(cKey)
                                 c2.Add tpM
                             End If
                         Next mi
