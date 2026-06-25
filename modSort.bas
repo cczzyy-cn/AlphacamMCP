@@ -177,7 +177,7 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
                     spInt = InStr(mn, "  ")
                     If spInt > 0 Then mn = Left(mn, spInt - 1) Else: spInt = InStr(mn, " "): If spInt > 0 Then mn = Left(mn, spInt - 1)
                     tKey = mn & " T" & CStr(tM.Number) & " " & IIf(tM.Name <> "", tM.Name, "T" & CStr(tM.Number))
-                    cKey = CStr(sheetId) & "|" & tk
+                    cKey = CStr(sheetId) & "|" & tKey
                     Set tpsM = subM.ToolPaths
                     If Not (tpsM Is Nothing) Then
                         For mi = 1 To tpsM.count
@@ -246,12 +246,12 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
         pos = 1
         For sj = 0 To UBound(sortedKeys)
             tK = sortedKeys(sj)
-            ck2 = CStr(si) & "|" & tky
+            ck2 = CStr(si) & "|" & tKeyy
             If stD.Exists(ck2) Then
                 Set tCol = stD(ck2)
                 For mi = 1 To tCol.count
-                    Set tPth = tc(mi)
-                    If Not (ta Is Nothing) Then tPth.OpNo = si * 1000 + pos
+                    Set tPth = tCol(mi)
+                    If Not (tPth Is Nothing) Then tPth.OpNo = si * 1000 + pos
                 Next mi
                 pos = pos + 1
             End If
