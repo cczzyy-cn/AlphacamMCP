@@ -56,7 +56,27 @@ Public Sub ApplyToolOffset(ByVal selectedTool As String, ByVal xOff As Double, B
         End If
     Next i
     End If  ' End If ops.count > 0
-    drw.ScreenUpdating = True: drw.Redraw
+        ' Fallback: direct toolpath iteration when no operations
+    If count = 0 Then
+        Dim tpIdx2 As Long
+        Dim tpCnt2 As Long: tpCnt2 = drw.GetToolPathCount
+        If tpCnt2 > 0 Then
+            Dim tpP2 As Path: Set tpP2 = drw.GetFirstToolPath
+            For tpIdx2 = 1 To tpCnt2
+                If Not (tpP2 Is Nothing) Then
+                    Dim t2 As MillTool: Set t2 = tpP2.GetTool
+                    If Not (t2 Is Nothing) Then
+                        If t2.Name = selectedTool Or (selectedTool <> "" And (InStr(1, t2.Name, selectedTool, vbTextCompare) > 0 Or InStr(1, CStr(t2.Number), selectedTool, vbTextCompare) > 0)) Then
+                            tpP2.MoveG xOff, yOff, zOff: count = count + 1
+                        End If
+                    End If
+                    Set tpP2 = tpP2.GetNext
+                End If
+            Next tpIdx2
+        End If
+    End If
+
+drw.ScreenUpdating = True: drw.Redraw
     MsgBox "偏移完成！已处理 " & count & " 条刀具路径。" & vbCrLf & "刀具: " & selectedTool & vbCrLf & "偏移量: X=" & xOff & "  Y=" & yOff & "  Z=" & zOff, vbInformation, "全排版刀具偏移"
     Exit Sub
 ErrHandler2:
