@@ -57,7 +57,7 @@ NextOp2:
                         keyS = "T" & CStr(tS.Number) & " " & toolD3
                         If Not dict.Exists(keyS) Then dict.Add keyS, True
                     End If
-                End If
+                    Set tpS = tpS.GetNext
             Next tpIdxS
         End If
     End If
