@@ -770,6 +770,257 @@ class AlphaCAM:
         except Exception as exc:
             raise AlphaCAMError(f"SelectPost failed: {exc}") from exc
 
+
+
+    # ---- RevNest operations (screen locking, nesting, path ops) -------
+
+    def lock_acam(self) -> dict:
+        drw = self.active_drawing
+        if drw is None:
+            raise AlphaCAMError("No active drawing")
+        try:
+            self._app.Frame.ProjectBarUpdating = False
+            drw.ScreenUpdating = False
+            return {"status": "locked"}
+        except Exception as exc:
+            raise AlphaCAMError(f"Lock failed: {exc}") from exc
+
+    def unlock_acam(self, zoom_all: bool = False) -> dict:
+        drw = self.active_drawing
+        if drw is None:
+            raise AlphaCAMError("No active drawing")
+        try:
+            self._app.Frame.ProjectBarUpdating = True
+            if zoom_all:
+                drw.ZoomAll()
+            drw.ScreenUpdating = True
+            return {"status": "unlocked", "zoom_all": zoom_all}
+        except Exception as exc:
+            raise AlphaCAMError(f"Unlock failed: {exc}") from exc
+
+    def has_nesting(self) -> dict:
+        drw = self.active_drawing
+        if drw is None:
+            return {"has_nesting": False, "error": "No active drawing"}
+        try:
+            ni = drw.GetNestInformation()
+            if ni is None:
+                return {"has_nesting": False}
+            sheet_count = ni.Sheets.Count
+            return {"has_nesting": sheet_count > 0, "sheet_count": sheet_count}
+        except Exception:
+            return {"has_nesting": False}
+
+    def get_nesting_info(self) -> dict:
+        drw = self.active_drawing
+        if drw is None:
+            return {"error": "No active drawing"}
+        try:
+            ni = drw.GetNestInformation()
+            if ni is None:
+                return {"has_nesting": False}
+            sheets_info = []
+            for sh in ni.Sheets:
+                geo = sh.Geometry
+                sheet_data = {
+                    "name": self._safe_get(geo, "Name", ""),
+                    "min_x": self._safe_get(geo, "MinXL", 0.0),
+                    "min_y": self._safe_get(geo, "MinYL", 0.0),
+                    "max_x": self._safe_get(geo, "MaxXL", 0.0),
+                    "max_y": self._safe_get(geo, "MaxYL", 0.0),
+                }
+                parts_list = []
+                for inst in sh.Parts:
+                    pgeo = inst.Geometry
+                    parts_list.append({
+                        "name": self._safe_get(inst, "Name", ""),
+                        "pos_x": self._safe_get(pgeo, "MinXL", 0.0),
+                        "pos_y": self._safe_get(pgeo, "MinYL", 0.0),
+                        "width": self._safe_get(pgeo, "MaxXL", 0.0) - self._safe_get(pgeo, "MinXL", 0.0),
+                        "height": self._safe_get(pgeo, "MaxYL", 0.0) - self._safe_get(pgeo, "MinYL", 0.0),
+                    })
+                sheet_data["parts"] = parts_list
+                sheet_data["part_count"] = len(parts_list)
+                sheets_info.append(sheet_data)
+            return {
+                "has_nesting": True,
+                "sheet_count": ni.Sheets.Count,
+                "sheets": sheets_info,
+            }
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    def get_sheet_extents(self) -> dict:
+        drw = self.active_drawing
+        if drw is None:
+            return {"error": "No active drawing"}
+        try:
+            ni = drw.GetNestInformation()
+            if ni is None or ni.Sheets.Count == 0:
+                return {"has_sheets": False}
+            min_x = min_y = 1e20
+            max_x = max_y = -1e20
+            for sh in ni.Sheets:
+                geo = sh.Geometry
+                mx1 = self._safe_get(geo, "MinXL", 1e20)
+                my1 = self._safe_get(geo, "MinYL", 1e20)
+                mx2 = self._safe_get(geo, "MaxXL", -1e20)
+                my2 = self._safe_get(geo, "MaxYL", -1e20)
+                if mx1 < min_x: min_x = mx1
+                if my1 < min_y: min_y = my1
+                if mx2 > max_x: max_x = mx2
+                if my2 > max_y: max_y = my2
+            return {
+                "has_sheets": True,
+                "sheet_count": ni.Sheets.Count,
+                "min_x": min_x, "min_y": min_y,
+                "max_x": max_x, "max_y": max_y,
+                "width": max_x - min_x,
+                "height": max_y - min_y,
+            }
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    def mirror_path(self, x1: float, y1: float, x2: float, y2: float, path_index: int = 0) -> dict:
+        drw = self.active_drawing
+        if drw is None:
+            raise AlphaCAMError("No active drawing")
+        p = self._find_geo_by_index_or_selected(path_index)
+        if p is None:
+            raise AlphaCAMError("No path found")
+        try:
+            p.MirrorL(x1, y1, x2, y2)
+            return {"status": "mirrored", "mirror_line": {"x1": x1, "y1": y1, "x2": x2, "y2": y2}}
+        except Exception as exc:
+            raise AlphaCAMError(f"MirrorL failed: {exc}") from exc
+
+    def copy_temporary_store(self, path_index: int = 0, mirror: dict = None) -> dict:
+        drw = self.active_drawing
+        if drw is None:
+            raise AlphaCAMError("No active drawing")
+        p = self._find_geo_by_index_or_selected(path_index)
+        if p is None:
+            raise AlphaCAMError("No path found")
+        try:
+            pcopy = p.CopyTemporary()
+            if mirror:
+                pcopy.MirrorL(mirror.get("x1",0), mirror.get("y1",0), mirror.get("x2",0), mirror.get("y2",0))
+            pcopy.StoreTemporary()
+            return {
+                "status": "stored",
+                "original_length": round(self._safe_get(p, "Length", 0.0), 3),
+                "copy_length": round(self._safe_get(pcopy, "Length", 0.0), 3),
+                "applied_mirror": mirror is not None,
+            }
+        except Exception as exc:
+            raise AlphaCAMError(f"CopyTemporary/StoreTemporary failed: {exc}") from exc
+
+    def get_path_attributes(self, path_index: int = 0, name_filter: str = None) -> dict:
+        drw = self.active_drawing
+        if drw is None:
+            raise AlphaCAMError("No active drawing")
+        p = self._find_geo_by_index_or_selected(path_index)
+        if p is None:
+            raise AlphaCAMError("No path found")
+        try:
+            count = p.GetAttributeCount()
+            attrs = {}
+            for i in range(1, count + 1):
+                aname = p.GetAttributeName(i)
+                if name_filter and name_filter not in aname:
+                    continue
+                try:
+                    attrs[aname] = str(p.Attribute(aname))
+                except Exception:
+                    attrs[aname] = "<error reading>"
+            return {"path_index": path_index if path_index else "selected", "attribute_count": count, "returned_count": len(attrs), "attributes": attrs}
+        except Exception as exc:
+            raise AlphaCAMError(f"Get attributes failed: {exc}") from exc
+
+    def set_path_attribute(self, attribute_name: str, attribute_value, path_index: int = 0) -> dict:
+        drw = self.active_drawing
+        if drw is None:
+            raise AlphaCAMError("No active drawing")
+        p = self._find_geo_by_index_or_selected(path_index)
+        if p is None:
+            raise AlphaCAMError("No path found")
+        try:
+            p.Attribute(attribute_name) = attribute_value
+            return {"status": "set", "attribute_name": attribute_name, "attribute_value": str(attribute_value)}
+        except Exception as exc:
+            raise AlphaCAMError(f"Set attribute failed: {exc}") from exc
+
+    def offset_path(self, distance: float, side: int = 1, path_index: int = 0, delete_original: bool = False) -> dict:
+        drw = self.active_drawing
+        if drw is None:
+            raise AlphaCAMError("No active drawing")
+        p = self._find_geo_by_index_or_selected(path_index)
+        if p is None:
+            raise AlphaCAMError("No path found")
+        try:
+            pths_ret = p.Offset(distance, side)
+            if pths_ret is None or pths_ret.Count == 0:
+                raise AlphaCAMError("Offset returned no paths")
+            first = pths_ret.Item(1)
+            result = {"status": "offset", "original_length": round(self._safe_get(p, "Length", 0.0), 3), "offset_length": round(self._safe_get(first, "Length", 0.0), 3), "offset_count": pths_ret.Count}
+            if delete_original:
+                p.Delete()
+                result["original_deleted"] = True
+            return result
+        except Exception as exc:
+            raise AlphaCAMError(f"Offset failed: {exc}") from exc
+
+    def get_all_geometries(self, include_attributes: bool = False) -> list:
+        drw = self.active_drawing
+        if drw is None:
+            return []
+        result = []
+        try:
+            idx = 1
+            p = drw.GetFirstGeo()
+            while p is not None:
+                entry = {
+                    "index": idx,
+                    "type": "Closed" if self._safe_get(p, "Closed", False) else "Open",
+                    "length": round(self._safe_get(p, "Length", 0.0), 3),
+                    "min_x": self._safe_get(p, "MinXL", 0.0),
+                    "min_y": self._safe_get(p, "MinYL", 0.0),
+                    "max_x": self._safe_get(p, "MaxXL", 0.0),
+                    "max_y": self._safe_get(p, "MaxYL", 0.0),
+                    "selected": bool(self._safe_get(p, "Selected", False)),
+                    "sheet": bool(self._safe_get(p, "Sheet", False)),
+                    "dimension": bool(self._safe_get(p, "Dimension", False)),
+                    "disabled": bool(self._safe_get(p, "Disabled", False)),
+                    "visible": bool(self._safe_get(p, "Visible", True)),
+                    "name": self._safe_get(p, "Name", ""),
+                    "group": self._safe_get(p, "Group", 0),
+                }
+                if include_attributes:
+                    try:
+                        acount = p.GetAttributeCount()
+                        attrs = {}
+                        for ai in range(1, acount + 1):
+                            aname = p.GetAttributeName(ai)
+                            try:
+                                attrs[aname] = str(p.Attribute(aname))
+                            except Exception:
+                                attrs[aname] = "<error>"
+                        entry["attributes"] = attrs
+                        entry["attribute_count"] = acount
+                    except Exception:
+                        entry["attributes"] = {}
+                        entry["attribute_count"] = 0
+                result.append(entry)
+                idx += 1
+                try:
+                    p = p.GetNext()
+                except Exception:
+                    break
+            result.append({"total_count": len(result)})
+        except Exception as exc:
+            result.append({"error": str(exc)})
+        return result
+
     # ---- helpers ---------------------------------------------------------
 
     @staticmethod

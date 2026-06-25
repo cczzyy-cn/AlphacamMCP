@@ -506,6 +506,134 @@ TOOLS: list[dict] = [
             "required": ["steps"],
         },
     },
+
+    # ----- Screen Locking -----
+    {
+        "name": "lock_acam",
+        "description": "Disable screen redraw in AlphaCAM (for batch operations).",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "unlock_acam",
+        "description": "Re-enable screen redraw and optionally zoom extents.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "zoom_all": {
+                    "type": "boolean",
+                    "description": "Zoom extents after unlock",
+                    "default": False,
+                }
+            },
+        },
+    },
+    # ----- Nesting -----
+    {
+        "name": "has_nesting",
+        "description": "Check if the active drawing has nesting (NestInformation with sheets).",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_nesting_info",
+        "description": "Get detailed nesting information: sheets, parts, instance data.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_sheet_extents",
+        "description": "Get the global min/max X/Y extents across all nesting sheets.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    # ----- Path Operations -----
+    {
+        "name": "mirror_path",
+        "description": "Mirror a path (geometry or toolpath) about a line defined by two points (MirrorL).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path_index": {"type": "integer", "description": "1-based index (0 = use selected)", "default": 0},
+                "x1": {"type": "number", "description": "First point X on mirror line"},
+                "y1": {"type": "number", "description": "First point Y on mirror line"},
+                "x2": {"type": "number", "description": "Second point X on mirror line"},
+                "y2": {"type": "number", "description": "Second point Y on mirror line"},
+            },
+            "required": ["x1", "y1", "x2", "y2"],
+        },
+    },
+    {
+        "name": "copy_temporary_store",
+        "description": "Copy a path as temporary, optionally mirror it, then store it back (CopyTemporary + MirrorL + StoreTemporary).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path_index": {"type": "integer", "description": "1-based index (0 = use selected)", "default": 0},
+                "mirror": {
+                    "type": "object",
+                    "description": "Optional mirror: {x1,y1,x2,y2}",
+                    "properties": {
+                        "x1": {"type": "number"},
+                        "y1": {"type": "number"},
+                        "x2": {"type": "number"},
+                        "y2": {"type": "number"},
+                    },
+                },
+            },
+        },
+    },
+    {
+        "name": "offset_path",
+        "description": "Offset a closed path by a distance. side: 1=Left(outside), -1=Right(inside).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path_index": {"type": "integer", "description": "1-based index (0 = use selected)", "default": 0},
+                "distance": {"type": "number", "description": "Offset distance"},
+                "side": {"type": "integer", "description": "1=Left(outside), -1=Right(inside)", "default": 1},
+                "delete_original": {"type": "boolean", "description": "Delete original path", "default": False},
+            },
+            "required": ["distance"],
+        },
+    },
+    # ----- Attributes -----
+    {
+        "name": "get_path_attributes",
+        "description": "Read all user attributes from a path (geometry or toolpath).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path_index": {"type": "integer", "description": "1-based index (0 = use selected)", "default": 0},
+                "name_filter": {"type": "string", "description": "Optional substring filter for attribute names"},
+            },
+        },
+    },
+    {
+        "name": "set_path_attribute",
+        "description": "Set a user attribute on a path (geometry or toolpath).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path_index": {"type": "integer", "description": "1-based index (0 = use selected)", "default": 0},
+                "attribute_name": {"type": "string", "description": "Attribute name"},
+                "attribute_value": {"type": ["string", "number"], "description": "Attribute value"},
+            },
+            "required": ["attribute_name", "attribute_value"],
+        },
+    },
+    # ----- Extended Queries -----
+    {
+        "name": "get_all_geometries",
+        "description": "List ALL geometries in the active drawing with full details (type, extents, sheet/dim status, attributes).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "include_attributes": {
+                    "type": "boolean",
+                    "description": "Include user attributes for each geometry",
+                    "default": False,
+                },
+            },
+        },
+    },
+
     # ----- Documentation -----
     {
         "name": "list_docs",
@@ -875,6 +1003,50 @@ async def handle_tool(name: str, arguments: dict | None) -> CallToolResult:
         # Batch
         elif name == "run_workflow":
             result = acam.run_workflow(arguments["steps"])
+
+
+        # Screen Locking
+        elif name == "lock_acam":
+            result = acam.lock_acam()
+        elif name == "unlock_acam":
+            result = acam.unlock_acam(arguments.get("zoom_all", False))
+        # Nesting
+        elif name == "has_nesting":
+            result = acam.has_nesting()
+        elif name == "get_nesting_info":
+            result = acam.get_nesting_info()
+        elif name == "get_sheet_extents":
+            result = acam.get_sheet_extents()
+        # Path Operations
+        elif name == "mirror_path":
+            result = acam.mirror_path(
+                arguments["x1"], arguments["y1"],
+                arguments["x2"], arguments["y2"],
+                arguments.get("path_index", 0))
+        elif name == "copy_temporary_store":
+            result = acam.copy_temporary_store(
+                arguments.get("path_index", 0),
+                arguments.get("mirror"))
+        elif name == "offset_path":
+            result = acam.offset_path(
+                arguments["distance"],
+                arguments.get("side", 1),
+                arguments.get("path_index", 0),
+                arguments.get("delete_original", False))
+        # Attributes
+        elif name == "get_path_attributes":
+            result = acam.get_path_attributes(
+                arguments.get("path_index", 0),
+                arguments.get("name_filter"))
+        elif name == "set_path_attribute":
+            result = acam.set_path_attribute(
+                arguments["attribute_name"],
+                arguments["attribute_value"],
+                arguments.get("path_index", 0))
+        # Extended Queries
+        elif name == "get_all_geometries":
+            result = acam.get_all_geometries(
+                arguments.get("include_attributes", False))
 
         # Documentation
         elif name == "list_docs":
