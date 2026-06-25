@@ -235,8 +235,9 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
             Dim ck2 As String: ck2 = CStr(si) & "|" & tky
             If stD.Exists(ck2) Then
                 Dim tc As Collection: Set tc = stD(ck2)
+                Dim ta As Path
                 For mi = 1 To tc.count
-                    Dim ta As Path: Set ta = tc(mi)
+                    Set ta = tc(mi)
                     If Not (ta Is Nothing) Then ta.OpNo = si * 1000 + pos
                 Next mi
                 pos = pos + 1
