@@ -55,6 +55,7 @@ Public Sub ApplyToolOffset(ByVal selectedTool As String, ByVal xOff As Double, B
             Next j
         End If
     Next i
+    End If  ' End If ops.count > 0
     drw.ScreenUpdating = True: drw.Redraw
     MsgBox "偏移完成！已处理 " & count & " 条刀具路径。" & vbCrLf & "刀具: " & selectedTool & vbCrLf & "偏移量: X=" & xOff & "  Y=" & yOff & "  Z=" & zOff, vbInformation, "全排版刀具偏移"
     Exit Sub

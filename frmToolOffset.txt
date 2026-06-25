@@ -83,6 +83,8 @@ Private Sub cmdOK_Click()
     Dim count As Long
     Dim ops As Operations: Set ops = drw.Operations
     Dim i As Long, j As Long
+    
+    ' 方式1：通过 Operations 遍历
     For i = 1 To ops.count
         Dim op As Operation: Set op = ops(i)
         Dim subs As SubOperations: Set subs = op.SubOperations
