@@ -959,7 +959,10 @@ class AlphaCAM:
         if p is None:
             raise AlphaCAMError("No path found")
         try:
-            p.Attribute(attribute_name) = attribute_value
+            # COM property put with parameter - use Invoke with DISPATCH_PROPERTYPUT
+            import pythoncom
+            dispid = p._disp_.GetIDsOfNames("Attribute")[0]
+            p._oleobj_.Invoke(dispid, pythoncom.IID_NULL, 0, pythoncom.DISPATCH_PROPERTYPUT, attribute_name, attribute_value)
             return {"status": "set", "attribute_name": attribute_name, "attribute_value": str(attribute_value)}
         except Exception as exc:
             raise AlphaCAMError(f"Set attribute failed: {exc}") from exc
