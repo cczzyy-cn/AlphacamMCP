@@ -25,7 +25,6 @@ Public Function ScanOperations() As Collection
     Set ops = drw.Operations
     If ops Is Nothing Then Set ScanOperations = result: Exit Function
     Set dict = CreateObject("Scripting.Dictionary")
-    Dim i As Long, j As Long
     For i = 1 To ops.count
         Set op = ops(i)
         Set subs = op.SubOperations
@@ -74,7 +73,7 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     If drw Is Nothing Then Exit Sub
     Set ops = drw.Operations
     If ops Is Nothing Then Exit Sub
-    Dim drw As Drawing, ops As Operations, sheetCount As Long
+    Dim drw As Drawing, ops As Operations
     Dim opIdx As Long, s As Long, si As Long, sj As Long, mi As Long
     Dim mSheet As Long, pos As Long, lastSh As Long, spInt As Integer
     Dim firstTpName As String, lookupName As String
@@ -140,8 +139,7 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
         Next opIdx
     End If
     Set stD = CreateObject("Scripting.Dictionary")
-    Dim sheetId As Long, mn As String, tk As String, ck As String
-    Dim tM As MillTool
+    sheetId = 1: mn = "": tk = "": ck = ""
     For opIdx = 1 To ops.count
         Set opM = ops(opIdx)
         Set sbM = opM.SubOperations
