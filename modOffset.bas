@@ -12,6 +12,9 @@ Public Sub ApplyToolOffset(ByVal selectedTool As String, ByVal xOff As Double, B
     On Error GoTo ErrHandler2
     Dim drw As Drawing: Set drw = App.ActiveDrawing
     If drw Is Nothing Then Exit Sub
+    ' Defensive: if selectedTool starts with -T, strip leading -
+    Dim selTool As String: selTool = selectedTool
+    If Left(selTool, 2) = "-T" Then selTool = Mid(selTool, 2)
     App.SetUndoCommandName "È«ÅÅ°æµ¶¾ßÆ«ÒÆ"
     App.SetUndoPoint
     drw.ScreenUpdating = False
@@ -31,14 +34,14 @@ Public Sub ApplyToolOffset(ByVal selectedTool As String, ByVal xOff As Double, B
                 If Not (t Is Nothing) Then
                     ' Æ¥ÅäÂß¼­£º¾«È·Ãû ¡ú °üº¬Ãû ¡ú T ºÅ
                     Dim isMatch As Boolean: isMatch = False
-                    If t.Name = selectedTool Then
+                    If t.Name = selTool Then
                         isMatch = True
-                    ElseIf InStr(1, t.Name, selectedTool, vbTextCompare) > 0 Then
+                    ElseIf InStr(1, t.Name, selTool, vbTextCompare) > 0 Then
                         isMatch = True
-                    ElseIf Not foundFirst And InStr(1, CStr(t.Number), selectedTool, vbTextCompare) > 0 Then
+                    ElseIf Not foundFirst And InStr(1, CStr(t.Number), selTool, vbTextCompare) > 0 Then
                         isMatch = True
-                    ElseIf Left(selectedTool, 1) = "T" Then
-                        Dim tNumVal As Long: tNumVal = Val(Mid(selectedTool, 2))
+                    ElseIf Left(selTool, 1) = "T" Then
+                        Dim tNumVal As Long: tNumVal = Val(Mid(selTool, 2))
                         If tNumVal > 0 And t.Number = tNumVal Then isMatch = True
                     End If
                     If isMatch Then

@@ -85,7 +85,7 @@ Private Sub cmdOK_Click()
     xVal = Val(txtX.Text): yVal = Val(txtY.Text): zVal = Val(txtZ.Text)
     If xVal = 0 And yVal = 0 And zVal = 0 Then MsgBox "偏移量不能全为 0！", vbExclamation: Exit Sub
     Dim toolName As String
-    Dim dashPos As Integer: dashPos = InStr(cmbTool.Text, " - ")
+    Dim dashPos As Integer: dashPos = InStrRev(cmbTool.Text, " - ")
     If dashPos > 0 Then
         ' 提取 " - T# 刀具名" 中的刀具名
         Dim afterDash As String: afterDash = Mid(cmbTool.Text, dashPos + 3)
