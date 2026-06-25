@@ -78,6 +78,7 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     Dim opIdx As Long, s As Long, si As Long, sj As Long, mi As Long
     Dim mSheet As Long, pos As Long, lastSh As Long, spInt As Integer
     Dim firstTpName As String, lookupName As String
+    Dim ta As Path, tc As Collection, c2 As Collection, cA As Collection, nc As Collection, ncA As Collection
     If g_mapPathToSheet Is Nothing Then
         Set g_mapPathToSheet = CreateObject("Scripting.Dictionary")
         Dim ni As NestInformation: Set ni = drw.GetNestInformation()
@@ -180,7 +181,7 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
                                     Dim nc As Collection: Set nc = New Collection
                                     stD.Add ck, nc
                                 End If
-                                Dim c2 As Collection: Set c2 = stD(ck)
+                                Set c2 = stD(ck)
                                 c2.Add tpM
                             End If
                         Next mi
@@ -204,10 +205,10 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
                         Dim tkA As String: tkA = "T" & CStr(tA.Number) & " " & toolD4
                         Dim ckA As String: ckA = "1|" & tkA
                         If Not stD.Exists(ckA) Then
-                            Dim ncA As Collection: Set ncA = New Collection
+                            Set ncA = New Collection
                             stD.Add ckA, ncA
                         End If
-                        Dim cA As Collection: Set cA = stD(ckA)
+                        Set cA = stD(ckA)
                         cA.Add tpA
                     End If
                     Set tpA = tpA.GetNext
@@ -242,9 +243,9 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
             Dim tky As String: tky = sortedKeys(sj)
             Dim ck2 As String: ck2 = CStr(si) & "|" & tky
             If stD.Exists(ck2) Then
-                Dim tc As Collection: Set tc = stD(ck2)
+                Set tc = stD(ck2)
                 For mi = 1 To tc.count
-                    Dim ta As Path
+                    Set ta = Nothing
                     On Error Resume Next
                     Set ta = tc(mi)
                     On Error GoTo 0
