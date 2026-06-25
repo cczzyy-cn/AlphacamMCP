@@ -244,7 +244,10 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
             If stD.Exists(ck2) Then
                 Dim tc As Collection: Set tc = stD(ck2)
                 For mi = 1 To tc.count
-                    Dim ta As Path: Set ta = tc(mi)
+                    Dim ta As Path
+                    On Error Resume Next
+                    Set ta = tc(mi)
+                    On Error GoTo 0
                     If Not (ta Is Nothing) Then ta.OpNo = si * 1000 + pos
                 Next mi
                 pos = pos + 1
