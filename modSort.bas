@@ -4,17 +4,22 @@
 ' ==============================================================================
 Option Explicit
 Option Private Module
-
 Sub ÅÅ°æµ¶¾ßÅÅÐò()
+    Dim drw As Drawing
     Set g_mapPathToSheet = Nothing
     Set drw = App.ActiveDrawing
     If drw Is Nothing Then MsgBox "No drawing!", vbExclamation, "Sort": Exit Sub
     If drw.Operations Is Nothing Or drw.Operations.count = 0 Then MsgBox "No operations!", vbExclamation, "Sort": Exit Sub
     frmToolSort.Show vbModeless
 End Sub
-
 Public Function ScanOperations() As Collection
     Dim result As New Collection
+    Dim drw As Drawing, ops As Operations, dict As Object
+    Dim i As Long, j As Long
+    Dim op As Operation, subs As SubOperations, subop As SubOperation, t As MillTool
+    Dim methodName As String, spPos As Integer
+    Dim toolDisp As String, key As String, toolD3 As String, keyS As String
+    Dim tpIdxS As Long, tpCntS As Long, tpS As Path, tS As MillTool
     Set drw = App.ActiveDrawing
     If drw Is Nothing Then Set ScanOperations = result: Exit Function
     Set ops = drw.Operations
@@ -31,30 +36,27 @@ Public Function ScanOperations() As Collection
             If Not (t Is Nothing) Then
                 methodName = subop.Name
                 spPos = InStr(methodName, " "): If spPos > 0 Then methodName = Left(methodName, spPos - 1)
-                Dim toolDisp As String
+
                     If IsNull(t.Name) Or t.Name = "" Then toolDisp = "T" & CStr(t.Number) Else toolDisp = t.Name
                     key = methodName & " T" & CStr(t.Number) & " " & toolDisp
                 If Not dict.Exists(key) Then dict.Add key, True
             End If
-        Next j
 NextOp2:
     Next i
     ' Fallback: scan toolpaths directly when no operations
     If dict.Count = 0 Then
-        Dim tpIdxS As Long
+
         tpCntS = drw.GetToolPathCount
         If tpCntS > 0 Then
             Set tpS = drw.GetFirstToolPath
             For tpIdxS = 1 To tpCntS
-                If Not (tpS Is Nothing) Then
                     Set tS = tpS.GetTool
                     If Not (tS Is Nothing) Then
-                        Dim toolD3 As String
+
                         If IsNull(tS.Name) Or tS.Name = "" Then toolD3 = "T" & CStr(tS.Number) Else toolD3 = tS.Name
                         keyS = "T" & CStr(tS.Number) & " " & toolD3
                         If Not dict.Exists(keyS) Then dict.Add keyS, True
                     End If
-                    Set tpS = tpS.GetNext
                 End If
             Next tpIdxS
         End If
@@ -66,7 +68,6 @@ NextOp2:
     Next kk
     Set ScanOperations = result
 End Function
-
 Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     On Error GoTo ErrHandler3
     Set drw = App.ActiveDrawing
@@ -110,7 +111,6 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
                 End If
             End If
             If Not (sbN Is Nothing) Then
-
                 For siN = 1 To sbN.count
                     Set subN = sbN(siN)
                     Set tpN = subN.ToolPaths
@@ -168,7 +168,6 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
                     mn = subM.Name
                     spInt = InStr(mn, "  ")
                     If spInt > 0 Then mn = Left(mn, spInt - 1) Else: spInt = InStr(mn, " "): If spInt > 0 Then mn = Left(mn, spInt - 1)
-
                     If IsNull(tM.Name) Or tM.Name = "" Then toolD2 = "T" & CStr(tM.Number) Else toolD2 = tM.Name
                     tk = mn & " T" & CStr(tM.Number) & " " & toolD2
                     ck = CStr(sheetId) & "|" & tk
@@ -192,7 +191,6 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     Next opIdx
     ' Fallback: direct toolpath sort when no operations
     If stD.Count = 0 Then
-
         tpCntA = drw.GetToolPathCount
         If tpCntA > 0 Then
             Set tpA = drw.GetFirstToolPath
@@ -200,7 +198,6 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
                 If Not (tpA Is Nothing) Then
                     Set tA = tpA.GetTool
                     If Not (tA Is Nothing) Then
-
                         If IsNull(tA.Name) Or tA.Name = "" Then toolD4 = "T" & CStr(tA.Number) Else toolD4 = tA.Name
                         tkA = "T" & CStr(tA.Number) & " " & toolD4
                         ckA = "1|" & tkA
