@@ -1,0 +1,15 @@
+{
+    // 设置 .bas 文件默认打开编码为 GBK
+    // AlphaCAM VBA 源文件保存为 ANSI(GBK) 编码
+    "files.associations": {
+        "*.bas": "vb",
+        "*.frm": "vb",
+        "*.cls": "vb"
+    },
+    "[vb]": {
+        "files.encoding": "gbk"
+    },
+    "[plaintext]": {
+        "files.encoding": "gbk"
+    }
+}

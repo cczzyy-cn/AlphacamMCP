@@ -1,61 +1,170 @@
-Private Declare PtrSafe Function FindWindow Lib "user32" Alias "FindWindowA" (ByVal lpClassName As String, ByVal lpWindowName As String) As Long
-Private Declare PtrSafe Function GetWindowLong Lib "user32" Alias "GetWindowLongA" (ByVal hWnd As Long, ByVal nIndex As Long) As Long
-Private Declare PtrSafe Function SetWindowLong Lib "user32" Alias "SetWindowLongA" (ByVal hWnd As Long, ByVal nIndex As Long, ByVal dwNewLong As Long) As Long
-Private Declare PtrSafe Function SetWindowPos Lib "user32" (ByVal hWnd As Long, ByVal hWndInsertAfter As Long, ByVal X As Long, ByVal Y As Long, ByVal cx As Long, ByVal cy As Long, ByVal wFlags As Long) As Long
+' ==============================================================================
+' frmToolSort — 排版刀具排序对话框 (UserForm)
+' ==============================================================================
+' 功能：展示当前图纸中所有不重复的"加工方式+刀具"组合，
+'       用户通过上移/下移按钮拖拽调整顺序，
+'       确认后调用 ApplySortToDrawing 将排序应用到图纸。
+'
+' 控件：
+'   lstTools     — ListBox，显示所有加工步骤
+'   cmdUp        — 上移按钮
+'   cmdDown      — 下移按钮
+'   cmdRefresh   — 刷新列表（重新扫描图纸）
+'   cmdOK        — 应用排序
+'   cmdClose     — 关闭对话框
+' ==============================================================================
+
+Option Explicit
+
+' --------------------------------------------------------------------------
+' Windows API 声明 — 为对话框添加最小化按钮
+' --------------------------------------------------------------------------
+Private Declare PtrSafe Function FindWindow Lib "user32" Alias "FindWindowA" _
+    (ByVal lpClassName As String, ByVal lpWindowName As String) As Long
+Private Declare PtrSafe Function GetWindowLong Lib "user32" Alias "GetWindowLongA" _
+    (ByVal hWnd As Long, ByVal nIndex As Long) As Long
+Private Declare PtrSafe Function SetWindowLong Lib "user32" Alias "SetWindowLongA" _
+    (ByVal hWnd As Long, ByVal nIndex As Long, ByVal dwNewLong As Long) As Long
+Private Declare PtrSafe Function SetWindowPos Lib "user32" _
+    (ByVal hWnd As Long, ByVal hWndInsertAfter As Long, _
+     ByVal X As Long, ByVal Y As Long, ByVal cx As Long, ByVal cy As Long, _
+     ByVal wFlags As Long) As Long
+
 Private Const GWL_STYLE As Long = (-16)
 Private Const WS_MINIMIZEBOX As Long = &H20000
 Private Const SWP_NOSIZE As Long = &H1
 Private Const SWP_NOMOVE As Long = &H2
 Private Const SWP_NOZORDER As Long = &H4
 Private Const SWP_FRAMECHANGED As Long = &H20
+
+' ==============================================================================
+' Sub AddMinButton(frm As Object)
+' ==============================================================================
+' 给 VBA UserForm 添加最小化按钮（默认 VBA 窗体没有最小化按钮）。
+' 通过 FindWindow 查找窗体的 Windows 句柄，修改窗口样式添加 WS_MINIMIZEBOX。
+' ==============================================================================
 Private Sub AddMinButton(frm As Object)
     Dim hWnd As Long
+    ' VBA UserForm 的类名通常是 ThunderDFrame（较新版）或 ThunderRT5Form
     hWnd = FindWindow("ThunderDFrame", frm.Caption)
     If hWnd = 0 Then hWnd = FindWindow("ThunderRT5Form", frm.Caption)
     If hWnd = 0 Then Exit Sub
+    
+    ' 获取当前窗口样式，添加最小化按钮标志
     Dim style As Long
     style = GetWindowLong(hWnd, GWL_STYLE)
     style = style Or WS_MINIMIZEBOX
     SetWindowLong hWnd, GWL_STYLE, style
-    SetWindowPos hWnd, 0, 0, 0, 0, 0, SWP_NOMOVE Or SWP_NOSIZE Or SWP_NOZORDER Or SWP_FRAMECHANGED
+    
+    ' 刷新窗口样式（不改变位置/大小/Z序）
+    SetWindowPos hWnd, 0, 0, 0, 0, 0, _
+        SWP_NOMOVE Or SWP_NOSIZE Or SWP_NOZORDER Or SWP_FRAMECHANGED
 End Sub
-Private Sub UserForm_Activate(): AddMinButton Me: End Sub
+
+
+' ==============================================================================
+' UserForm 事件
+' ==============================================================================
+
+' 窗体激活时添加最小化按钮
+Private Sub UserForm_Activate()
+    AddMinButton Me
+End Sub
+
+' 窗体初始化：设置标题并刷新操作列表
 Private Sub UserForm_Initialize()
     Me.Caption = "排版刀具排序"
     RefreshOpList
 End Sub
-Private Sub cmdRefresh_Click(): RefreshOpList: End Sub
+
+' 刷新按钮：重新扫描图纸
+Private Sub cmdRefresh_Click()
+    RefreshOpList
+End Sub
+
+' ==============================================================================
+' Public Sub RefreshOpList()
+' ==============================================================================
+' 调用 modSort.ScanOperations() 获取加工步骤列表，填充到 ListBox。
+' ==============================================================================
 Public Sub RefreshOpList()
     lstTools.Clear
-    Dim rawList As Collection: Set rawList = ScanOperations()
-    If rawList Is Nothing Or rawList.count = 0 Then lstTools.AddItem "(未找到操作)": Exit Sub
+    
+    Dim rawList As Collection
+    Set rawList = ScanOperations()          ' 调用 modSort 的扫描函数
+    
+    If rawList Is Nothing Or rawList.Count = 0 Then
+        lstTools.AddItem "(未找到操作)"
+        Exit Sub
+    End If
+    
     Dim k As Long
-    For k = 1 To rawList.count: lstTools.AddItem rawList(k): Next k
-    If lstTools.ListCount > 0 Then lstTools.ListIndex = 0
+    For k = 1 To rawList.Count
+        lstTools.AddItem rawList(k)         ' 添加到列表框
+    Next k
+    
+    If lstTools.ListCount > 0 Then lstTools.ListIndex = 0  ' 默认选中第一项
 End Sub
+
+' ==============================================================================
+' cmdUp_Click / cmdDown_Click — 上下移动选中项
+' ==============================================================================
+' 修改 lstTools 中当前选中项的位置，实现拖拽排序效果。
+' ==============================================================================
+
+' 上移：与上一项交换位置
 Private Sub cmdUp_Click()
-    If lstTools.ListIndex < 1 Then Exit Sub
+    If lstTools.ListIndex < 1 Then Exit Sub           ' 已在最顶部无法上移
     Dim idx As Long: idx = lstTools.ListIndex
     Dim txt As String: txt = lstTools.List(idx)
-    lstTools.RemoveItem idx: lstTools.AddItem txt, idx - 1
-    lstTools.ListIndex = idx - 1
+    lstTools.RemoveItem idx                            ' 删除当前位置
+    lstTools.AddItem txt, idx - 1                      ' 插入到上一位置
+    lstTools.ListIndex = idx - 1                       ' 保持选中状态
 End Sub
+
+' 下移：与下一项交换位置
 Private Sub cmdDown_Click()
     If lstTools.ListIndex < 0 Then Exit Sub
-    If lstTools.ListIndex >= lstTools.ListCount - 1 Then Exit Sub
+    If lstTools.ListIndex >= lstTools.ListCount - 1 Then Exit Sub  ' 已在最底部
     Dim idx As Long: idx = lstTools.ListIndex
     Dim txt As String: txt = lstTools.List(idx)
-    lstTools.RemoveItem idx: lstTools.AddItem txt, idx + 1
-    lstTools.ListIndex = idx + 1
+    lstTools.RemoveItem idx                            ' 删除当前位置
+    lstTools.AddItem txt, idx + 1                      ' 插入到下一位置
+    lstTools.ListIndex = idx + 1                       ' 保持选中状态
 End Sub
+
+' ==============================================================================
+' cmdOK_Click — 确认应用排序
+' ==============================================================================
+' 将 ListBox 中的顺序转为数组，调用 ApplySortToDrawing 应用到图纸。
+' ==============================================================================
 Private Sub cmdOK_Click()
-    If lstTools.ListCount = 0 Or lstTools.List(0) = "(未找到操作)" Then MsgBox "没有可排序的操作！请先点击【刷新】扫描图纸。", vbExclamation: Exit Sub
-    Dim count As Long: count = lstTools.ListCount
+    ' 检查是否有有效数据
+    If lstTools.ListCount = 0 Or lstTools.List(0) = "(未找到操作)" Then
+        MsgBox "没有可排序的操作！请先点击【刷新】扫描图纸。", vbExclamation
+        Exit Sub
+    End If
+    
+    Dim count As Long
+    count = lstTools.ListCount
+    
+    ' 将 ListBox 内容按当前顺序写入数组
+    Dim sortedKeys() As String
     ReDim sortedKeys(0 To count - 1) As String
     Dim i As Long
-    For i = 0 To count - 1: sortedKeys(i) = lstTools.List(i): Next i
+    For i = 0 To count - 1
+        sortedKeys(i) = lstTools.List(i)
+    Next i
+    
+    ' 调用 modSort 的应用排序过程
     ApplySortToDrawing sortedKeys
+    
     MsgBox "排序已应用！共 " & count & " 个加工步骤。", vbInformation, "排版刀具排序"
+    ' 不关闭窗口，方便继续调整排序
+    ' Unload Me
+End Sub
+
+' 关闭按钮
+Private Sub cmdClose_Click()
     Unload Me
 End Sub
-Private Sub cmdClose_Click(): Unload Me: End Sub
