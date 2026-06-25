@@ -33,9 +33,7 @@ Public Function ScanOperations() As Collection
                 Dim spPos As Integer
                 spPos = InStr(methodName, "  ")
                 If spPos > 0 Then methodName = Left(methodName, spPos - 1) Else: spPos = InStr(methodName, " "): If spPos > 0 Then methodName = Left(methodName, spPos - 1)
-                Dim toolDisp As String
-                If IsNull(t.Name) Or t.Name = "" Then toolDisp = "T" & CStr(t.Number) Else toolDisp = t.Name
-                Dim key As String: key = methodName & " T" & CStr(t.Number) & " " & toolDisp
+                Dim key As String: key = methodName & " T" & CStr(t.Number) & " " & IIf(t.Name <> "", t.Name, "T" & CStr(t.Number))
                 If Not dict.Exists(key) Then dict.Add key, True
             End If
         Next j
@@ -51,9 +49,7 @@ NextOp2:
                 If Not (tpS Is Nothing) Then
                     Dim tS As MillTool: Set tS = tpS.GetTool
                     If Not (tS Is Nothing) Then
-                        Dim toolD3 As String
-                        If IsNull(tS.Name) Or tS.Name = "" Then toolD3 = "T" & CStr(tS.Number) Else toolD3 = tS.Name
-                        Dim keyS As String: keyS = "T" & CStr(tS.Number) & " " & toolD3
+                        Dim keyS As String: keyS = "T" & CStr(tS.Number) & " " & IIf(tS.Name <> "", tS.Name, "T" & CStr(tS.Number))
                         If Not dict.Exists(keyS) Then dict.Add keyS, True
                     End If
                     Set tpS = tpS.GetNext
@@ -72,51 +68,50 @@ End Function
 Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     On Error GoTo ErrHandler3
     Dim drw As Drawing: Set drw = App.ActiveDrawing
-    Dim c2 As Collection, nc As Collection, nd As Object, ni As NestInformation, oc As Operation, opM As Operation, opN As Operation, sbM As SubOperations, sbN As SubOperations, sbc As SubOperation, sc As SubOperations, shNm() As Object, sheetCount As Long, siN As Long, sp As paths, subF As SubOperation, subL As SubOperation, subM As SubOperation, subN As SubOperation, tF As Path, tL As Path, tN2 As Path, toolD2 As String, tpF As paths, tpL As paths, tpM As Path, tpN As paths, tpc As paths, tpc2 As Path, tpsM As paths, tpIdxA As Long, tpCntA As Long, tpA As Path, tA As MillTool, toolD4 As String, tkA As String, ckA As String, ncA As Collection, cA As Collection
     If drw Is Nothing Then Exit Sub
     Dim ops As Operations: Set ops = drw.Operations
     If ops Is Nothing Then Exit Sub
     Dim opIdx As Long, s As Long, si As Long, sj As Long, mi As Long
     Dim mSheet As Long, pos As Long, lastSh As Long, spInt As Integer
-    Dim firstTpName As String, lookupName As String, ta As Path, tc As Collection, tky As String, ck2 As String
+    Dim firstTpName As String, lookupName As String
     If g_mapPathToSheet Is Nothing Then
         Set g_mapPathToSheet = CreateObject("Scripting.Dictionary")
-        Set ni = drw.GetNestInformation()
-        sheetCount = ni.Sheets.count
+        Dim ni As NestInformation: Set ni = drw.GetNestInformation()
+        Dim sheetCount As Long: sheetCount = ni.Sheets.count
         If sheetCount = 0 Then sheetCount = 1
-        ReDim shNm(1 To sheetCount)
+        Dim shNm() As Object: ReDim shNm(1 To sheetCount)
         For s = 1 To sheetCount
-            Set nd = CreateObject("Scripting.Dictionary")
-            Set sp = ni.Sheets(s).paths
+            Dim nd As Object: Set nd = CreateObject("Scripting.Dictionary")
+            Dim sp As paths: Set sp = ni.Sheets(s).paths
             For mi = 1 To sp.count
                 If Not nd.Exists(sp(mi).Name) Then nd.Add sp(mi).Name, True
             Next mi
             Set shNm(s) = nd
         Next s
         For opIdx = 1 To ops.count
-            Set opN = ops(opIdx)
-            Set sbN = opN.SubOperations
+            Dim opN As Operation: Set opN = ops(opIdx)
+            Dim sbN As SubOperations: Set sbN = opN.SubOperations
             mSheet = 0: firstTpName = ""
             If Not (sbN Is Nothing) Then
                 If sbN.count > 0 Then
-                    Set subF = sbN(1)
-                    Set tpF = subF.ToolPaths
+                    Dim subF As SubOperation: Set subF = sbN(1)
+                    Dim tpF As paths: Set tpF = subF.ToolPaths
                     If Not (tpF Is Nothing) Then
                         If tpF.count > 0 Then
-                            Set tF = tpF(1)
+                            Dim tF As Path: Set tF = tpF(1)
                             If Not (tF Is Nothing) Then firstTpName = tF.Name
                         End If
                     End If
                 End If
             End If
             If Not (sbN Is Nothing) Then
-
+                Dim siN As Long
                 For siN = 1 To sbN.count
-                    Set subN = sbN(siN)
-                    Set tpN = subN.ToolPaths
+                    Dim subN As SubOperation: Set subN = sbN(siN)
+                    Dim tpN As paths: Set tpN = subN.ToolPaths
                     If Not (tpN Is Nothing) Then
                         For mi = 1 To tpN.count
-                            Set tN2 = tpN(mi)
+                            Dim tN2 As Path: Set tN2 = tpN(mi)
                             If Not (tN2 Is Nothing) Then
                                 For s = 1 To sheetCount
                                     If shNm(s).Exists(tN2.Name) Then
@@ -143,16 +138,16 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     Dim sheetId As Long, mn As String, tk As String, ck As String
     Dim tM As MillTool
     For opIdx = 1 To ops.count
-        Set opM = ops(opIdx)
-        Set sbM = opM.SubOperations
+        Dim opM As Operation: Set opM = ops(opIdx)
+        Dim sbM As SubOperations: Set sbM = opM.SubOperations
         If Not (sbM Is Nothing) Then
             lookupName = ""
             If sbM.count > 0 Then
-                Set subL = sbM(1)
-                Set tpL = subL.ToolPaths
+                Dim subL As SubOperation: Set subL = sbM(1)
+                Dim tpL As paths: Set tpL = subL.ToolPaths
                 If Not (tpL Is Nothing) Then
                     If tpL.count > 0 Then
-                        Set tL = tpL(1)
+                        Dim tL As Path: Set tL = tpL(1)
                         If Not (tL Is Nothing) Then lookupName = tL.Name
                     End If
                 End If
@@ -162,26 +157,24 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
                 sheetId = g_mapPathToSheet(lookupName)
             End If
             For si = 1 To sbM.count
-                Set subM = sbM(si)
+                Dim subM As SubOperation: Set subM = sbM(si)
                 Set tM = subM.Tool
                 If Not (tM Is Nothing) Then
                     mn = subM.Name
                     spInt = InStr(mn, "  ")
                     If spInt > 0 Then mn = Left(mn, spInt - 1) Else: spInt = InStr(mn, " "): If spInt > 0 Then mn = Left(mn, spInt - 1)
-
-                    If IsNull(tM.Name) Or tM.Name = "" Then toolD2 = "T" & CStr(tM.Number) Else toolD2 = tM.Name
-                    tk = mn & " T" & CStr(tM.Number) & " " & toolD2
+                    tk = mn & " T" & CStr(tM.Number) & " " & IIf(tM.Name <> "", tM.Name, "T" & CStr(tM.Number))
                     ck = CStr(sheetId) & "|" & tk
-                    Set tpsM = subM.ToolPaths
+                    Dim tpsM As paths: Set tpsM = subM.ToolPaths
                     If Not (tpsM Is Nothing) Then
                         For mi = 1 To tpsM.count
-                            Set tpM = tpsM(mi)
+                            Dim tpM As Path: Set tpM = tpsM(mi)
                             If Not (tpM Is Nothing) Then
                                 If Not stD.Exists(ck) Then
-                                    Set nc = New Collection
+                                    Dim nc As Collection: Set nc = New Collection
                                     stD.Add ck, nc
                                 End If
-                                Set c2 = stD(ck)
+                                Dim c2 As Collection: Set c2 = stD(ck)
                                 c2.Add tpM
                             End If
                         Next mi
@@ -192,21 +185,21 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     Next opIdx
     ' Fallback: direct toolpath sort when no operations
     If stD.Count = 0 Then
-        tpCntA = drw.GetToolPathCount
+        Dim tpIdxA As Long
+        Dim tpCntA As Long: tpCntA = drw.GetToolPathCount
         If tpCntA > 0 Then
-            Set tpA = drw.GetFirstToolPath
+            Dim tpA As Path: Set tpA = drw.GetFirstToolPath
             For tpIdxA = 1 To tpCntA
                 If Not (tpA Is Nothing) Then
-                    Set tA = tpA.GetTool
+                    Dim tA As MillTool: Set tA = tpA.GetTool
                     If Not (tA Is Nothing) Then
-                        If IsNull(tA.Name) Or tA.Name = "" Then toolD4 = "T" & CStr(tA.Number) Else toolD4 = tA.Name
-                        tkA = "T" & CStr(tA.Number) & " " & toolD4
-                        ckA = "1|" & tkA
+                        Dim tkA As String: tkA = "T" & CStr(tA.Number) & " " & IIf(tA.Name <> "", tA.Name, "T" & CStr(tA.Number))
+                        Dim ckA As String: ckA = "1|" & tkA
                         If Not stD.Exists(ckA) Then
-                            Set ncA = New Collection
+                            Dim ncA As Collection: Set ncA = New Collection
                             stD.Add ckA, ncA
                         End If
-                        Set cA = stD(ckA)
+                        Dim cA As Collection: Set cA = stD(ckA)
                         cA.Add tpA
                     End If
                     Set tpA = tpA.GetNext
@@ -217,15 +210,15 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     If stD.count = 0 Then Exit Sub
     Dim ox As Long, sx As Long, tx As Long
     For ox = 1 To ops.count
-        Set oc = ops(ox)
-        Set sc = oc.SubOperations
+        Dim oc As Operation: Set oc = ops(ox)
+        Dim sc As SubOperations: Set sc = oc.SubOperations
         If Not (sc Is Nothing) Then
             For sx = 1 To sc.count
-                Set sbc = sc(sx)
-                Set tpc = sbc.ToolPaths
+                Dim sbc As SubOperation: Set sbc = sc(sx)
+                Dim tpc As paths: Set tpc = sbc.ToolPaths
                 If Not (tpc Is Nothing) Then
                     For tx = 1 To tpc.count
-                        Set tpc2 = tpc(tx)
+                        Dim tpc2 As Path: Set tpc2 = tpc(tx)
                         If Not (tpc2 Is Nothing) Then tpc2.OpNo = 0
                     Next tx
                 End If
@@ -237,6 +230,7 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     drw.ScreenUpdating = False
     For si = 1 To sheetCount
         pos = 1
+        Dim tky As String, ck2 As String, tc As Collection, ta As Path
         For sj = 0 To UBound(sortedKeys)
             tky = sortedKeys(sj)
             ck2 = CStr(si) & "|" & tky
