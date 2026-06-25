@@ -72,7 +72,7 @@ End Function
 Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     On Error GoTo ErrHandler3
     Dim drw As Drawing: Set drw = App.ActiveDrawing
-    Dim c2 As Collection, nc As Collection, nd As Object, ni As NestInformation, oc As Operation, opM As Operation, opN As Operation, sbM As SubOperations, sbN As SubOperations, sbc As SubOperation, sc As SubOperations, shNm As Object, sheetCount As Long, siN As Long, sp As paths, subF As SubOperation, subL As SubOperation, subM As SubOperation, subN As SubOperation, tF As Path, tL As Path, tN2 As Path, toolD2 As String, tpF As paths, tpL As paths, tpM As Path, tpN As paths, tpc As paths, tpc2 As Path, tpsM As paths
+    Dim c2 As Collection, nc As Collection, nd As Object, ni As NestInformation, oc As Operation, opM As Operation, opN As Operation, sbM As SubOperations, sbN As SubOperations, sbc As SubOperation, sc As SubOperations, shNm() As Object, sheetCount As Long, siN As Long, sp As paths, subF As SubOperation, subL As SubOperation, subM As SubOperation, subN As SubOperation, tF As Path, tL As Path, tN2 As Path, toolD2 As String, tpF As paths, tpL As paths, tpM As Path, tpN As paths, tpc As paths, tpc2 As Path, tpsM As paths
     If drw Is Nothing Then Exit Sub
     Dim ops As Operations: Set ops = drw.Operations
     If ops Is Nothing Then Exit Sub
