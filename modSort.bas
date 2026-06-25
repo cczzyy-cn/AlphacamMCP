@@ -189,25 +189,24 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
             Next si
         End If
     Next opIdx
+    Dim tpIdxA As Long, tpCntA As Long, tpA As Path, tA As MillTool, toolD4 As String, tkA As String, ckA As String, ncA As Collection, cA As Collection
     ' Fallback: direct toolpath sort when no operations
     If stD.Count = 0 Then
-        Dim tpIdxA As Long
-        Dim tpCntA As Long: tpCntA = drw.GetToolPathCount
+        tpCntA = drw.GetToolPathCount
         If tpCntA > 0 Then
-            Dim tpA As Path: Set tpA = drw.GetFirstToolPath
+            Set tpA = drw.GetFirstToolPath
             For tpIdxA = 1 To tpCntA
                 If Not (tpA Is Nothing) Then
-                    Dim tA As MillTool: Set tA = tpA.GetTool
+                    Set tA = tpA.GetTool
                     If Not (tA Is Nothing) Then
-                        Dim toolD4 As String
                         If IsNull(tA.Name) Or tA.Name = "" Then toolD4 = "T" & CStr(tA.Number) Else toolD4 = tA.Name
-                        Dim tkA As String: tkA = "T" & CStr(tA.Number) & " " & toolD4
-                        Dim ckA As String: ckA = "1|" & tkA
+                        tkA = "T" & CStr(tA.Number) & " " & toolD4
+                        ckA = "1|" & tkA
                         If Not stD.Exists(ckA) Then
-                            Dim ncA As Collection: Set ncA = New Collection
+                            Set ncA = New Collection
                             stD.Add ckA, ncA
                         End If
-                        Dim cA As Collection: Set cA = stD(ckA)
+                        Set cA = stD(ckA)
                         cA.Add tpA
                     End If
                     Set tpA = tpA.GetNext
