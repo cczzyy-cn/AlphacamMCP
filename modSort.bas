@@ -40,6 +40,7 @@ Public Function ScanOperations() As Collection
                     key = methodName & " T" & CStr(t.Number) & " " & toolDisp
                 If Not dict.Exists(key) Then dict.Add key, True
             End If
+        Next j
 NextOp2:
     Next i
     ' Fallback: scan toolpaths directly when no operations
