@@ -73,6 +73,7 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     If drw Is Nothing Then Exit Sub
     Set ops = drw.Operations
     If ops Is Nothing Then Exit Sub
+    Dim drw As Drawing, ops As Operations, sheetCount As Long
     Dim opIdx As Long, s As Long, si As Long, sj As Long, mi As Long
     Dim mSheet As Long, pos As Long, lastSh As Long, spInt As Integer
     Dim firstTpName As String, lookupName As String
