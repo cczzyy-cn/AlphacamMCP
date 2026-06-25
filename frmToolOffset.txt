@@ -61,11 +61,19 @@ Private Sub cmdOK_Click()
     Dim toolName As String
     Dim dashPos As Integer: dashPos = InStr(cmbTool.Text, " - ")
     If dashPos > 0 Then
+        ' 提取 " - T# 刀具名" 中的刀具名
         Dim afterDash As String: afterDash = Mid(cmbTool.Text, dashPos + 3)
-        Dim tPos As Integer: tPos = InStr(afterDash, " ")
-        If tPos > 0 Then toolName = Mid(afterDash, tPos + 1) Else toolName = afterDash
+        ' 跳过 "T#" 前缀（T + 数字 + 空格）
+        Dim skipT As Integer: skipT = InStr(afterDash, " ")
+        If skipT > 0 Then
+            toolName = Mid(afterDash, skipT + 1)
+        Else
+            toolName = afterDash
+        End If
+        ' 去除首尾空格
+        toolName = Trim(toolName)
     Else
-        toolName = cmbTool.Text
+        toolName = Trim(cmbTool.Text)
     End If
     Dim drw As Drawing: Set drw = App.ActiveDrawing
     If drw Is Nothing Then Exit Sub
@@ -83,7 +91,16 @@ Private Sub cmdOK_Click()
                 Dim subop As SubOperation: Set subop = subs(j)
                 Dim t As MillTool: Set t = subop.Tool
                 If Not (t Is Nothing) Then
+                    ' 匹配：刀具名精确匹配 → 包含匹配 → T 号匹配
+                    Dim matchTool As Boolean: matchTool = False
                     If t.Name = toolName Then
+                        matchTool = True
+                    ElseIf toolName <> "" And InStr(1, t.Name, toolName, vbTextCompare) > 0 Then
+                        matchTool = True
+                    ElseIf toolName <> "" And InStr(1, CStr(t.Number), toolName, vbTextCompare) > 0 Then
+                        matchTool = True
+                    End If
+                    If matchTool Then
                         Dim tps As Paths: Set tps = subop.ToolPaths
                         If Not (tps Is Nothing) Then
                             Dim m As Long

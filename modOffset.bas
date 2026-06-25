@@ -18,6 +18,9 @@ Public Sub ApplyToolOffset(ByVal selectedTool As String, ByVal xOff As Double, B
     Dim count As Long
     Dim ops As Operations: Set ops = drw.Operations
     Dim i As Long, j As Long
+    ' 匹配策略：先精确匹配 t.Name，再尝试包含匹配，最后匹配 t.Number
+    Dim foundFirst As Boolean: foundFirst = False
+    Dim firstTNum As Long: firstTNum = 0
     For i = 1 To ops.count
         Dim op As Operation: Set op = ops(i)
         Dim subs As SubOperations: Set subs = op.SubOperations
@@ -26,7 +29,19 @@ Public Sub ApplyToolOffset(ByVal selectedTool As String, ByVal xOff As Double, B
                 Dim subop As SubOperation: Set subop = subs(j)
                 Dim t As MillTool: Set t = subop.Tool
                 If Not (t Is Nothing) Then
+                    ' 匹配逻辑：精确名 → 包含名 → T 号
+                    Dim isMatch As Boolean: isMatch = False
                     If t.Name = selectedTool Then
+                        isMatch = True
+                    ElseIf InStr(1, t.Name, selectedTool, vbTextCompare) > 0 Then
+                        isMatch = True
+                    ElseIf Not foundFirst And InStr(1, CStr(t.Number), selectedTool, vbTextCompare) > 0 Then
+                        isMatch = True
+                    End If
+                    If isMatch Then
+                        If Not foundFirst Then foundFirst = True: firstTNum = t.Number
+                        ' 如果匹配的 T 号与首次匹配的不同则跳过（多把同名刀时取第一把）
+                        If t.Number = firstTNum Then
                         Dim tps As paths: Set tps = subop.ToolPaths
                         If Not (tps Is Nothing) Then
                             Dim m As Long
