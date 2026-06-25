@@ -774,6 +774,20 @@ class AlphaCAM:
 
     # ---- RevNest operations (screen locking, nesting, path ops) -------
 
+    def list_addins(self) -> list:
+        """List all loaded add-ins."""
+        result = []
+        try:
+            for ai in self._app.AddIns:
+                result.append({
+                    "name": ai.Name,
+                    "connected": bool(ai.Connect),
+                    "description": ai.Description if hasattr(ai, 'Description') else "",
+                })
+        except Exception:
+            pass
+        return result
+
     def lock_acam(self) -> dict:
         drw = self.active_drawing
         if drw is None:

@@ -507,6 +507,11 @@ TOOLS: list[dict] = [
         },
     },
 
+    {
+        "name": "list_addins",
+        "description": "List all loaded AlphaCAM add-ins with their connection status.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
     # ----- Screen Locking -----
     {
         "name": "lock_acam",
@@ -1005,6 +1010,8 @@ async def handle_tool(name: str, arguments: dict | None) -> CallToolResult:
             result = acam.run_workflow(arguments["steps"])
 
 
+        elif name == "list_addins":
+            result = acam.list_addins()
         # Screen Locking
         elif name == "lock_acam":
             result = acam.lock_acam()
