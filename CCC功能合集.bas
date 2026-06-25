@@ -250,6 +250,7 @@ Function InitAlphacamAddIn(AcamVersion As Long) As Integer
         .AddButton barId, "offset.bmp", .LastMenuCommandID
         .AddMenuItem3 "排版刀具排&序", "m_排版刀具排序", acamMenuNEW, "CCC功能", vbNullString
         .AddButton barId, "sort.bmp", .LastMenuCommandID
+        .AddMenuItem3 "反面镜&像", "m_反面镜像", acamMenuNEW, "CCC功能", vbNullString
     End With
     InitAlphacamAddIn = 0
 End Function
@@ -257,3 +258,127 @@ End Function
 Function m_依边界裁剪(): 依边界裁剪: End Function
 Function m_全排版刀具偏移(): 全排版刀具偏移: End Function
 Function m_排版刀具排序(): 排版刀具排序: End Function
+
+' ==============================================================================
+' 功能4：反面镜像（简化版）
+' ==============================================================================
+Sub 反面镜像()
+    Dim drw As Drawing: Set drw = App.ActiveDrawing
+    If drw Is Nothing Then MsgBox "没有活动图纸！", vbExclamation, "反面镜像": Exit Sub
+    
+    ' 检查是否有排版
+    On Error Resume Next
+    Dim ni As Object: Set ni = drw.GetNestInformation
+    If ni Is Nothing Or ni.Sheets.Count = 0 Then
+        MsgBox "当前图纸没有排版信息！" & vbCrLf & "请先进行排版操作。", vbExclamation, "反面镜像"
+        Exit Sub
+    End If
+    
+    ' 检查刀具路径
+    If drw.GetToolPathCount = 0 Then
+        MsgBox "没有找到刀具路径！", vbExclamation, "反面镜像"
+        Exit Sub
+    End If
+    
+    ' 询问镜像方向
+    Dim iChoice As Integer
+    iChoice = MsgBox("绕哪个轴镜像？" & vbCrLf & _
+                     "是(Y) = 绕X轴（垂直镜像）" & vbCrLf & _
+                     "否(N) = 绕Y轴（水平镜像）", _
+                     vbYesNo + vbQuestion, "反面镜像")
+    
+    App.SetUndoCommandName "反面镜像"
+    App.SetUndoPoint
+    
+    drw.ScreenUpdating = False
+    
+    ' 提取排版信息（从缩略版 g_AroundX/Y 简化实现）
+    ' 这里调用简化版镜像逻辑
+    If iChoice = vbYes Then
+        Call SimpleMirrorX(drw, ni)
+    Else
+        Call SimpleMirrorY(drw, ni)
+    End If
+    
+    drw.Operations.OrderAll
+    drw.ScreenUpdating = True
+    drw.Redraw
+    drw.ZoomAll
+    
+    MsgBox "反面镜像完成！", vbInformation, "反面镜像"
+End Sub
+
+Private Sub SimpleMirrorX(drw As Drawing, ni As Object)
+    ' 简化版：只镜像 Sheet 几何
+    On Error Resume Next
+    
+    ' 计算最小/最大边界
+    Dim minx As Double, maxx As Double
+    Dim miny As Double, maxy As Double
+    Dim sh As Object, P As Path, pcopy As Path
+    
+    minx = 1E+20: miny = 1E+20
+    maxx = -1E+20: maxy = -1E+20
+    
+    For Each sh In ni.Sheets
+        Set P = sh.Geometry
+        If P.MinXL < minx Then minx = P.MinXL
+        If P.MinYL < miny Then miny = P.MinYL
+        If P.MaxXL > maxx Then maxx = P.MaxXL
+        If P.MaxYL > maxy Then maxy = P.MaxYL
+    Next sh
+    
+    Dim mirrorx As Double
+    mirrorx = minx - ((maxx - minx) * 0.05)
+    
+    ' 镜像 Sheet 几何
+    Dim count As Integer
+    Set P = drw.GetFirstGeo
+    For count = drw.GetGeoCount To 1 Step -1
+        If P.Sheet Or P.Dimension Then
+            Set pcopy = P.CopyTemporary
+            pcopy.MirrorL mirrorx, miny, mirrorx, maxy
+            pcopy.StoreTemporary
+        End If
+        Set P = P.GetNext
+    Next
+    
+    MsgBox "Sheet 镜像完成。" & vbCrLf & "完整反面镜像需要 *_rev.amd 文件。", vbInformation, "SimpleMirrorX"
+End Sub
+
+Private Sub SimpleMirrorY(drw As Drawing, ni As Object)
+    On Error Resume Next
+    
+    Dim minx As Double, maxx As Double
+    Dim miny As Double, maxy As Double
+    Dim sh As Object, P As Path, pcopy As Path
+    
+    minx = 1E+20: miny = 1E+20
+    maxx = -1E+20: maxy = -1E+20
+    
+    For Each sh In ni.Sheets
+        Set P = sh.Geometry
+        If P.MinXL < minx Then minx = P.MinXL
+        If P.MinYL < miny Then miny = P.MinYL
+        If P.MaxXL > maxx Then maxx = P.MaxXL
+        If P.MaxYL > maxy Then maxy = P.MaxYL
+    Next sh
+    
+    Dim mirrory As Double
+    mirrory = miny - ((maxy - miny) * 0.05)
+    
+    Dim count As Integer
+    Set P = drw.GetFirstGeo
+    For count = drw.GetGeoCount To 1 Step -1
+        If P.Sheet Or P.Dimension Then
+            Set pcopy = P.CopyTemporary
+            pcopy.MirrorL minx, mirrory, maxx, mirrory
+            pcopy.StoreTemporary
+        End If
+        Set P = P.GetNext
+    Next
+    
+    MsgBox "Sheet 镜像完成。" & vbCrLf & "完整反面镜像需要 *_rev.amd 文件。", vbInformation, "SimpleMirrorY"
+End Sub
+
+Function m_反面镜像(): 反面镜像: End Function
