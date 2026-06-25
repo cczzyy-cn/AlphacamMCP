@@ -68,7 +68,20 @@ NextOp2:
 End Function
 
 Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
-    Dim c2 As Collection, cA As Collection, ck As String, ck2 As String, ckA As String, drw As Drawing, firstTpName As String, lastSh As Long, lookupName As String, mSheet As Long, mi As Long, mn As String, nc As Collection, ncA As Collection, nd As Object, ni As NestInformation, oc As Operation, opIdx As Long, opM As Operation, opN As Operation, ops As Operations, ox As Long, pos As Long, s As Long, sbM As SubOperations, sbN As SubOperations, sbc As SubOperation, sc As SubOperations, shNm) As Object, sheetCount As Long, sheetId As Long, si As Long, siN As Long, sj As Long, sp As paths, spInt As Integer, stD As Object, subF As SubOperation, subL As SubOperation, subM As SubOperation, subN As SubOperation, sx As Long, tA As MillTool, tF As Path, tL As Path, tM As MillTool, tN2 As Path, ta As Path, tc As Collection, tk As String, tkA As String, tky As String, tpA As Path, tpCntA As Long, tpF As paths, tpIdxA As Long, tpL As paths, tpM As Path, tpN As paths, tpc As paths, tpc2 As Path, tpsM As paths, tx As Long
+    Dim c2 As Collection, cA As Collection, ck As String, ck2 As String, ckA As String
+    Dim drw As Drawing, firstTpName As String, lastSh As Long, lookupName As String
+    Dim mSheet As Long, mi As Long, mn As String, nc As Collection, ncA As Collection
+    Dim nd As Object, ni As NestInformation, oc As Operation, opIdx As Long
+    Dim opM As Operation, opN As Operation, ops As Operations, ox As Long, pos As Long
+    Dim s As Long, sbM As SubOperations, sbN As SubOperations, sbc As SubOperation
+    Dim sc As SubOperations, shNm() As Object, sheetCount As Long, sheetId As Long
+    Dim si As Long, siN As Long, sj As Long, sp As paths, spInt As Integer
+    Dim stD As Object, subF As SubOperation, subL As SubOperation, subM As SubOperation
+    Dim subN As SubOperation, sx As Long, tA As MillTool, tF As Path, tL As Path
+    Dim tM As MillTool, tN2 As Path, ta As Path, tc As Collection, tk As String
+    Dim tkA As String, tky As String, tpA As Path, tpCntA As Long, tpF As paths
+    Dim tpIdxA As Long, tpL As paths, tpM As Path, tpN As paths, tpc As paths
+    Dim tpc2 As Path, tpsM As paths, tx As Long
     On Error GoTo ErrHandler3
     Set drw = App.ActiveDrawing
     If drw Is Nothing Then Exit Sub
