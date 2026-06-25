@@ -18,9 +18,8 @@
 |---|---|
 | `server.py` | MCP 桥接器主程序（Python），通过 STDIO 协议与 AI 通信 |
 | `alphacam_com.py` | AlphaCAM COM 自动化封装层 |
-| `CCC功能合集.bas` | VBA 插件模块（依边界裁剪、全排版刀具偏移、排版刀具排序） |
-| `frmToolOffset.txt` | 刀具偏移对话框的窗体定义（VBA UserForm） |
-| `frmToolSort.txt` | 刀具排序对话框的窗体定义（VBA UserForm） |
+| `CCC功能/` | VBA 插件合集目录（依边界裁剪、全排版刀具偏移、排版刀具排序） |
+| `RevNest_source/` | RevNest 反向排版 v1.2 插件完整源码（从 AlphaCAM 提取） |
 | `install.bat` | Windows 一键安装脚本 |
 | `install_vba.py` | VBA 代码安装到 AlphaCAM 的 Python 脚本 |
 | `make_icons.py` | 生成工具栏 BMP 图标的工具 |
@@ -154,18 +153,23 @@ pip install -r requirements.txt
 | `zoom_all` | 缩放全图 |
 | `run_workflow` | 批量执行多步骤工作流 |
 
----
-
 ## VBA 插件功能
 
-## VBA 插件功能
+`CCC功能/` 目录包含四个 VBA 工具（通过 AlphaCAM 菜单栏 "CCC功能" 访问）：
 
-`CCC功能合集.bas` 包含三个工具（通过 AlphaCAM 菜单栏 "CCC功能" 访问）：
+| 文件 | 功能 |
+|---|---|
+| `Events.bas` | 插件入口，注册"CCC功能"菜单 |
+| `modTrim.bas` | **依边界裁剪** — 选择边界和线段，将线段超出边界的部分裁剪 |
+| `modOffset.bas` | **全排版刀具偏移** — 按刀具名称选择，整体偏移 X/Y/Z |
+| `modSort.bas` | **排版刀具排序** — 按加工方式+刀具分组，拖拽调整加工顺序 |
+| `modMirror.bas` | **反面镜像** — 自动镜像排版 Sheet 几何生成反面（X 轴或 Y 轴镜像） |
+| `frmToolOffset.txt` / `frmToolSort.txt` | 刀具偏移/排序对话框的窗体定义 |
 
-1. **依边界裁剪** — 选择边界和线段，将线段超出边界的部分裁剪
-2. **全排版刀具偏移** — 按刀具名称选择，整体偏移 X/Y/Z
-3. **排版刀具排序** — 按加工方式+刀具分组，拖拽调整加工顺序
-4. **反面镜像** — 自动镜像排版 Sheet 几何生成反面（选择 X 轴或 Y 轴镜像）
+### RevNest 反向排版
+
+`RevNest_source/` 目录包含从 AlphaCAM 2016 R1 `ReverseNest.arb` 插件提取的完整源码，
+实现排版零件的反面镜像生成。详见 [`RevNest_API参考.md`](RevNest_API参考.md)。
 
 ## 项目链接
 

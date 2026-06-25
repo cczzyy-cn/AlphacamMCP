@@ -11,3 +11,6 @@ Thumbs.db
 .DS_Store
 *.log
 nul
+
+# Reasonix tool metadata
+.reasonix/
