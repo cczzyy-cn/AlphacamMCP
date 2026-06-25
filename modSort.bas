@@ -77,7 +77,7 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     If ops Is Nothing Then Exit Sub
     Dim opIdx As Long, s As Long, si As Long, sj As Long, mi As Long
     Dim mSheet As Long, pos As Long, lastSh As Long, spInt As Integer
-    Dim firstTpName As String, lookupName As String
+    Dim firstTpName As String, lookupName As String, ta As Path, tc As Collection, tky As String, ck2 As String
     If g_mapPathToSheet Is Nothing Then
         Set g_mapPathToSheet = CreateObject("Scripting.Dictionary")
         Dim ni As NestInformation: Set ni = drw.GetNestInformation()
@@ -236,7 +236,6 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     App.SetUndoCommandName "Sort"
     App.SetUndoPoint
     drw.ScreenUpdating = False
-    Dim ta As Path, tc As Collection, tky As String, ck2 As String
     For si = 1 To sheetCount
         pos = 1
         For sj = 0 To UBound(sortedKeys)
