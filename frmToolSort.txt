@@ -21,14 +21,14 @@ Private Sub AddMinButton(frm As Object)
 End Sub
 Private Sub UserForm_Activate(): AddMinButton Me: End Sub
 Private Sub UserForm_Initialize()
-    Me.Caption = "æ’ç‰ˆåˆ€å…·æ’åº"
+    Me.Caption = "ÅÅ°æµ¶¾ßÅÅĞò"
     RefreshOpList
 End Sub
 Private Sub cmdRefresh_Click(): RefreshOpList: End Sub
 Public Sub RefreshOpList()
     lstTools.Clear
     Dim rawList As Collection: Set rawList = ScanOperations()
-    If rawList Is Nothing Or rawList.count = 0 Then lstTools.AddItem "(æœªæ‰¾åˆ°æ“ä½œ)": Exit Sub
+    If rawList Is Nothing Or rawList.count = 0 Then lstTools.AddItem "(Î´ÕÒµ½²Ù×÷)": Exit Sub
     Dim k As Long
     For k = 1 To rawList.count: lstTools.AddItem rawList(k): Next k
     If lstTools.ListCount > 0 Then lstTools.ListIndex = 0
@@ -49,13 +49,13 @@ Private Sub cmdDown_Click()
     lstTools.ListIndex = idx + 1
 End Sub
 Private Sub cmdOK_Click()
-    If lstTools.ListCount = 0 Or lstTools.List(0) = "(æœªæ‰¾åˆ°æ“ä½œ)" Then MsgBox "æ²¡æœ‰å¯æ’åºçš„æ“ä½œï¼è¯·å…ˆç‚¹å‡»ã€åˆ·æ–°ã€‘æ‰«æå›¾çº¸ã€‚", vbExclamation: Exit Sub
+    If lstTools.ListCount = 0 Or lstTools.List(0) = "(Î´ÕÒµ½²Ù×÷)" Then MsgBox "Ã»ÓĞ¿ÉÅÅĞòµÄ²Ù×÷£¡ÇëÏÈµã»÷¡¾Ë¢ĞÂ¡¿É¨ÃèÍ¼Ö½¡£", vbExclamation: Exit Sub
     Dim count As Long: count = lstTools.ListCount
     ReDim sortedKeys(0 To count - 1) As String
     Dim i As Long
     For i = 0 To count - 1: sortedKeys(i) = lstTools.List(i): Next i
     ApplySortToDrawing sortedKeys
-    MsgBox "æ’åºå·²åº”ç”¨ï¼å…± " & count & " ä¸ªåŠ å·¥æ­¥éª¤ã€‚", vbInformation, "æ’ç‰ˆåˆ€å…·æ’åº"
+    MsgBox "ÅÅĞòÒÑÓ¦ÓÃ£¡¹² " & count & " ¸ö¼Ó¹¤²½Öè¡£", vbInformation, "ÅÅ°æµ¶¾ßÅÅĞò"
     Unload Me
 End Sub
 Private Sub cmdClose_Click(): Unload Me: End Sub
