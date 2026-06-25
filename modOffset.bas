@@ -37,6 +37,9 @@ Public Sub ApplyToolOffset(ByVal selectedTool As String, ByVal xOff As Double, B
                         isMatch = True
                     ElseIf Not foundFirst And InStr(1, CStr(t.Number), selectedTool, vbTextCompare) > 0 Then
                         isMatch = True
+                    ElseIf Left(selectedTool, 1) = "T" Then
+                        Dim tNumVal As Long: tNumVal = Val(Mid(selectedTool, 2))
+                        If tNumVal > 0 And t.Number = tNumVal Then isMatch = True
                     End If
                     If isMatch Then
                         If Not foundFirst Then foundFirst = True: firstTNum = t.Number
