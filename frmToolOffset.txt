@@ -101,6 +101,7 @@ Private Sub cmdOK_Click()
     Else
         toolName = Trim(cmbTool.Text)
     End If
+    MsgBox "[DEBUG] toolName=[" & toolName & "]  combo=[" & cmbTool.Text & "]", vbInformation, "Debug"
     Dim drw As Drawing: Set drw = App.ActiveDrawing
     If drw Is Nothing Then Exit Sub
     App.SetUndoCommandName "È«ÅÅ°æµ¶¾ßÆ«ÒÆ"
