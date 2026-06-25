@@ -25,8 +25,34 @@ Private Sub UserForm_Initialize()
     Dim drw As Drawing: Set drw = App.ActiveDrawing
     If drw Is Nothing Then Exit Sub
     Dim ops As Operations: Set ops = drw.Operations
-    If ops Is Nothing Or ops.count = 0 Then Exit Sub
     Dim i As Long, j As Long
+    ' Fallback: populate from toolpaths when no operations
+    If ops Is Nothing Or ops.count = 0 Then
+        Dim tpIdx As Long
+        Dim tpCnt As Long: tpCnt = drw.GetToolPathCount
+        If tpCnt > 0 Then
+            Dim tpItem As Path: Set tpItem = drw.GetFirstToolPath
+            For tpIdx = 1 To tpCnt
+                If Not (tpItem Is Nothing) Then
+                    Dim tItem As MillTool: Set tItem = tpItem.GetTool
+                    If Not (tItem Is Nothing) Then
+                        Dim dispTxt As String: dispTxt = "T" & CStr(tItem.Number) & " " & tItem.Name
+                        Dim foundDup As Boolean: foundDup = False
+                        Dim kk As Long
+                        For kk = 0 To cmbTool.ListCount - 1
+                            If cmbTool.List(kk) = dispTxt Then foundDup = True: Exit For
+                        Next kk
+                        If Not foundDup Then cmbTool.AddItem dispTxt
+                    End If
+                    Set tpItem = tpItem.GetNext
+                End If
+            Next tpIdx
+        End If
+        If cmbTool.ListCount > 0 Then cmbTool.ListIndex = 0
+        txtX.Text = "0": txtY.Text = "0": txtZ.Text = "0"
+        Exit Sub
+    End If
+
     For i = 1 To ops.count
         Dim op As Operation: Set op = ops(i)
         Dim subs As SubOperations: Set subs = op.SubOperations
