@@ -152,7 +152,7 @@ Private Sub cmdOK_Click()
                 If Not (tpP2 Is Nothing) Then
                     Dim t2 As MillTool: Set t2 = tpP2.GetTool
                     If Not (t2 Is Nothing) Then
-                        If t2.Name = toolName Or (toolName <> "" And (InStr(1, t2.Name, toolName, vbTextCompare) > 0 Or InStr(1, CStr(t2.Number), toolName, vbTextCompare) > 0)) Then
+                        If t2.Name = toolName Or (toolName <> "" And (InStr(1, t2.Name, toolName, vbTextCompare) > 0 Or InStr(1, CStr(t2.Number), toolName, vbTextCompare) > 0)) Or (Left(toolName, 1) = "T" And Val(Mid(toolName, 2)) > 0 And t2.Number = Val(Mid(toolName, 2))) Then
                             tpP2.MoveG xVal, yVal, zVal: count = count + 1
                         End If
                     End If
