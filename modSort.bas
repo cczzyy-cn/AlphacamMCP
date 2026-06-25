@@ -178,7 +178,7 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
                             Dim tpM As Path: Set tpM = tpsM(mi)
                             If Not (tpM Is Nothing) Then
                                 If Not stD.Exists(ck) Then
-                                    Dim nc As Collection: Set nc = New Collection
+                                    Set nc = New Collection
                                     stD.Add ck, nc
                                 End If
                                 Set c2 = stD(ck)
