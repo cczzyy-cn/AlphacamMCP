@@ -236,15 +236,16 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
     App.SetUndoCommandName "Sort"
     App.SetUndoPoint
     drw.ScreenUpdating = False
+    Dim ta As Path, tc As Collection, tky As String, ck2 As String
     For si = 1 To sheetCount
         pos = 1
         For sj = 0 To UBound(sortedKeys)
-            Dim tky As String: tky = sortedKeys(sj)
-            Dim ck2 As String: ck2 = CStr(si) & "|" & tky
+            tky = sortedKeys(sj)
+            ck2 = CStr(si) & "|" & tky
             If stD.Exists(ck2) Then
-                Dim tc As Collection: Set tc = stD(ck2)
+                Set tc = stD(ck2)
                 For mi = 1 To tc.count
-                    Dim ta As Path: Set ta = tc(mi)
+                    Set ta = tc(mi)
                     If Not (ta Is Nothing) Then ta.OpNo = si * 1000 + pos
                 Next mi
                 pos = pos + 1
