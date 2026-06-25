@@ -33,7 +33,9 @@ Public Function ScanOperations() As Collection
                 Dim spPos As Integer
                 spPos = InStr(methodName, "  ")
                 If spPos > 0 Then methodName = Left(methodName, spPos - 1) Else: spPos = InStr(methodName, " "): If spPos > 0 Then methodName = Left(methodName, spPos - 1)
-                Dim key As String: key = methodName & " T" & CStr(t.Number) & " " & IIf(t.Name <> "", t.Name, "T" & CStr(t.Number))
+                Dim toolDisp As String
+                    If IsNull(t.Name) Or t.Name = "" Then toolDisp = "T" & CStr(t.Number) Else toolDisp = t.Name
+                    Dim key As String: key = methodName & " T" & CStr(t.Number) & " " & toolDisp
                 If Not dict.Exists(key) Then dict.Add key, True
             End If
         Next j
@@ -49,7 +51,9 @@ NextOp2:
                 If Not (tpS Is Nothing) Then
                     Dim tS As MillTool: Set tS = tpS.GetTool
                     If Not (tS Is Nothing) Then
-                        Dim keyS As String: keyS = "T" & CStr(tS.Number) & " " & IIf(tS.Name <> "", tS.Name, "T" & CStr(tS.Number))
+                        Dim toolD3 As String
+                        If IsNull(tS.Name) Or tS.Name = "" Then toolD3 = "T" & CStr(tS.Number) Else toolD3 = tS.Name
+                        Dim keyS As String: keyS = "T" & CStr(tS.Number) & " " & toolD3
                         If Not dict.Exists(keyS) Then dict.Add keyS, True
                     End If
                     Set tpS = tpS.GetNext
@@ -163,7 +167,9 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
                     mn = subM.Name
                     spInt = InStr(mn, "  ")
                     If spInt > 0 Then mn = Left(mn, spInt - 1) Else: spInt = InStr(mn, " "): If spInt > 0 Then mn = Left(mn, spInt - 1)
-                    tk = mn & " T" & CStr(tM.Number) & " " & IIf(tM.Name <> "", tM.Name, "T" & CStr(tM.Number))
+                    Dim toolD2 As String
+                    If IsNull(tM.Name) Or tM.Name = "" Then toolD2 = "T" & CStr(tM.Number) Else toolD2 = tM.Name
+                    tk = mn & " T" & CStr(tM.Number) & " " & toolD2
                     ck = CStr(sheetId) & "|" & tk
                     Dim tpsM As paths: Set tpsM = subM.ToolPaths
                     If Not (tpsM Is Nothing) Then
@@ -193,7 +199,9 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
                 If Not (tpA Is Nothing) Then
                     Dim tA As MillTool: Set tA = tpA.GetTool
                     If Not (tA Is Nothing) Then
-                        Dim tkA As String: tkA = "T" & CStr(tA.Number) & " " & IIf(tA.Name <> "", tA.Name, "T" & CStr(tA.Number))
+                        Dim toolD4 As String
+                        If IsNull(tA.Name) Or tA.Name = "" Then toolD4 = "T" & CStr(tA.Number) Else toolD4 = tA.Name
+                        Dim tkA As String: tkA = "T" & CStr(tA.Number) & " " & toolD4
                         Dim ckA As String: ckA = "1|" & tkA
                         If Not stD.Exists(ckA) Then
                             Dim ncA As Collection: Set ncA = New Collection
