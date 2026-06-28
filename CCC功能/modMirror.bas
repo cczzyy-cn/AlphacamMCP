@@ -330,8 +330,12 @@ loopnext:
 afterPhase2:
     
 byebye:
-    Drw.ScreenUpdating = True
-    Drw.Redraw
+    With App
+        .Frame.ProjectBarUpdating = True
+        .ActiveDrawing.ScreenUpdating = True
+        .ActiveDrawing.Redraw
+        If .ApiVersion >= 20040928 Then .Frame.RunCommand 33619  ' 刷新项目栏/加工道次
+    End With
     
     Set Drw = Nothing
     Set P = Nothing: Set pcopy = Nothing
