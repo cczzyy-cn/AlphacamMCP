@@ -2,8 +2,8 @@
 ' CCC功能 — modMirror 反面镜像
 ' ==============================================================================
 ' 算法：
-'   1. 镜像 Sheet 几何（复制 + MirrorL + 属性标记 + 注册到 NestInformation）
-'   2. 镜像 BM 刀具路径到反面版件，删除正面版件原路径（刷新 NestInformation 关联）
+'   1. 镜像 Sheet 几何（复制 + MirrorL + Name/属性标记）
+'   2. 镜像 BM 刀具路径到反面版件，删除正面版件原路径
 ' ==============================================================================
 Option Explicit
 Option Private Module
@@ -149,6 +149,7 @@ Public Sub DoMirror(ByVal mirrorX As Boolean, _
                 pcopy.Attribute(ATT_SHEET_MATERIAL) = P.Attribute(ATT_SHEET_MATERIAL)
                 pcopy.Attribute(ATT_SHEET_THICKNESS) = P.Attribute(ATT_SHEET_THICKNESS)
                 pcopy.Attribute(ATT_IS_REV_SIDE) = 1
+                pcopy.Name = strName
                 
                 ' --- 镜像 Sheet 内的文字 ---
                 For Each T In Drw.Text
