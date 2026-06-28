@@ -2,8 +2,8 @@
 ' CCC功能 — modMirror 反面镜像
 ' ==============================================================================
 ' 算法：
-'   1. 镜像 Sheet 几何（复制 + MirrorL + 属性标记）
-'   2. 镜像 BM 刀具路径到反面版件，删除正面版件原路径
+'   1. 镜像 Sheet 几何（复制 + MirrorL + 属性标记 + 注册到 NestInformation）
+'   2. 镜像 BM 刀具路径到反面版件，删除正面版件原路径（刷新 NestInformation 关联）
 ' ==============================================================================
 Option Explicit
 Option Private Module
@@ -233,6 +233,9 @@ loopnext:
         Set P = P.GetNext
     Next
     
+    ' 刷新 NestInformation，注册镜像版件
+    ni.Refresh
+    
     ' ======================================================================
     ' Phase 2 — 镜像 BM 刀具路径到反面版件，删除正面版件
     ' ======================================================================
@@ -310,6 +313,7 @@ loopnext:
     Next tpIdx
     Erase collectTP
     Drw.Operations.OrderAll
+    ni.Refresh
     
 afterPhase2:
     
