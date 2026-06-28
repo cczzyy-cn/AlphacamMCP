@@ -282,7 +282,7 @@ loopnext:
         Next I
     Next sh
     
-    ' 镜像匹配的刀具路径，然后删除原路径
+    ' 镜像匹配的刀具路径（保留原路径，NC 输出后再删除）
     ' 分组策略：相同刀具 + 相同加工方式放到同一个 Operation 中
     mirroredCount = 0
     sheetop = lastop
@@ -318,22 +318,24 @@ loopnext:
             pcopy.OpNo = tgtOp
             pcopy.StoreTemporary
             mirroredCount = mirroredCount + 1
-            
-            ' 删除原路径（正面版件的 BM 刀具路径）
-            tp.Delete
         End If
     Next tpIdx
     
-    ' 清空已删除路径的引用，防止悬空指针导致闪退
-    Erase collectTP
-    
     Drw.Operations.OrderAll
     
-    ' 弹出 NC 输出对话框（仅当有镜像路径时）
+    ' 先弹出 NC 输出对话框（此时所有路径均有效，不会闪退）
     If mirroredCount > 0 Then
         DoEvents
         App.ActiveDrawing.OutputNC "", -1, True  ' acamOutNcASK = -1 显示交互对话框
     End If
+    
+    ' NC 输出完成后，再删除正面版件原路径
+    For tpIdx = 1 To tpCount
+        Set tp = collectTP(tpIdx)
+        If Not (tp Is Nothing) Then tp.Delete
+    Next tpIdx
+    Erase collectTP
+    Drw.Operations.OrderAll
     
 afterPhase2:
     
