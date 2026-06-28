@@ -324,12 +324,14 @@ loopnext:
         End If
     Next tpIdx
     
+    ' 清空已删除路径的引用，防止悬空指针导致闪退
+    Erase collectTP
+    
     Drw.Operations.OrderAll
     
     ' 弹出 NC 输出对话框（仅当有镜像路径时）
     If mirroredCount > 0 Then
-        Drw.ScreenUpdating = True
-        Drw.Redraw
+        DoEvents
         App.ActiveDrawing.OutputNC "", -1, True  ' acamOutNcASK = -1 显示交互对话框
     End If
     
