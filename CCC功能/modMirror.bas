@@ -233,9 +233,6 @@ loopnext:
         Set P = P.GetNext
     Next
     
-    ' 刷新 NestInformation，注册镜像版件
-    ni.Refresh
-    
     ' ======================================================================
     ' Phase 2 — 镜像 BM 刀具路径到反面版件，删除正面版件
     ' ======================================================================
@@ -313,7 +310,20 @@ loopnext:
     Next tpIdx
     Erase collectTP
     Drw.Operations.OrderAll
-    ni.Refresh
+    
+    ' 强制刷新加工道次：创建几何+删除触发树重建
+    If mirroredCount > 0 Then
+        App.Frame.ProjectBarUpdating = True
+        Drw.ScreenUpdating = True
+        Drw.Redraw
+        Drw.ZoomAll
+        DoEvents
+        ' 重建显示列表
+        Drw.Refresh
+        ' 刷新项目栏/加工道次
+        App.Frame.RunCommand 33619
+        DoEvents
+    End If
     
 afterPhase2:
     
