@@ -1,10 +1,9 @@
 ' ==============================================================================
-' CCC功能 — modMirror 反面镜像（RevNest 完整算法）
+' CCC功能 — modMirror 反面镜像
 ' ==============================================================================
-' 实现 RevNest v1.2 的 g_AroundX / g_AroundY 镜像逻辑：
+' 算法：
 '   1. 镜像 Sheet 几何（复制 + MirrorL + 属性标记）
-'   2. 加载 _rev 反面零件图档，应用 Nesting 变换（Shift→Reflect→Rotate→Move→Mirror）
-'   3. 处理操作编号排序
+'   2. 镜像 BM 刀具路径到反面版件，删除正面版件原路径
 ' ==============================================================================
 Option Explicit
 Option Private Module
@@ -49,23 +48,15 @@ Public Sub DoMirror(ByVal mirrorX As Boolean, _
     On Error Resume Next
     
     Dim Drw As Drawing
-    Dim tmpdrw As Drawing
     Dim P As Path
     Dim pcopy As Path
-    Dim newp As Path
     Dim lastsheet As Path
-    Dim prefix As String
-    Dim suffix As String
     Dim strName As String
     Dim minx As Double, maxx As Double
     Dim miny As Double, maxy As Double
     Dim mirrorVal As Double
-    Dim xmove As Double, ymove As Double
-    Dim rotate As Double
-    Dim count As Long, count2 As Long
-    Dim reflect As Integer
+    Dim count As Long
     Dim grp As Integer
-    Dim isfirst As Long
     Dim elem As Element
     Dim high As Double, big As Double
     Dim exmin As Double, exmax As Double
@@ -76,7 +67,6 @@ Public Sub DoMirror(ByVal mirrorX As Boolean, _
     Dim wrd As String
     Dim ni As NestInformation
     Dim sh As NestSheet
-    Dim inst As NestPartInstance
     Dim I As Long
     Dim lastop As Long, sheetop As Long
     Dim maxop As Long, minop As Long
@@ -85,7 +75,8 @@ Public Sub DoMirror(ByVal mirrorX As Boolean, _
     Dim psT As Paths
     Dim dblDim As Double
     Dim mTool As MillTool
-    Dim filterTP As Boolean
+    Dim tpIdx As Long, tpCount As Long, mirroredCount As Long
+    Dim collectTP() As Path
     
     Set Drw = App.ActiveDrawing
     Set ni = Drw.GetNestInformation
@@ -243,11 +234,44 @@ loopnext:
     Next
     
     ' ======================================================================
-    ' Phase 2 — 镜像刀具路径（加载 _rev 文件，应用变换）
+    ' Phase 2 — 镜像 BM 刀具路径到反面版件，删除正面版件
     ' ======================================================================
+    ' 收集主图纸中匹配的刀具路径（因为后面要删除，先收集再处理）
+    tpCount = 0
+    
+    Set tp = Drw.GetFirstToolPath
+    For tpIdx = 1 To Drw.GetToolPathCount
+        If Not (tp Is Nothing) Then
+            If mirrorID <> "" Then
+                Set mTool = tp.GetTool
+                If Not (mTool Is Nothing) Then
+                    If InStr(1, mTool.Name, mirrorID, vbTextCompare) > 0 Then
+                        tpCount = tpCount + 1
+                        ReDim Preserve collectTP(1 To tpCount)
+                        Set collectTP(tpCount) = tp
+                    End If
+                End If
+            Else
+                ' 没有过滤标识则处理所有刀具路径
+                tpCount = tpCount + 1
+                ReDim Preserve collectTP(1 To tpCount)
+                Set collectTP(tpCount) = tp
+            End If
+        End If
+        Set tp = tp.GetNext
+    Next tpIdx
+    
+    If tpCount = 0 Then
+        If mirrorID <> "" Then
+            MsgBox "未找到包含 """ & mirrorID & """ 的刀具路径。", vbInformation, "反面镜像"
+        End If
+        GoTo afterPhase2
+    End If
+    
     lastop = Drw.Operations.count + 1
+    
+    ' 按 Sheet 排序
     For Each sh In ni.Sheets
-        ' 按 Sheet 排序，将当前 Sheet 的操作移至末尾
         maxop = 0: minop = lastop
         For Each tp In sh.Paths
             If maxop < tp.OpNo Then maxop = tp.OpNo
@@ -256,116 +280,44 @@ loopnext:
         For I = minop To maxop
             Drw.Operations.Renumber minop, lastop, acamOpADD_TO_OPERATION
         Next I
-        
-        sheetop = lastop
-        
-        For Each inst In sh.Parts
-            Set P = inst.Paths(1)
-            If P.Attribute(ATT_FIRST_PATH) = 0 Then GoTo loopagain
-            
-            ' 获取零件文件路径，添加 _rev 后缀
-            strName = P.Attribute(ATT_PATH_FILE)
-            prefix = Left(strName, Len(strName) - 4)
-            suffix = Right(strName, 4)
-            strName = prefix + "_rev" + suffix
-            
-            ' 加载反面零件图档
-            Set tmpdrw = Nothing
-            Set tmpdrw = App.OpenTempDrawing(strName)
-            
-            If Not tmpdrw Is Nothing Then
-                ' 检查是否有工作平面
-                If tmpdrw.WorkPlanes.count > 0 Then
-                    MsgBox strName & " 包含工作平面，无法使用。", vbExclamation, "反面镜像"
-                    GoTo loopagain
-                End If
-                
-                ' --- 遍历刀具路径，应用 Nesting 变换 ---
-                Set newp = tmpdrw.GetFirstToolPath
-                isfirst = 1
-                reflect = P.Attribute(ATT_PART_MIRRORED)
-                
-                For count2 = 1 To tmpdrw.GetToolPathCount
-                    ' --- 刀具名过滤（RevNest 功能扩展） ---
-                    filterTP = True
-                    If mirrorID <> "" Then
-                        Set mTool = newp.GetTool
-                        If Not (mTool Is Nothing) Then
-                            If InStr(1, mTool.Name, mirrorID, vbTextCompare) = 0 Then
-                                filterTP = False
-                            End If
-                        Else
-                            filterTP = False
-                        End If
-                    End If
-                    
-                    If filterTP Then
-                    ' 应用 Shift → Reflect → Rotate → Move → Mirror 变换
-                    xmove = P.Attribute(ATT_PART_MOVEX)
-                    ymove = P.Attribute(ATT_PART_MOVEY)
-                    rotate = P.Attribute(ATT_PART_ROTANGLE)
-                    
-                    Dim MoveX As Double, MoveY As Double
-                    Dim ShiftX As Double, ShiftY As Double
-                    MoveX = P.Attribute(ATT_PART_MOVE_BY_X)
-                    MoveY = P.Attribute(ATT_PART_MOVE_BY_Y)
-                    ShiftX = P.Attribute(ATT_PART_SHIFT_X)
-                    ShiftY = P.Attribute(ATT_PART_SHIFT_Y)
-                    
-                    newp.MoveL ShiftX, ShiftY
-                    
-                    If reflect = 1 Then
-                        newp.MirrorL 0, 1, 0, 0
-                        rotate = -rotate
-                    End If
-                    
-                    newp.RotateL rotate, 0, 0
-                    newp.MoveL MoveX, MoveY
-                    
-                    If mirrorX Then
-                        newp.MirrorL mirrorVal, miny, mirrorVal, maxy
-                    Else
-                        newp.MirrorL minx, mirrorVal, maxx, mirrorVal
-                    End If
-                    
-                    ' 设置属性
-                    newp.Attribute(ATT_FIRST_PATH) = isfirst
-                    newp.Attribute(ATT_PATH_FILE) = strName
-                    newp.Attribute(ATT_REQUIRED) = P.Attribute(ATT_REQUIRED)
-                    newp.Attribute(ATT_NEST_ITEM_NUM) = P.Attribute(ATT_NEST_ITEM_NUM)
-                    newp.Attribute(ATT_IS_REV_SIDE) = 1
-                    
-                    If isfirst = 1 Then isfirst = 0
-                    
-                    ' 复制到主图纸，设置操作编号
-                    Set pcopy = newp.CopyTemporary
-                    
-                    pcopy.OpNo = lastop
-                    lastop = lastop + 1
-                    
-                    pcopy.StoreTemporary
-                    End If  ' filterTP
-                    Set newp = newp.GetNext
-                Next count2
-                
-                ' 不镜像几何路径
-            End If
-            
-loopagain:
-        Next inst
     Next sh
     
+    ' 镜像匹配的刀具路径，然后删除原路径
+    mirroredCount = 0
+    For tpIdx = 1 To tpCount
+        Set tp = collectTP(tpIdx)
+        If Not (tp Is Nothing) Then
+            ' 复制并镜像
+            Set pcopy = tp.CopyTemporary
+            If mirrorX Then
+                pcopy.MirrorL mirrorVal, miny, mirrorVal, maxy
+            Else
+                pcopy.MirrorL minx, mirrorVal, maxx, mirrorVal
+            End If
+            pcopy.Attribute(ATT_IS_REV_SIDE) = 1
+            pcopy.OpNo = lastop
+            lastop = lastop + 1
+            pcopy.StoreTemporary
+            mirroredCount = mirroredCount + 1
+            
+            ' 删除原路径（正面版件的 BM 刀具路径）
+            tp.Delete
+        End If
+    Next tpIdx
+    
     Drw.Operations.OrderAll
+    
+afterPhase2:
     
 byebye:
     Drw.ScreenUpdating = True
     Drw.Redraw
     
-    Set Drw = Nothing: Set tmpdrw = Nothing
-    Set P = Nothing: Set pcopy = Nothing: Set newp = Nothing
+    Set Drw = Nothing
+    Set P = Nothing: Set pcopy = Nothing
     Set lastsheet = Nothing: Set elem = Nothing
     Set tp = Nothing: Set coll = Nothing
-    Set ni = Nothing: Set sh = Nothing: Set inst = Nothing
+    Set ni = Nothing: Set sh = Nothing
     Set T = Nothing: Set T2 = Nothing
     Set pT = Nothing: Set psT = Nothing
     
