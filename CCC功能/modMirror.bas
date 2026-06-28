@@ -2,8 +2,8 @@
 ' CCC功能 — modMirror 反面镜像
 ' ==============================================================================
 ' 算法：
-'   镜像 BM 刀具路径到反面位置，删除正面版件原路径
-'   镜像路径的 Part Note 属性设为 "rev"，方便在加工道次中识别
+'   1. 镜像 Sheet 几何（复制 + MirrorL + 属性标记 + 注册到 NestInformation）
+'   2. 镜像 BM 刀具路径到反面版件，删除正面版件原路径（刷新 NestInformation 关联）
 ' ==============================================================================
 Option Explicit
 Option Private Module
@@ -27,7 +27,6 @@ Private Const ATT_PART_SHIFT_Y       As String = "LicomUKja_part_shift_y"
 Private Const ATT_NEST_ITEM_NUM      As String = "LicomUKsab_nest_item_number"
 Private Const ATT_IS_REV_SIDE        As String = "AcamUSrg_IsReverseSide"
 Private Const ATT_REV_TEXT           As String = "AcamUSrg_TextIsReversed"
-Private Const ATT_PART_NOTE          As String = "LicomJPhtOpListPartsName"
 
 
 ' ==============================================================================
@@ -38,8 +37,10 @@ End Sub
 
 ' ==============================================================================
 ' DoMirror — 执行反面镜像（由 fMirror.cmdOK_Click 调用）
+' 完全参照 RevNest v1.2 g_AroundX / g_AroundY 算法。
 ' mirrorX:       True=绕X轴（水平线，垂直翻转），False=绕Y轴（垂直线，水平翻转）
 ' mirrorID:      刀具名过滤标识（空=不过滤全部镜像，非空=仅匹配刀具名的路径）
+' 内部硬编码：bSheetOrder=True（按 Sheet 排序），相同刀具+相同加工方式合并到同一 OP
 ' ==============================================================================
 Public Sub DoMirror(ByVal mirrorX As Boolean, _
                     Optional ByVal mirrorID As String = "")
@@ -49,15 +50,30 @@ Public Sub DoMirror(ByVal mirrorX As Boolean, _
     Dim Drw As Drawing
     Dim P As Path
     Dim pcopy As Path
+    Dim lastsheet As Path
+    Dim strName As String
     Dim minx As Double, maxx As Double
     Dim miny As Double, maxy As Double
     Dim mirrorVal As Double
+    Dim count As Long
+    Dim grp As Integer
+    Dim elem As Element
+    Dim high As Double, big As Double
+    Dim exmin As Double, exmax As Double
+    Dim eymin As Double, eymax As Double
+    Dim textx As Double, texty As Double
     Dim tp As Path
+    Dim coll As Paths
+    Dim wrd As String
     Dim ni As NestInformation
     Dim sh As NestSheet
     Dim I As Long
-    Dim lastop As Long
+    Dim lastop As Long, sheetop As Long
     Dim maxop As Long, minop As Long
+    Dim T As Text, T2 As Text
+    Dim pT As Path
+    Dim psT As Paths
+    Dim dblDim As Double
     Dim mTool As MillTool
     Dim tpIdx As Long, tpCount As Long, mirroredCount As Long
     Dim collectTP() As Path
@@ -93,13 +109,132 @@ Public Sub DoMirror(ByVal mirrorX As Boolean, _
     
     ' --- 确定镜像线位置（RevNest 方式：偏移 5% 边界外）---
     If mirrorX Then
+        ' 绕垂直轴镜像（X轴方向）：镜像线在 Sheet 左侧 5% 处
         mirrorVal = minx - ((maxx - minx) * 0.05)
     Else
+        ' 绕水平轴镜像（Y轴方向）：镜像线在 Sheet 下方 5% 处
         mirrorVal = miny - ((maxy - miny) * 0.05)
     End If
     
     ' ======================================================================
-    ' Phase 2 — 镜像 BM 刀具路径，删除正面版件原路径
+    ' Phase 1 — 镜像 Sheet 几何
+    ' ======================================================================
+    Set lastsheet = Nothing
+    Set P = Drw.GetFirstGeo
+    For count = Drw.GetGeoCount To 1 Step -1
+        If P.Sheet Or P.Dimension Then
+            ' 如果是标注，只处理气泡（bobble），跳过文字标注
+            If P.Dimension Then
+                If P.Attribute(ATT_IS_BOBBLE) = 0 Then GoTo loopnext
+            End If
+            
+            ' 复制并镜像
+            Set pcopy = P.CopyTemporary
+            If mirrorX Then
+                pcopy.MirrorL mirrorVal, miny, mirrorVal, maxy
+            Else
+                pcopy.MirrorL minx, mirrorVal, maxx, mirrorVal
+            End If
+            pcopy.StoreTemporary
+            
+            ' --- 处理 Sheet ---
+            If P.Sheet Then
+                Set lastsheet = P
+                grp = Drw.GetNextGroupNumberForGeometries
+                
+                strName = pcopy.Attribute(ATT_SHEET_IDENT)
+                strName = strName & " rev"
+                
+                pcopy.Attribute(ATT_SHEET_IDENT) = strName
+                pcopy.Attribute(ATT_SHEET_MATERIAL) = P.Attribute(ATT_SHEET_MATERIAL)
+                pcopy.Attribute(ATT_SHEET_THICKNESS) = P.Attribute(ATT_SHEET_THICKNESS)
+                pcopy.Attribute(ATT_IS_REV_SIDE) = 1
+                
+                ' --- 镜像 Sheet 内的文字 ---
+                For Each T In Drw.Text
+                    If T.Attribute(ATT_REV_TEXT) = 0 Then
+                        Set psT = T.ConvertToTemporaryGeometry
+                        If psT(1).TestInsidePath(P) = acamResultTRUE Then
+                            For Each pT In psT
+                                If mirrorX Then
+                                    pT.MirrorL mirrorVal, miny, mirrorVal, maxy
+                                Else
+                                    pT.MirrorL minx, mirrorVal, maxx, mirrorVal
+                                End If
+                            Next pT
+                            
+                            If mirrorX Then
+                                psT.GetExtentL dblDim, 0, 0, 0
+                            Else
+                                psT.GetExtentL 0, dblDim, 0, 0
+                            End If
+                            
+                            Set T2 = T.Copy
+                            If mirrorX Then
+                                T2.MoveL (dblDim - T.MinXL), 0
+                            Else
+                                T2.MoveL 0, (dblDim - T.MinYL)
+                            End If
+                            
+                            T.Attribute(ATT_REV_TEXT) = 1
+                            T2.Attribute(ATT_REV_TEXT) = 1
+                            T2.Attribute(ATT_IS_REV_SIDE) = 1
+                            T2.Attribute(ATT_SHEET_IDENT) = strName
+                        End If
+                        psT.Delete
+                    End If
+                Next T
+                
+            Else
+                ' --- 处理气泡（标注圆）— 写入 Sheet 名称文字 ---
+                Set elem = P.GetFirstElem
+                If elem.IsArc Then
+                    wrd = lastsheet.Attribute(ATT_SHEET_IDENT)
+                    wrd = LCase(wrd)
+                    high = pcopy.MaxYL - pcopy.MinYL
+                    
+                    ' 创建临时文字测算尺寸
+                    Set coll = Drw.CreateText(wrd, 0, 0, high)
+                    exmin = 1E+20: eymin = 1E+20
+                    exmax = -1E+20: eymax = -1E+20
+                    For Each tp In coll
+                        If tp.MinXL < exmin Then exmin = tp.MinXL
+                        If tp.MinYL < eymin Then eymin = tp.MinYL
+                        If tp.MaxXL > exmax Then exmax = tp.MaxXL
+                        If tp.MaxYL > eymax Then eymax = tp.MaxYL
+                    Next
+                    If (exmax - exmin) > (eymax - eymin) Then
+                        big = exmax - exmin
+                    Else
+                        big = eymax - eymin
+                    End If
+                    coll.Selected = True
+                    Drw.DeleteSelected
+                    
+                    Dim SF As Double
+                    SF = (0.707 * high / big)
+                    textx = pcopy.MinXL + ((pcopy.MaxXL - pcopy.MinXL) / 2) - (((exmax - exmin) / 2) * SF)
+                    texty = pcopy.MinYL + ((pcopy.MaxYL - pcopy.MinYL) / 2) - (((eymax - eymin) / 2) * SF)
+                    high = high * SF
+                    
+                    Set coll = Drw.CreateText(wrd, textx, texty, high)
+                    For Each tp In coll
+                        tp.Group = grp
+                        tp.Dimension = True
+                    Next
+                End If
+            End If
+            
+            ' 设置组编号
+            pcopy.Group = grp
+        End If
+        
+loopnext:
+        Set P = P.GetNext
+    Next
+    
+    ' ======================================================================
+    ' Phase 2 — 镜像 BM 刀具路径到反面版件，删除正面版件
     ' ======================================================================
     ' 收集主图纸中匹配的刀具路径（因为后面要删除，先收集再处理）
     tpCount = 0
@@ -117,6 +252,7 @@ Public Sub DoMirror(ByVal mirrorX As Boolean, _
                     End If
                 End If
             Else
+                ' 没有过滤标识则处理所有刀具路径
                 tpCount = tpCount + 1
                 ReDim Preserve collectTP(1 To tpCount)
                 Set collectTP(tpCount) = tp
@@ -158,7 +294,6 @@ Public Sub DoMirror(ByVal mirrorX As Boolean, _
                 pcopy.MirrorL minx, mirrorVal, maxx, mirrorVal
             End If
             pcopy.Attribute(ATT_IS_REV_SIDE) = 1
-            pcopy.Attribute(ATT_PART_NOTE) = "rev"
             pcopy.OpNo = lastop
             lastop = lastop + 1
             pcopy.StoreTemporary
@@ -193,8 +328,11 @@ byebye:
     
     Set Drw = Nothing
     Set P = Nothing: Set pcopy = Nothing
-    Set tp = Nothing
+    Set lastsheet = Nothing: Set elem = Nothing
+    Set tp = Nothing: Set coll = Nothing
     Set ni = Nothing: Set sh = Nothing
+    Set T = Nothing: Set T2 = Nothing
+    Set pT = Nothing: Set psT = Nothing
     
     If mirroredCount > 0 Then
         MsgBox "反面镜像完成！" & vbCrLf & vbCrLf & _
