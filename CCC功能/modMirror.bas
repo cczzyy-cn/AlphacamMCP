@@ -326,6 +326,13 @@ loopnext:
     
     Drw.Operations.OrderAll
     
+    ' 弹出 NC 输出对话框（仅当有镜像路径时）
+    If mirroredCount > 0 Then
+        Drw.ScreenUpdating = True
+        Drw.Redraw
+        App.ActiveDrawing.OutputNC "", -1, True  ' acamOutNcASK = -1 显示交互对话框
+    End If
+    
 afterPhase2:
     
 byebye:
