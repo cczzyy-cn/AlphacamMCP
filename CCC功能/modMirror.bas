@@ -11,9 +11,6 @@ Option Private Module
 ' --- Nesting 属性常量（与 RevNest 一致）---
 Private Const ATT_PATH_FILE          As String = "LicomUKsab_nest_path_file"
 Private Const ATT_FIRST_PATH         As String = "LicomUKsab_nest_first_path"
-
-' --- 加工道次模块 DLL 调用 ---
-Private Declare Sub OpListMain Lib "C:\Program Files (x86)\Vero Software\Alphacam 2016 R1\Add-Ins\OpListJP\OpListJP.dll" ()
 Private Const ATT_REQUIRED           As String = "LicomUKsab_nest_required"
 Private Const ATT_SHEET_IDENT        As String = "LicomUKsab_sheet_ident"
 Private Const ATT_SHEET_MATERIAL     As String = "LicomUKsab_sheet_material"
@@ -314,13 +311,11 @@ loopnext:
     Erase collectTP
     Drw.Operations.OrderAll
     
-    ' 刷新加工道次窗口：调用 OpListJP 模块刷新操作列表视图
     If mirroredCount > 0 Then
         Drw.ScreenUpdating = True
         Drw.Redraw
         Drw.ZoomAll
         Drw.Refresh
-        OpListMain
         DoEvents
     End If
     
