@@ -282,19 +282,16 @@ loopnext:
         Next I
     Next sh
     
-    ' 镜像匹配的刀具路径（保留原路径，NC 输出后再删除）
-    ' 分组策略：相同刀具 + 相同加工方式放到同一个 Operation 中
+    ' 镜像匹配的刀具路径（保留原路径，后面再删除）
     mirroredCount = 0
     sheetop = lastop
     For tpIdx = 1 To tpCount
         Set tp = collectTP(tpIdx)
         If Not (tp Is Nothing) Then
-            ' 获取原路径的刀具
             Set mTool = tp.GetTool
             Dim tgtOp As Long
             If Not (mTool Is Nothing) Then
-                ' 查找是否已有相同刀具的 Operation
-                tgtOp = lastop  ' 默认新建
+                tgtOp = lastop
                 For I = sheetop To lastop - 1
                     If Drw.Operations(I).Tool.Number = mTool.Number Then
                         tgtOp = I
@@ -307,7 +304,6 @@ loopnext:
                 lastop = lastop + 1
             End If
             
-            ' 复制并镜像
             Set pcopy = tp.CopyTemporary
             If mirrorX Then
                 pcopy.MirrorL mirrorVal, miny, mirrorVal, maxy
@@ -323,13 +319,7 @@ loopnext:
     
     Drw.Operations.OrderAll
     
-    ' 先弹出 NC 输出对话框（此时所有路径均有效，不会闪退）
-    If mirroredCount > 0 Then
-        DoEvents
-        App.ActiveDrawing.OutputNC "", -1, True  ' acamOutNcASK = -1 显示交互对话框
-    End If
-    
-    ' NC 输出完成后，再删除正面版件原路径
+    ' 删除正面版件原路径
     For tpIdx = 1 To tpCount
         Set tp = collectTP(tpIdx)
         If Not (tp Is Nothing) Then tp.Delete
@@ -351,5 +341,10 @@ byebye:
     Set T = Nothing: Set T2 = Nothing
     Set pT = Nothing: Set psT = Nothing
     
-    MsgBox "反面镜像完成！", vbInformation, "反面镜像"
+    If mirroredCount > 0 Then
+        MsgBox "反面镜像完成！" & vbCrLf & vbCrLf & _
+               "请按 NC 输出快捷键手动输出代码。", vbInformation, "反面镜像"
+    Else
+        MsgBox "反面镜像完成！", vbInformation, "反面镜像"
+    End If
 End Sub
