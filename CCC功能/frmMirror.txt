@@ -1,0 +1,127 @@
+' ==============================================================================
+' fMirror — 反面镜像对话框 (UserForm) — 代码模块
+' ==============================================================================
+' 使用方法：
+'   1. 在 VBA 编辑器中插入 UserForm（名称设为 fMirror）
+'   2. 从工具箱添加以下控件（名称必须完全一致）：
+'      ┌──────────────────┬────────────┬────────────────────────────────┐
+'      │ 控件名            │ 类型       │ 说明                           │
+'      ├──────────────────┼────────────┼────────────────────────────────┤
+'      │ txtMirrorID      │ TextBox    │ 刀具名过滤标识（默认 "BM"，空=不过滤）│
+'      │ optMirrorX       │ OptionButton│ 绕X轴镜像（垂直，默认）       │
+'      │ optMirrorY       │ OptionButton│ 绕Y轴镜像（水平）             │
+'      │ cmdOK            │ CommandButton│ 确定按钮                     │
+'      │ cmdCancel        │ CommandButton│ 取消按钮                     │
+'      └──────────────────┴────────────┴────────────────────────────────┘
+'   3. 双击窗体 → "查看代码" → 粘贴本文件全部内容
+'
+' 功能：反面镜像排版（与 RevNest v1.2 完全一致的算法）
+'   - 镜像 Sheet 几何、气泡标注
+'   - 加载 _rev 反面零件图档，应用 Nesting 变换
+'   - 按 Sheet 排序工序
+' ==============================================================================
+Option Explicit
+
+' --------------------------------------------------------------------------
+' 模块级常量
+' --------------------------------------------------------------------------
+Private Const REG_APP As String = "CCC_Mirror"
+Private Const REG_SECTION As String = "Mirror"
+
+' --------------------------------------------------------------------------
+' Windows API 声明 — 为对话框添加最小化按钮
+' 注意：Declare 必须放在所有 Sub/Function 之前
+' --------------------------------------------------------------------------
+Private Declare Function FindWindow Lib "user32" Alias "FindWindowA" _
+    (ByVal lpClassName As String, ByVal lpWindowName As String) As Long
+Private Declare Function GetWindowLong Lib "user32" Alias "GetWindowLongA" _
+    (ByVal hWnd As Long, ByVal nIndex As Long) As Long
+Private Declare Function SetWindowLong Lib "user32" Alias "SetWindowLongA" _
+    (ByVal hWnd As Long, ByVal nIndex As Long, ByVal dwNewLong As Long) As Long
+Private Declare Function SetWindowPos Lib "user32" _
+    (ByVal hWnd As Long, ByVal hWndInsertAfter As Long, _
+     ByVal X As Long, ByVal Y As Long, ByVal cx As Long, ByVal cy As Long, _
+     ByVal wFlags As Long) As Long
+
+Private Const GWL_STYLE As Long = (-16)
+Private Const WS_MINIMIZEBOX As Long = &H20000
+Private Const SWP_NOSIZE As Long = &H1
+Private Const SWP_NOMOVE As Long = &H2
+Private Const SWP_NOZORDER As Long = &H4
+Private Const SWP_FRAMECHANGED As Long = &H20
+
+
+' ==============================================================================
+' UserForm 事件
+' ==============================================================================
+
+Private Sub UserForm_Initialize()
+    Me.Caption = "反面镜像"
+    
+    ' 从注册表恢复上次设置
+    txtMirrorID.Text = GetSetting(REG_APP, REG_SECTION, "MirrorID", "BM")
+    
+    ' 镜像轴
+    Dim lastAxis As String
+    lastAxis = GetSetting(REG_APP, REG_SECTION, "MirrorAxis", "X")
+    If lastAxis = "X" Then
+        optMirrorX.Value = True
+    Else
+        optMirrorY.Value = True
+    End If
+End Sub
+
+Private Sub UserForm_Activate()
+    AddMinButton Me
+End Sub
+
+
+' ==============================================================================
+' 确定
+' ==============================================================================
+Private Sub cmdOK_Click()
+    Dim mirrorID As String
+    mirrorID = Trim(txtMirrorID.Text)
+    
+    ' 隐藏窗体（同 RevNest 流程：先隐藏再执行）
+    Me.Hide
+    DoEvents
+    
+    ' 执行镜像（按 Sheet 排序工序）
+    DoMirror optMirrorX.Value, mirrorID
+    
+    ' 保存设置到注册表
+    SaveSetting REG_APP, REG_SECTION, "MirrorID", mirrorID
+    If optMirrorX.Value Then
+        SaveSetting REG_APP, REG_SECTION, "MirrorAxis", "X"
+    Else
+        SaveSetting REG_APP, REG_SECTION, "MirrorAxis", "Y"
+    End If
+    
+    Unload Me
+End Sub
+
+
+' ==============================================================================
+' 取消
+' ==============================================================================
+Private Sub cmdCancel_Click()
+    Unload Me
+End Sub
+
+
+' ==============================================================================
+' AddMinButton — 为窗体添加最小化按钮
+' ==============================================================================
+Private Sub AddMinButton(frm As Object)
+    Dim hWnd As Long
+    hWnd = FindWindow("ThunderDFrame", frm.Caption)
+    If hWnd = 0 Then hWnd = FindWindow("ThunderRT5Form", frm.Caption)
+    If hWnd = 0 Then Exit Sub
+    Dim style As Long
+    style = GetWindowLong(hWnd, GWL_STYLE)
+    style = style Or WS_MINIMIZEBOX
+    SetWindowLong hWnd, GWL_STYLE, style
+    SetWindowPos hWnd, 0, 0, 0, 0, 0, _
+        SWP_NOMOVE Or SWP_NOSIZE Or SWP_NOZORDER Or SWP_FRAMECHANGED
+End Sub
