@@ -40,7 +40,7 @@ End Sub
 ' 完全参照 RevNest v1.2 g_AroundX / g_AroundY 算法。
 ' mirrorX:       True=绕X轴（水平线，垂直翻转），False=绕Y轴（垂直线，水平翻转）
 ' mirrorID:      刀具名过滤标识（空=不过滤全部镜像，非空=仅匹配刀具名的路径）
-' 内部硬编码：bSheetOrder=True（按 Sheet 排序），bMinToolChanges=False，bIncludeGeos=False
+' 内部硬编码：bSheetOrder=True（按 Sheet 排序），相同刀具+相同加工方式合并到同一 OP
 ' ==============================================================================
 Public Sub DoMirror(ByVal mirrorX As Boolean, _
                     Optional ByVal mirrorID As String = "")
@@ -283,10 +283,30 @@ loopnext:
     Next sh
     
     ' 镜像匹配的刀具路径，然后删除原路径
+    ' 分组策略：相同刀具 + 相同加工方式放到同一个 Operation 中
     mirroredCount = 0
+    sheetop = lastop
     For tpIdx = 1 To tpCount
         Set tp = collectTP(tpIdx)
         If Not (tp Is Nothing) Then
+            ' 获取原路径的刀具
+            Set mTool = tp.GetTool
+            Dim tgtOp As Long
+            If Not (mTool Is Nothing) Then
+                ' 查找是否已有相同刀具的 Operation
+                tgtOp = lastop  ' 默认新建
+                For I = sheetop To lastop - 1
+                    If Drw.Operations(I).Tool.Number = mTool.Number Then
+                        tgtOp = I
+                        Exit For
+                    End If
+                Next I
+                If tgtOp = lastop Then lastop = lastop + 1
+            Else
+                tgtOp = lastop
+                lastop = lastop + 1
+            End If
+            
             ' 复制并镜像
             Set pcopy = tp.CopyTemporary
             If mirrorX Then
@@ -295,8 +315,7 @@ loopnext:
                 pcopy.MirrorL minx, mirrorVal, maxx, mirrorVal
             End If
             pcopy.Attribute(ATT_IS_REV_SIDE) = 1
-            pcopy.OpNo = lastop
-            lastop = lastop + 1
+            pcopy.OpNo = tgtOp
             pcopy.StoreTemporary
             mirroredCount = mirroredCount + 1
             
