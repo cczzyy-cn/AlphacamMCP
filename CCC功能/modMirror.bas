@@ -311,16 +311,15 @@ loopnext:
     Erase collectTP
     Drw.Operations.OrderAll
     
-    ' 强制刷新加工道次：创建几何+删除触发树重建
+    ' 强制刷新加工道次：触发树重建+排序+刷新
     If mirroredCount > 0 Then
-        App.Frame.ProjectBarUpdating = True
+        App.Frame.RunCommand 33620
+        App.Frame.RunCommand 33621
+        Drw.Operations.OrderAll
         Drw.ScreenUpdating = True
         Drw.Redraw
         Drw.ZoomAll
-        DoEvents
-        ' 重建显示列表
         Drw.Refresh
-        ' 刷新项目栏/加工道次
         App.Frame.RunCommand 33619
         DoEvents
     End If
