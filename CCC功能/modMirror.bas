@@ -284,26 +284,9 @@ loopnext:
     
     ' 镜像匹配的刀具路径（保留原路径，后面再删除）
     mirroredCount = 0
-    sheetop = lastop
     For tpIdx = 1 To tpCount
         Set tp = collectTP(tpIdx)
         If Not (tp Is Nothing) Then
-            Set mTool = tp.GetTool
-            Dim tgtOp As Long
-            If Not (mTool Is Nothing) Then
-                tgtOp = lastop
-                For I = sheetop To lastop - 1
-                    If Drw.Operations(I).Tool.Number = mTool.Number Then
-                        tgtOp = I
-                        Exit For
-                    End If
-                Next I
-                If tgtOp = lastop Then lastop = lastop + 1
-            Else
-                tgtOp = lastop
-                lastop = lastop + 1
-            End If
-            
             Set pcopy = tp.CopyTemporary
             If mirrorX Then
                 pcopy.MirrorL mirrorVal, miny, mirrorVal, maxy
@@ -311,7 +294,8 @@ loopnext:
                 pcopy.MirrorL minx, mirrorVal, maxx, mirrorVal
             End If
             pcopy.Attribute(ATT_IS_REV_SIDE) = 1
-            pcopy.OpNo = tgtOp
+            pcopy.OpNo = lastop
+            lastop = lastop + 1
             pcopy.StoreTemporary
             mirroredCount = mirroredCount + 1
         End If
@@ -330,12 +314,9 @@ loopnext:
 afterPhase2:
     
 byebye:
-    With App
-        .Frame.ProjectBarUpdating = True
-        .ActiveDrawing.ScreenUpdating = True
-        .ActiveDrawing.Redraw
-        If .ApiVersion >= 20040928 Then .Frame.RunCommand 33619  ' 刷新项目栏/加工道次
-    End With
+    Drw.ScreenUpdating = True
+    Drw.Redraw
+    Drw.ZoomAll
     
     Set Drw = Nothing
     Set P = Nothing: Set pcopy = Nothing
