@@ -290,33 +290,50 @@ loopnext:
     Next sh
     
     ' 镜像匹配的刀具路径（保留原路径，后面再删除）
-    ' 分组策略：相同原始 OP（相同加工方式+刀具）放到同一个 Operation
+    ' 分组策略：相同刀具 + 相同加工方式放到同一个 Operation
+    ' 加工方式由原始 SubOperation 的名称确定
     mirroredCount = 0
-    Dim srcOp As Long, tgtOp As Long
-    Dim opMapIdx As Long, opMapCount As Long
-    Dim srcOps() As Long, tgtOps() As Long
-    opMapCount = 0
+    Dim srcKey As String, tgtOp As Long
+    Dim keyIdx As Long, keyCount As Long
+    Dim keys() As String, opNos() As Long
+    keyCount = 0
     
     For tpIdx = 1 To tpCount
         Set tp = collectTP(tpIdx)
         If Not (tp Is Nothing) Then
-            srcOp = tp.OpNo  ' 原路径的操作编号
-            ' 查找映射表
+            ' 构建分组键：刀具号 + SubOperation 名称（加工方式）
+            Set mTool = tp.GetTool
+            Dim subOpName As String: subOpName = ""
+            If Not (mTool Is Nothing) Then
+                ' 获取原路径所在的 SubOperation 名称
+                Dim srcOps2 As Operations: Set srcOps2 = Drw.Operations
+                If tp.OpNo >= 1 And tp.OpNo <= srcOps2.count Then
+                    Dim srcSubOps As SubOperations: Set srcSubOps = srcOps2(tp.OpNo).SubOperations
+                    If srcSubOps.count >= 1 Then
+                        subOpName = srcSubOps(1).Name
+                    End If
+                End If
+                srcKey = CStr(mTool.Number) & "|" & subOpName
+            Else
+                srcKey = "0|"
+            End If
+            
+            ' 查找分组键
             tgtOp = 0
-            For opMapIdx = 1 To opMapCount
-                If srcOps(opMapIdx) = srcOp Then
-                    tgtOp = tgtOps(opMapIdx)
+            For keyIdx = 1 To keyCount
+                If keys(keyIdx) = srcKey Then
+                    tgtOp = opNos(keyIdx)
                     Exit For
                 End If
-            Next opMapIdx
+            Next keyIdx
             ' 没找到则新建
             If tgtOp = 0 Then
-                opMapCount = opMapCount + 1
-                ReDim Preserve srcOps(1 To opMapCount)
-                ReDim Preserve tgtOps(1 To opMapCount)
-                srcOps(opMapCount) = srcOp
+                keyCount = keyCount + 1
+                ReDim Preserve keys(1 To keyCount)
+                ReDim Preserve opNos(1 To keyCount)
+                keys(keyCount) = srcKey
                 tgtOp = lastop
-                tgtOps(opMapCount) = tgtOp
+                opNos(keyCount) = tgtOp
                 lastop = lastop + 1
             End If
             
