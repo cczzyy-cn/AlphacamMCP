@@ -290,10 +290,36 @@ loopnext:
     Next sh
     
     ' 镜像匹配的刀具路径（保留原路径，后面再删除）
+    ' 分组策略：相同原始 OP（相同加工方式+刀具）放到同一个 Operation
     mirroredCount = 0
+    Dim srcOp As Long, tgtOp As Long
+    Dim opMapIdx As Long, opMapCount As Long
+    Dim srcOps() As Long, tgtOps() As Long
+    opMapCount = 0
+    
     For tpIdx = 1 To tpCount
         Set tp = collectTP(tpIdx)
         If Not (tp Is Nothing) Then
+            srcOp = tp.OpNo  ' 原路径的操作编号
+            ' 查找映射表
+            tgtOp = 0
+            For opMapIdx = 1 To opMapCount
+                If srcOps(opMapIdx) = srcOp Then
+                    tgtOp = tgtOps(opMapIdx)
+                    Exit For
+                End If
+            Next opMapIdx
+            ' 没找到则新建
+            If tgtOp = 0 Then
+                opMapCount = opMapCount + 1
+                ReDim Preserve srcOps(1 To opMapCount)
+                ReDim Preserve tgtOps(1 To opMapCount)
+                srcOps(opMapCount) = srcOp
+                tgtOp = lastop
+                tgtOps(opMapCount) = tgtOp
+                lastop = lastop + 1
+            End If
+            
             Set pcopy = tp.CopyTemporary
             If mirrorX Then
                 pcopy.MirrorL mirrorVal, miny, mirrorVal, maxy
@@ -301,8 +327,7 @@ loopnext:
                 pcopy.MirrorL minx, mirrorVal, maxx, mirrorVal
             End If
             pcopy.Attribute(ATT_IS_REV_SIDE) = 1
-            pcopy.OpNo = lastop
-            lastop = lastop + 1
+            pcopy.OpNo = tgtOp
             pcopy.StoreTemporary
             mirroredCount = mirroredCount + 1
         End If
