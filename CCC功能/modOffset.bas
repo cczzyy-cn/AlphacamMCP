@@ -58,10 +58,10 @@ Public Sub ApplyToolOffset(ByVal selectedTool As String, ByVal xOff As Double, B
                         End If
                     End If
                 End If
+            End If
             Next j
         End If
     Next i
-    End If  ' End If ops.count > 0
         ' Fallback: direct toolpath iteration when no operations
     If count = 0 Then
         Dim tpIdx2 As Long
