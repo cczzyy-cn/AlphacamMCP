@@ -35,6 +35,8 @@ Private Declare Function FindWindow Lib "user32" Alias "FindWindowA" _
     (ByVal lpClassName As String, ByVal lpWindowName As String) As Long
 Private Declare Function SendMessage Lib "user32" Alias "SendMessageA" _
     (ByVal hWnd As Long, ByVal wMsg As Long, ByVal wParam As Long, ByVal lParam As Long) As Long
+Private Declare Function FindWindowEx Lib "user32" Alias "FindWindowExA" _
+    (ByVal hWndParent As Long, ByVal hWndChildAfter As Long, ByVal lpszClass As String, ByVal lpszWindow As String) As Long
 
 
 ' ==============================================================================
@@ -328,10 +330,25 @@ loopnext:
         Drw.Redraw
         Drw.ZoomAll
         Drw.Refresh
-        ' 通知加工道次窗口刷新（ToolPathsUpdated 消息 0xC599）
-        Dim hOpWnd As Long
-        hOpWnd = FindWindow("PathWindow", vbNullString)
-        If hOpWnd <> 0 Then SendMessage hOpWnd, WM_OPLIST_REFRESH, 0, 0
+        ' 通知加工道次窗口刷新（发送到所有顶层窗口 + AlphaCAM 子窗口）
+        Dim hAcamWnd As Long
+        hAcamWnd = FindWindow("Alphacam", vbNullString)
+        If hAcamWnd = 0 Then
+            ' 尝试模糊匹配
+            hAcamWnd = FindWindow(vbNullString, "Alphacam 2016 R1")
+        End If
+        If hAcamWnd <> 0 Then
+            ' 发送消息到所有子窗口
+            Dim hChild As Long
+            hChild = FindWindowEx(hAcamWnd, 0, vbNullString, vbNullString)
+            Do While hChild <> 0
+                SendMessage hChild, WM_OPLIST_REFRESH, 0, 0
+                hChild = FindWindowEx(hAcamWnd, hChild, vbNullString, vbNullString)
+            Loop
+            SendMessage hAcamWnd, WM_OPLIST_REFRESH, 0, 0
+        End If
+        ' 也尝试直接发送到 ProjectBar
+        If App.ApiVersion >= 20040928 Then App.Frame.RunCommand 33619
         DoEvents
     End If
     
