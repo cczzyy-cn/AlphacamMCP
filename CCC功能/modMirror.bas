@@ -28,14 +28,8 @@ Private Const ATT_NEST_ITEM_NUM      As String = "LicomUKsab_nest_item_number"
 Private Const ATT_IS_REV_SIDE        As String = "AcamUSrg_IsReverseSide"
 Private Const ATT_REV_TEXT           As String = "AcamUSrg_TextIsReversed"
 
-' --- 加工道次刷新消息 ---
-Private Const WM_OPLIST_REFRESH As Long = &HC599
 
-' --- Windows API — 查找加工道次窗口并刷新 ---
-Private Declare Function FindWindow Lib "user32" Alias "FindWindowA" _
-    (ByVal lpClassName As String, ByVal lpWindowName As String) As Long
-Private Declare Function SendMessage Lib "user32" Alias "SendMessageA" _
-    (ByVal hWnd As Long, ByVal wMsg As Long, ByVal wParam As Long, ByVal lParam As Long) As Long
+' ==============================================================================
 
 
 ' ==============================================================================
@@ -320,18 +314,6 @@ loopnext:
     Next tpIdx
     Erase collectTP
     Drw.Operations.OrderAll
-    
-    ' 通知加工道次窗口刷新（ToolPathsUpdated 消息 = 0xC599）
-    Dim hOpList As Long
-    hOpList = FindWindow("PathWindow", vbNullString)
-    If hOpList <> 0 Then
-        SendMessage hOpList, WM_OPLIST_REFRESH, 0, 0
-    End If
-    ' 也通知 AlphaCAM 主窗口
-    hOpList = FindWindow("Alphacam", vbNullString)
-    If hOpList <> 0 Then
-        SendMessage hOpList, WM_OPLIST_REFRESH, 0, 0
-    End If
     
     If mirroredCount > 0 Then
         Drw.ScreenUpdating = True
