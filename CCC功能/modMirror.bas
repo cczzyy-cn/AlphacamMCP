@@ -28,6 +28,8 @@ Private Const ATT_NEST_ITEM_NUM      As String = "LicomUKsab_nest_item_number"
 Private Const ATT_IS_REV_SIDE        As String = "AcamUSrg_IsReverseSide"
 Private Const ATT_REV_TEXT           As String = "AcamUSrg_TextIsReversed"
 
+' --- OpListJP DLL 导出函数 — 通知加工道次刷新 ---
+Private Declare Sub ToolPathsUpdated Lib "C:\Program Files (x86)\Vero Software\Alphacam 2016 R1\Add-Ins\OpListJP\OpListJP.dll" ()
 
 ' ==============================================================================
 
@@ -323,6 +325,8 @@ loopnext:
         Drw.Redraw
         Drw.ZoomAll
         Drw.Refresh
+        ' 调用 OpListJP.dll 通知加工道次刷新
+        ToolPathsUpdated
         DoEvents
     End If
     
