@@ -28,6 +28,14 @@ Private Const ATT_NEST_ITEM_NUM      As String = "LicomUKsab_nest_item_number"
 Private Const ATT_IS_REV_SIDE        As String = "AcamUSrg_IsReverseSide"
 Private Const ATT_REV_TEXT           As String = "AcamUSrg_TextIsReversed"
 
+' --- Windows 消息 — 通知加工道次窗口刷新 ---
+Private Const WM_OPLIST_REFRESH As Long = &HC599
+
+Private Declare Function FindWindow Lib "user32" Alias "FindWindowA" _
+    (ByVal lpClassName As String, ByVal lpWindowName As String) As Long
+Private Declare Function SendMessage Lib "user32" Alias "SendMessageA" _
+    (ByVal hWnd As Long, ByVal wMsg As Long, ByVal wParam As Long, ByVal lParam As Long) As Long
+
 
 ' ==============================================================================
 
@@ -320,6 +328,10 @@ loopnext:
         Drw.Redraw
         Drw.ZoomAll
         Drw.Refresh
+        ' 通知加工道次窗口刷新（ToolPathsUpdated 消息 0xC599）
+        Dim hOpWnd As Long
+        hOpWnd = FindWindow("PathWindow", vbNullString)
+        If hOpWnd <> 0 Then SendMessage hOpWnd, WM_OPLIST_REFRESH, 0, 0
         DoEvents
     End If
     
