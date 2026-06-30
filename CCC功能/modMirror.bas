@@ -306,6 +306,21 @@ loopnext:
             Dim tNum As Long: tNum = 0
             If Not (mTool Is Nothing) Then tNum = mTool.Number
             
+            ' 获取该路径所在的版件名称
+            Dim sheetName As String: sheetName = ""
+            Dim s2 As NestSheet
+            For Each s2 In ni.Sheets
+                Dim tpInSheet As Path
+                For Each tpInSheet In s2.Paths
+                    If tpInSheet.OpNo = tp.OpNo Then
+                        sheetName = s2.Geometry.Attribute(ATT_SHEET_IDENT)
+                        Exit For
+                    End If
+                Next tpInSheet
+                If sheetName <> "" Then Exit For
+            Next s2
+            If sheetName = "" Then sheetName = "未知"
+            
             ' 从原始 OP 中提取加工方式名称
             Dim methodName As String: methodName = ""
             If tp.OpNo >= 1 And tp.OpNo <= Drw.Operations.count Then
@@ -323,8 +338,8 @@ loopnext:
                 End If
             End If
             
-            ' 分组键：加工方式 + 刀具号
-            Dim grpKey As String: grpKey = methodName & "|" & CStr(tNum)
+            ' 分组键：版件 + 加工方式 + 刀具号
+            Dim grpKey As String: grpKey = sheetName & "|" & methodName & "|" & CStr(tNum)
             
             ' 查找分组键
             tgtOp = 0
