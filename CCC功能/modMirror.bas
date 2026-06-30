@@ -290,38 +290,25 @@ loopnext:
     Next sh
     
     ' 镜像匹配的刀具路径（保留原路径，后面再删除）
-    ' 分组策略：相同刀具 + 相同加工方式放到同一个 Operation
-    ' 加工方式由原始 SubOperation 的名称确定
+    ' 分组策略：相同刀具放到同一个 Operation
     mirroredCount = 0
-    Dim srcKey As String, tgtOp As Long
+    Dim tgtOp As Long
     Dim keyIdx As Long, keyCount As Long
-    Dim keys() As String, opNos() As Long
+    Dim toolNos() As Long, opNos() As Long
     keyCount = 0
     
     For tpIdx = 1 To tpCount
         Set tp = collectTP(tpIdx)
         If Not (tp Is Nothing) Then
-            ' 构建分组键：刀具号 + SubOperation 名称（加工方式）
+            ' 获取刀具号作为分组键
             Set mTool = tp.GetTool
-            Dim subOpName As String: subOpName = ""
-            If Not (mTool Is Nothing) Then
-                ' 获取原路径所在的 SubOperation 名称
-                Dim srcOps2 As Operations: Set srcOps2 = Drw.Operations
-                If tp.OpNo >= 1 And tp.OpNo <= srcOps2.count Then
-                    Dim srcSubOps As SubOperations: Set srcSubOps = srcOps2(tp.OpNo).SubOperations
-                    If srcSubOps.count >= 1 Then
-                        subOpName = srcSubOps(1).Name
-                    End If
-                End If
-                srcKey = CStr(mTool.Number) & "|" & subOpName
-            Else
-                srcKey = "0|"
-            End If
+            Dim toolN As Long: toolN = 0
+            If Not (mTool Is Nothing) Then toolN = mTool.Number
             
             ' 查找分组键
             tgtOp = 0
             For keyIdx = 1 To keyCount
-                If keys(keyIdx) = srcKey Then
+                If toolNos(keyIdx) = toolN Then
                     tgtOp = opNos(keyIdx)
                     Exit For
                 End If
@@ -329,9 +316,9 @@ loopnext:
             ' 没找到则新建
             If tgtOp = 0 Then
                 keyCount = keyCount + 1
-                ReDim Preserve keys(1 To keyCount)
+                ReDim Preserve toolNos(1 To keyCount)
                 ReDim Preserve opNos(1 To keyCount)
-                keys(keyCount) = srcKey
+                toolNos(keyCount) = toolN
                 tgtOp = lastop
                 opNos(keyCount) = tgtOp
                 lastop = lastop + 1
