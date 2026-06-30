@@ -328,9 +328,10 @@ loopnext:
                 Set srcSub = Drw.Operations(tp.OpNo).SubOperations
                 If srcSub.count >= 1 Then
                     Dim raw As String: raw = srcSub(1).Name
-                    Dim p As Long: p = InStr(raw, "독야")
-                    If p > 0 Then
-                        methodName = Trim(Left(raw, p - 1))
+                    Dim posMethod As Long
+                    posMethod = InStr(raw, "독야")
+                    If posMethod > 0 Then
+                        methodName = Trim(Left(raw, posMethod - 1))
                     Else
                         methodName = raw
                     End If
