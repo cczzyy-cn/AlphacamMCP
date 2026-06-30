@@ -321,25 +321,8 @@ loopnext:
             Next s2
             If sheetName = "" Then sheetName = "未知"
             
-            ' 从原始 OP 中提取加工方式名称
-            Dim methodName As String: methodName = ""
-            If tp.OpNo >= 1 And tp.OpNo <= Drw.Operations.count Then
-                Dim srcSubOps2 As SubOperations
-                Set srcSubOps2 = Drw.Operations(tp.OpNo).SubOperations
-                If srcSubOps2.count >= 1 Then
-                    Dim rawName As String: rawName = srcSubOps2(1).Name
-                    ' 提取 "刀具" 前的部分作为加工方式
-                    Dim pos As Long: pos = InStr(rawName, "刀具")
-                    If pos > 0 Then
-                        methodName = Trim(Left(rawName, pos - 1))
-                    Else
-                        methodName = rawName
-                    End If
-                End If
-            End If
-            
-            ' 分组键：版件 + 加工方式 + 刀具号
-            Dim grpKey As String: grpKey = sheetName & "|" & methodName & "|" & CStr(tNum)
+            ' 分组键：版件 + 刀具号（加工方式由刀具决定）
+            Dim grpKey As String: grpKey = sheetName & "|" & CStr(tNum)
             
             ' 查找分组键
             tgtOp = 0
