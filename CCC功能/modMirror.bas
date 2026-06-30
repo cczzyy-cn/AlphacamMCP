@@ -290,25 +290,46 @@ loopnext:
     Next sh
     
     ' 镜像匹配的刀具路径（保留原路径，后面再删除）
-    ' 分组策略：相同刀具放到同一个 Operation
+    ' 分组策略：解散原 OP，按加工方式+刀具重新分组
+    ' 加工方式从原始 SubOperation 名称提取（"刀具" 前部分）
     mirroredCount = 0
     Dim tgtOp As Long
     Dim keyIdx As Long, keyCount As Long
-    Dim toolNos() As Long, opNos() As Long
+    Dim keys() As String, opNos() As Long
     keyCount = 0
     
     For tpIdx = 1 To tpCount
         Set tp = collectTP(tpIdx)
         If Not (tp Is Nothing) Then
-            ' 获取刀具号作为分组键
+            ' 获取刀具号
             Set mTool = tp.GetTool
-            Dim toolN As Long: toolN = 0
-            If Not (mTool Is Nothing) Then toolN = mTool.Number
+            Dim tNum As Long: tNum = 0
+            If Not (mTool Is Nothing) Then tNum = mTool.Number
+            
+            ' 从原始 OP 中提取加工方式名称
+            Dim methodName As String: methodName = ""
+            If tp.OpNo >= 1 And tp.OpNo <= Drw.Operations.count Then
+                Dim srcSubOps2 As SubOperations
+                Set srcSubOps2 = Drw.Operations(tp.OpNo).SubOperations
+                If srcSubOps2.count >= 1 Then
+                    Dim rawName As String: rawName = srcSubOps2(1).Name
+                    ' 提取 "刀具" 前的部分作为加工方式
+                    Dim pos As Long: pos = InStr(rawName, "刀具")
+                    If pos > 0 Then
+                        methodName = Trim(Left(rawName, pos - 1))
+                    Else
+                        methodName = rawName
+                    End If
+                End If
+            End If
+            
+            ' 分组键：加工方式 + 刀具号
+            Dim grpKey As String: grpKey = methodName & "|" & CStr(tNum)
             
             ' 查找分组键
             tgtOp = 0
             For keyIdx = 1 To keyCount
-                If toolNos(keyIdx) = toolN Then
+                If keys(keyIdx) = grpKey Then
                     tgtOp = opNos(keyIdx)
                     Exit For
                 End If
@@ -316,9 +337,9 @@ loopnext:
             ' 没找到则新建
             If tgtOp = 0 Then
                 keyCount = keyCount + 1
-                ReDim Preserve toolNos(1 To keyCount)
+                ReDim Preserve keys(1 To keyCount)
                 ReDim Preserve opNos(1 To keyCount)
-                toolNos(keyCount) = toolN
+                keys(keyCount) = grpKey
                 tgtOp = lastop
                 opNos(keyCount) = tgtOp
                 lastop = lastop + 1
