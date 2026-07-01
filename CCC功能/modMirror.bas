@@ -370,7 +370,6 @@ loopnext:
             End If
             
             Set pcopy = tp.CopyTemporary
-            pcopy.Name = tp.Name & " rev"
             If mirrorX Then
                 pcopy.MirrorL mirrorVal, miny, mirrorVal, maxy
             Else
