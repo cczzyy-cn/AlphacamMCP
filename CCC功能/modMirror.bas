@@ -296,7 +296,7 @@ loopnext:
                 Dim tpInSht As Path
                 For Each tpInSht In s3.Paths
                     If tpInSht.OpNo = origOpNos(tpIdx) Then
-                        shtName = s3.Geometry.Attribute(ATT_SHEET_IDENT) & " rev"
+                        shtName = s3.Geometry.Attribute(ATT_SHEET_IDENT)
                         Exit For
                     End If
                 Next tpInSht
@@ -309,6 +309,21 @@ loopnext:
     
     lastop = Drw.Operations.count + 1
     
+    ' 按 Sheet 排序
+    For Each sh In ni.Sheets
+        maxop = 0: minop = lastop
+        For Each tp In sh.Paths
+            If maxop < tp.OpNo Then maxop = tp.OpNo
+            If minop > tp.OpNo Then minop = tp.OpNo
+        Next tp
+        For I = minop To maxop
+            Drw.Operations.Renumber minop, lastop, acamOpADD_TO_OPERATION
+        Next I
+    Next sh
+    
+    ' 修正：Renumber 已将所有路径合并到 lastop，lastop 已成为"垃圾收集操作"。
+    ' 在此递增 lastop，使其指向一个干净的空操作号给第一组镜像路径使用。
+    lastop = lastop + 1
     
     ' 镜像匹配的刀具路径（保留原路径，后面再删除）
     ' 分组策略：解散原 OP，按加工方式+刀具重新分组
@@ -377,6 +392,18 @@ loopnext:
     ' 恢复屏幕刷新
     Drw.ScreenUpdating = True
     Drw.Redraw
+    
+    ' 通过当前 Drawing 重新获取 Operations 并调用 OrderAll
+    ' （Drw 变量可能已过期，用 App.ActiveDrawing 保证对象有效）
+    On Error GoTo 0
+    App.ActiveDrawing.Operations.OrderAll
+    On Error Resume Next
+    
+    ' 强制 Project Bar 重建（包含操作名称和顺序）
+    App.Frame.ProjectBarUpdating = False
+    DoEvents
+    App.Frame.ProjectBarUpdating = True
+    DoEvents
     
     If mirroredCount > 0 Then
         Drw.Redraw
