@@ -241,176 +241,74 @@ loopnext:
     Next
     
     ' ======================================================================
-    ' Phase 2 — 镜像 BM 刀具路径到反面版件，删除正面版件
+        ' Phase 2 - load toolpaths from rev files (cross-drawing copy creates Operations)
     ' ======================================================================
-    ' 收集主图纸中匹配的刀具路径（因为后面要删除，先收集再处理）
-    tpCount = 0
-    
-    Set tp = Drw.GetFirstToolPath
-    For tpIdx = 1 To Drw.GetToolPathCount
-        If Not (tp Is Nothing) Then
-            If mirrorID <> "" Then
-                Set mTool = tp.GetTool
-                If Not (mTool Is Nothing) Then
-                    If InStr(1, mTool.Name, mirrorID, vbTextCompare) > 0 Then
-                        tpCount = tpCount + 1
-                        ReDim Preserve collectTP(1 To tpCount)
-                        Set collectTP(tpCount) = tp
-                    End If
-                End If
-            Else
-                ' 没有过滤标识则处理所有刀具路径
-                tpCount = tpCount + 1
-                ReDim Preserve collectTP(1 To tpCount)
-                Set collectTP(tpCount) = tp
-            End If
-        End If
-        Set tp = tp.GetNext
-    Next tpIdx
-    
-    If tpCount = 0 Then
-        If mirrorID <> "" Then
-            MsgBox "未找到包含 """ & mirrorID & """ 的刀具路径。", vbInformation, "反面镜像"
-        End If
-        GoTo afterPhase2
-    End If
-    
-    ' ======================================================================
-    ' 缓存每条路径的原始 OpNo 和所属版件名称（在 Renumber 之前执行，
-    ' 因为 Renumber 会改变所有 OpNo，导致后续无法区分路径属于哪张板）
-    ' ======================================================================
-    Dim origOpNos() As Long
-    Dim sheetNames() As String
-    ReDim origOpNos(1 To tpCount)
-    ReDim sheetNames(1 To tpCount)
-    
-    For tpIdx = 1 To tpCount
-        Set tp = collectTP(tpIdx)
-        If Not (tp Is Nothing) Then
-            origOpNos(tpIdx) = tp.OpNo
-            
-            ' 在当前 OpNo（原始值）下查找所属版件
-            Dim shtName As String: shtName = ""
-            Dim s3 As NestSheet
-            For Each s3 In ni.Sheets
-                Dim tpInSht As Path
-                For Each tpInSht In s3.Paths
-                    If tpInSht.OpNo = origOpNos(tpIdx) Then
-                        shtName = s3.Geometry.Attribute(ATT_SHEET_IDENT)
-                        Exit For
-                    End If
-                Next tpInSht
-                If shtName <> "" Then Exit For
-            Next s3
-            If shtName = "" Then shtName = "未知"
-            sheetNames(tpIdx) = shtName
-        End If
-    Next tpIdx
-    
     lastop = Drw.Operations.count + 1
-    
-    ' 按 Sheet 排序
-    For Each sh In ni.Sheets
-        maxop = 0: minop = lastop
-        For Each tp In sh.Paths
-            If maxop < tp.OpNo Then maxop = tp.OpNo
-            If minop > tp.OpNo Then minop = tp.OpNo
-        Next tp
-        For I = minop To maxop
-            Drw.Operations.Renumber minop, lastop, acamOpADD_TO_OPERATION
-        Next I
-    Next sh
-    
-    ' 修正：Renumber 已将所有路径合并到 lastop，lastop 已成为"垃圾收集操作"。
-    ' 在此递增 lastop，使其指向一个干净的空操作号给第一组镜像路径使用。
-    lastop = lastop + 1
-    
-    ' 镜像匹配的刀具路径（保留原路径，后面再删除）
-    ' 分组策略：解散原 OP，按加工方式+刀具重新分组
-    ' 加工方式从原始 SubOperation 名称提取（"刀具" 前部分）
     mirroredCount = 0
-    Dim tgtOp As Long
-    Dim keyIdx As Long, keyCount As Long
-    Dim keys() As String, opNos() As Long
-    keyCount = 0
     
-    For tpIdx = 1 To tpCount
-        Set tp = collectTP(tpIdx)
-        If Not (tp Is Nothing) Then
-            ' 获取刀具号
-            Set mTool = tp.GetTool
-            Dim tNum As Long: tNum = 0
-            If Not (mTool Is Nothing) Then tNum = mTool.Number
-            
-            ' 获取该路径所在的版件名称（从 Renumber 前的预缓存中读取）
-            Dim sheetName As String: sheetName = ""
-            If tpIdx <= UBound(sheetNames) Then sheetName = sheetNames(tpIdx)
-            If sheetName = "" Then sheetName = "未知"
-            
-            ' 分组键：版件 + 刀具号（加工方式由刀具决定）
-            Dim grpKey As String: grpKey = sheetName & "|" & CStr(tNum)
-            
-            ' 查找分组键
-            tgtOp = 0
-            For keyIdx = 1 To keyCount
-                If keys(keyIdx) = grpKey Then
-                    tgtOp = opNos(keyIdx)
-                    Exit For
-                End If
-            Next keyIdx
-            ' 没找到则新建
-            If tgtOp = 0 Then
-                keyCount = keyCount + 1
-                ReDim Preserve keys(1 To keyCount)
-                ReDim Preserve opNos(1 To keyCount)
-                keys(keyCount) = grpKey
-                tgtOp = lastop
-                opNos(keyCount) = tgtOp
-                lastop = lastop + 1
-            End If
-            
-            Set pcopy = tp.CopyTemporary
-            If mirrorX Then
-                pcopy.MirrorL mirrorVal, miny, mirrorVal, maxy
-            Else
-                pcopy.MirrorL minx, mirrorVal, maxx, mirrorVal
-            End If
-            pcopy.Attribute(ATT_IS_REV_SIDE) = 1
-            pcopy.OpNo = tgtOp
-            pcopy.StoreTemporary
-            mirroredCount = mirroredCount + 1
-        End If
-    Next tpIdx
+    Dim tmpDrw As Drawing
+    Dim nPart As Object
+    Dim nP As Path
+    Dim partFile As String, revFile As String
+    Dim px As String, sx As String
+    Dim tmpTp As Path
+    Dim tmpCnt As Long
     
-    ' 删除正面版件原路径
-    For tpIdx = 1 To tpCount
-        Set tp = collectTP(tpIdx)
-        If Not (tp Is Nothing) Then tp.Delete
-    Next tpIdx
-    Erase collectTP
-    
-    ' 恢复屏幕刷新
-    Drw.ScreenUpdating = True
-    Drw.Redraw
-    
-    ' 通过当前 Drawing 重新获取 Operations 并调用 OrderAll
-    ' （Drw 变量可能已过期，用 App.ActiveDrawing 保证对象有效）
-    On Error GoTo 0
-    App.ActiveDrawing.Operations.OrderAll
     On Error Resume Next
     
-    ' 强制 Project Bar 重建（包含操作名称和顺序）
-    App.Frame.ProjectBarUpdating = False
-    DoEvents
-    App.Frame.ProjectBarUpdating = True
-    DoEvents
+    For Each sh In ni.Sheets
+        For Each nPart In sh.Parts
+            Set nP = nPart.Paths(1)
+            If nP Is Nothing Then GoTo skipPart
+            If nP.Attribute(ATT_FIRST_PATH) = 0 Then GoTo skipPart
+            
+            partFile = nP.Attribute(ATT_PATH_FILE)
+            If partFile = "" Then GoTo skipPart
+            px = Left(partFile, Len(partFile) - 4)
+            sx = Right(partFile, 4)
+            revFile = px & "_rev" & sx
+            
+            If mirrorID <> "" Then
+                Set mTool = nP.GetTool
+                If Not (mTool Is Nothing) Then
+                    If InStr(1, mTool.Name, mirrorID, vbTextCompare) = 0 Then GoTo skipPart
+                End If
+            End If
+            
+            Set tmpDrw = App.OpenTempDrawing(revFile)
+            If tmpDrw Is Nothing Then GoTo skipPart
+            If tmpDrw.WorkPlanes.count > 0 Then GoTo skipPart
+            
+            Set tmpTp = tmpDrw.GetFirstToolPath
+            For tmpCnt = 1 To tmpDrw.GetToolPathCount
+                If tmpTp Is Nothing Then Exit For
+                
+                Set pcopy = tmpTp.CopyTemporary
+                
+                If mirrorX Then
+                    pcopy.MirrorL mirrorVal, miny, mirrorVal, maxy
+                Else
+                    pcopy.MirrorL minx, mirrorVal, maxx, mirrorVal
+                End If
+                
+                pcopy.Attribute(ATT_IS_REV_SIDE) = 1
+                pcopy.OpNo = lastop
+                pcopy.StoreTemporary
+                lastop = lastop + 1
+                mirroredCount = mirroredCount + 1
+                
+                Set tmpTp = tmpTp.GetNext
+            Next tmpCnt
+skipPart:
+        Next nPart
+    Next sh
     
     If mirroredCount > 0 Then
-        Drw.Redraw
-        Drw.ZoomAll
-        Drw.Refresh
-        DoEvents
+        Drw.Operations.OrderAll
     End If
+    Drw.ScreenUpdating = True
+    Drw.Redraw
+    Drw.ZoomAll
     
 afterPhase2:
     
