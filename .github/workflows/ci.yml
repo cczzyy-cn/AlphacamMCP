@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  lint:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      - name: Check Python syntax
+        run: |
+          python -m py_compile server.py
+          python -m py_compile alphacam_com.py
+          python -m py_compile mcp_bridge/__init__.py
+          python -m py_compile mcp_bridge/tools.py
+          python -m py_compile mcp_bridge/handler.py
+          python -m py_compile mcp_bridge/docs.py
+          python -m py_compile mcp_bridge/config.py
+          python -m py_compile mcp_bridge/errors.py
+      - name: Check tool registration
+        run: |
+          python -c "from mcp_bridge import TOOLS; print(f'{len(TOOLS)} tools registered')"
+      - name: Lint with Ruff
+        run: |
+          pip install ruff
+          ruff check server.py alphacam_com.py mcp_bridge/

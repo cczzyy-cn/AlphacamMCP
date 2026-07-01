@@ -1204,6 +1204,73 @@ class AlphaCAM:
                     break
         return result
 
+    # ---- View control ----------------------------------------------------
+
+    def view_zoom_extents(self) -> dict:
+        """Zoom to extents (fit all geometry on screen)."""
+        try:
+            vw = self._safe_get(self._app.ActiveDrawing, "ViewWindow")
+            if vw:
+                vw.ZoomExtents()
+                return {"status": "ok", "action": "zoom_extents"}
+            return {"status": "error", "message": "No active drawing"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def view_zoom_window(self, x1: float, y1: float,
+                         x2: float, y2: float) -> dict:
+        """Zoom to a rectangular window."""
+        try:
+            vw = self._safe_get(self._app.ActiveDrawing, "ViewWindow")
+            if vw:
+                vw.ZoomWindow(x1, y1, x2, y2)
+                return {"status": "ok", "action": "zoom_window"}
+            return {"status": "error", "message": "No active drawing"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def view_set_direction(self, direction: int) -> dict:
+        """Set view direction: 0=Top, 1=Front, 2=Right, 3=Back,
+        4=Left, 5=Bottom, 6=SW Isometric, 7=SE Isometric."""
+        directions = ["Top", "Front", "Right", "Back",
+                      "Left", "Bottom", "SW Isometric", "SE Isometric"]
+        try:
+            vw = self._safe_get(self._app.ActiveDrawing, "ViewWindow")
+            if vw:
+                vw.SetViewDirection(direction)
+                label = directions[direction] if 0 <= direction < len(directions) else str(direction)
+                return {"status": "ok", "action": "set_view_direction",
+                        "direction": label}
+            return {"status": "error", "message": "No active drawing"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    # ---- Material --------------------------------------------------------
+
+    def get_material(self) -> dict:
+        """Get the current material info from the active drawing."""
+        try:
+            drawing = self._app.ActiveDrawing
+            mat = self._safe_get(drawing, "Material")
+            if mat is None:
+                return {"status": "ok", "material": None,
+                        "message": "No material set"}
+            return {
+                "status": "ok",
+                "material": {
+                    "name": self._safe_get(mat, "Name", ""),
+                    "description": self._safe_get(mat, "Description", ""),
+                    "density": self._safe_get(mat, "Density", 0.0),
+                    "feed_rate": self._safe_get(mat, "FeedRate", 0),
+                    "plunge_rate": self._safe_get(mat, "PlungeRate", 0),
+                    "spindle_speed": self._safe_get(mat, "SpindleSpeed", 0),
+                    "step_over": self._safe_get(mat, "StepOver", 0.0),
+                    "depth_of_cut": self._safe_get(mat, "DepthOfCut", 0.0),
+                },
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
     # ---- batch / convenience ---------------------------------------------
 
     def run_workflow(self, steps: list[dict]) -> list[dict]:

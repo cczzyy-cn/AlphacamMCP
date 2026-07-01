@@ -132,11 +132,19 @@ pip install -r requirements.txt
 | `set_workplane` | 设置当前工作平面 |
 | `create_layer` | 创建或获取图层（可设颜色） |
 
-### 屏幕控制（2）
+### 视图控制（5）
 | 工具 | 说明 |
 |---|---|
+| `view_zoom_extents` | 缩放全图适应屏幕 |
+| `view_zoom_window` | 框选窗口缩放 |
+| `view_set_direction` | 设置 3D 视角方向（俯视/前视/等轴测等） |
 | `lock_acam` | 禁用屏幕刷新（批量操作时加速） |
 | `unlock_acam` | 恢复屏幕刷新（可选缩放全图） |
+
+### 材料（1）
+| 工具 | 说明 |
+|---|---|
+| `get_material` | 获取当前图纸材料信息（名称、密度、进给、转速等） |
 
 ### 路径操作（5）
 | 工具 | 说明 |
