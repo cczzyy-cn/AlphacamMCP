@@ -296,7 +296,7 @@ loopnext:
                 Dim tpInSht As Path
                 For Each tpInSht In s3.Paths
                     If tpInSht.OpNo = origOpNos(tpIdx) Then
-                        shtName = s3.Geometry.Attribute(ATT_SHEET_IDENT)
+                        shtName = s3.Geometry.Attribute(ATT_SHEET_IDENT) & " rev"
                         Exit For
                     End If
                 Next tpInSht
@@ -381,7 +381,11 @@ loopnext:
     ' 通过当前 Drawing 重新获取 Operations 并调用 OrderAll
     ' （Drw 变量可能已过期，用 App.ActiveDrawing 保证对象有效）
     On Error GoTo 0
+    ' 强制重建 Operations 列表：读取 Count 触发 AlphaCAM 重新扫描路径
+    On Error GoTo 0
     App.ActiveDrawing.Operations.OrderAll
+    Dim dummyCount As Long
+    dummyCount = App.ActiveDrawing.Operations.Count
     On Error Resume Next
     
     ' 强制 Project Bar 重建（包含操作名称和顺序）
