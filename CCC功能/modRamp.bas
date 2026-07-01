@@ -99,6 +99,67 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     rampApplied = 0
     skipCount = 0
 
+    ' ==================================================================
+    ' Phase 0: 遍历 NestInformation Sheet 找出所有小板件几何（用零件几何包围盒判断）
+    ' ==================================================================
+    Dim smallParts As Object  ' Dictionary: key="CX,CY" value="W,H"
+    Set smallParts = CreateObject("Scripting.Dictionary")
+    Dim partGeo As Path
+    Dim geoIdx2 As Long
+    Dim sheetGeo2 As Path
+
+    If Not (ni Is Nothing) Then
+        For Each sh In ni.Sheets
+            Set sheetGeo2 = sh.Geometry
+            If sheetGeo2 Is Nothing Then GoTo NextSheet0
+
+            ' 遍历图纸中所有几何，找属于本 Sheet 的非边界几何（即零件）
+            Set partGeo = drw.GetFirstGeo
+            For geoIdx2 = 1 To drw.GetGeoCount
+                If Not (partGeo Is Nothing) Then
+                    If Not partGeo.Sheet And Not partGeo.Dimension Then
+                        Dim partCX As Double: partCX = (partGeo.MinXL + partGeo.MaxXL) / 2
+                        Dim partCY As Double: partCY = (partGeo.MinYL + partGeo.MaxYL) / 2
+                        If sheetGeo2.IsPointInside(partCX, partCY) = acamResultTRUE Then
+                            Dim partW As Double: partW = partGeo.MaxXL - partGeo.MinXL
+                            Dim partH As Double: partH = partGeo.MaxYL - partGeo.MinYL
+                            If partW < minSize Or partH < minSize Then
+                                Dim spKey As String: spKey = Format$(partCX, "0.00") & "," & Format$(partCY, "0.00")
+                                If Not smallParts.Exists(spKey) Then
+                                    smallParts.Add spKey, Format$(partW, "0.00") & "," & Format$(partH, "0.00")
+                                End If
+                            End If
+                        End If
+                    End If
+                    Set partGeo = partGeo.GetNext
+                End If
+            Next geoIdx2
+NextSheet0:
+        Next sh
+    End If
+
+    ' 无 NestInformation 时的兜底：遍历所有非 Sheet 几何按实际尺寸判断
+    If ni Is Nothing Or smallParts.Count = 0 Then
+        Set partGeo = drw.GetFirstGeo
+        For geoIdx2 = 1 To drw.GetGeoCount
+            If Not (partGeo Is Nothing) Then
+                If Not partGeo.Sheet And Not partGeo.Dimension Then
+                    partW = partGeo.MaxXL - partGeo.MinXL
+                    partH = partGeo.MaxYL - partGeo.MinYL
+                    If partW < minSize Or partH < minSize Then
+                        partCX = (partGeo.MinXL + partGeo.MaxXL) / 2
+                        partCY = (partGeo.MinYL + partGeo.MaxYL) / 2
+                        spKey = Format$(partCX, "0.00") & "," & Format$(partCY, "0.00")
+                        If Not smallParts.Exists(spKey) Then
+                            smallParts.Add spKey, Format$(partW, "0.00") & "," & Format$(partH, "0.00")
+                        End If
+                    End If
+                End If
+                Set partGeo = partGeo.GetNext
+            End If
+        Next geoIdx2
+    End If
+
     ' --- 遍历 Operations → SubOperations → ToolPaths ---
     Set ops = drw.Operations
 
@@ -153,14 +214,29 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
                 ' 判断是否为小板件
                 tpMinX = tpItem.MinXL: tpMaxX = tpItem.MaxXL
                 tpMinY = tpItem.MinYL: tpMaxY = tpItem.MaxYL
-                tpW = tpMaxX - tpMinX
-                tpH = tpMaxY - tpMinY
+                Dim tpCenterX As Double: tpCenterX = (tpMinX + tpMaxX) / 2
+                Dim tpCenterY As Double: tpCenterY = (tpMinY + tpMaxY) / 2
+                Dim isSmall As Boolean: isSmall = False
+                Dim tol As Double: tol = 20
+                Dim spKeys As Variant: spKeys = smallParts.Keys
+                Dim ki As Long
+                For ki = 0 To smallParts.Count - 1
+                    Dim spParts() As String: spParts = Split(spKeys(ki), ",")
+                    If UBound(spParts) >= 1 Then
+                        Dim spCx As Double: spCx = Val(spParts(0))
+                        Dim spCy As Double: spCy = Val(spParts(1))
+                        If Abs(tpCenterX - spCx) < tol And Abs(tpCenterY - spCy) < tol Then
+                            isSmall = True
+                            Exit For
+                        End If
+                    End If
+                Next ki
 
-                If tpW < minSize Or tpH < minSize Then
+                If isSmall Then
                     smallCount = smallCount + 1
 
                     ' 计算刀具半径
-                    toolRadius = 3    ' 默认 3mm
+                    toolRadius = 3
                     Set mt = tpItem.GetTool
                     If Not (mt Is Nothing) Then
                         toolRadius = mt.Diameter / 2
@@ -172,7 +248,6 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
                     lengthMult = rampLength / toolRadius
                     If lengthMult < 1 Then lengthMult = 1
                     If lengthMult > 50 Then lengthMult = 50
-
                     radiusMult = 0.5
 
                     ' 应用斜坡入刀
@@ -258,13 +333,28 @@ NextTpDirect:
 
                 totalCount = totalCount + 1
 
-                ' 判断是否为小板件：用刀具路径的包围盒
+                ' 判断是否为小板件：检查刀具路径中心是否靠近 Phase 0 识别的几何
                 tpMinX = tp.MinXL: tpMaxX = tp.MaxXL
                 tpMinY = tp.MinYL: tpMaxY = tp.MaxYL
-                tpW = tpMaxX - tpMinX
-                tpH = tpMaxY - tpMinY
+                Dim tpCenterX As Double: tpCenterX = (tpMinX + tpMaxX) / 2
+                Dim tpCenterY As Double: tpCenterY = (tpMinY + tpMaxY) / 2
+                Dim isSmall As Boolean: isSmall = False
+                Dim tol As Double: tol = 20  ' 20mm 容差
+                Dim spKeys As Variant: spKeys = smallParts.Keys
+                Dim ki As Long
+                For ki = 0 To smallParts.Count - 1
+                    Dim spParts() As String: spParts = Split(spKeys(ki), ",")
+                    If UBound(spParts) >= 1 Then
+                        Dim spCx As Double: spCx = Val(spParts(0))
+                        Dim spCy As Double: spCy = Val(spParts(1))
+                        If Abs(tpCenterX - spCx) < tol And Abs(tpCenterY - spCy) < tol Then
+                            isSmall = True
+                            Exit For
+                        End If
+                    End If
+                Next ki
 
-                If tpW < minSize Or tpH < minSize Then
+                If isSmall Then
                     smallCount = smallCount + 1
 
                     ' 计算刀具半径
@@ -287,14 +377,12 @@ NextTpDirect:
                     If Not (ni Is Nothing) Then
                         Dim geo As Path
                         For Each sh In ni.Sheets
-                            ' 检查此刀路是否属于本 Sheet
                             Dim pathsInSheet As Paths
                             Set pathsInSheet = sh.Paths
                             If Not (pathsInSheet Is Nothing) Then
                                 Dim pi As Long
                                 For pi = 1 To pathsInSheet.Count
                                     If pathsInSheet(pi).OpNo = tp.OpNo Then
-                                        ' 找到所属 Sheet
                                         Set geo = sh.Geometry
                                         If Not (geo Is Nothing) Then
                                             sheetCX = (geo.MinXL + geo.MaxXL) / 2
@@ -335,25 +423,9 @@ NextTpDirect:
                         End If
                     End If
 
-                    ' 确定朝向排版中心的那边（用于提示信息）
-                    pcx = (tpMinX + tpMaxX) / 2
-                    pcy = (tpMinY + tpMaxY) / 2
-                    dx = sheetCX - pcx
-                    dy = sheetCY - pcy
-
-                    sideName = "右"
-                    If Abs(dx) > Abs(dy) Then
-                        If dx > 0 Then sideName = "右" Else sideName = "左"
-                    Else
-                        If dy > 0 Then sideName = "上" Else sideName = "下"
-                    End If
-
                     ' ==========================================================
                     ' 应用斜角下刀：斜坡入刀 + 留连接点
                     ' ==========================================================
-                    ' LeadIn 使用 acamLeadBOTH（直线+圆弧）以实现平滑入刀
-                    ' SlopeIn=True 使刀具沿入刀线斜坡下降
-                    ' Overlap=-0.5 留 0.5mm 负重叠（连接点/tag）
                     tp.SetLeadInOutAuto acamLeadBOTH, acamLeadNONE, _
                                         lengthMult, radiusMult, 45, _
                                         True, False, -0.5
