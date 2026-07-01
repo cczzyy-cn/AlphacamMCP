@@ -382,12 +382,6 @@ loopnext:
         End If
     Next tpIdx
     
-    ' 在 On Error Resume Next 下调用 OrderAll，COM 错误会被静默吞噬，
-    ' 导致操作列表不刷新。临时恢复错误捕获以便排查，再切回 Resume Next。
-    On Error GoTo 0
-    Drw.Operations.OrderAll
-    On Error Resume Next
-    
     ' 删除正面版件原路径
     For tpIdx = 1 To tpCount
         Set tp = collectTP(tpIdx)
@@ -395,12 +389,14 @@ loopnext:
     Next tpIdx
     Erase collectTP
     
+    ' 恢复屏幕刷新后再 OrderAll（ScreenUpdating=False 时 OrderAll 不生效）
+    Drw.ScreenUpdating = True
+    Drw.Redraw
     On Error GoTo 0
     Drw.Operations.OrderAll
     On Error Resume Next
     
     If mirroredCount > 0 Then
-        Drw.ScreenUpdating = True
         Drw.Redraw
         Drw.ZoomAll
         Drw.Refresh
