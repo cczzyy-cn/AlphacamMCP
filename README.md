@@ -16,7 +16,7 @@
 
 | 文件 | 说明 |
 |---|---|
-| `server.py` | MCP 桥接器主程序（Python），通过 STDIO 协议与 AI 通信 |
+| `server.py` | MCP 桥接器主程序（Python），通过 STDIO/SSE 协议与 AI 通信 |
 | `alphacam_com.py` | AlphaCAM COM 自动化封装层 |
 | `CCC功能/` | VBA 插件合集目录（依边界裁剪、全排版刀具偏移、排版刀具排序） |
 | `RevNest_source/` | RevNest 反向排版 v1.2 插件完整源码（从 AlphaCAM 提取） |
@@ -142,9 +142,11 @@ pip install -r requirements.txt
 ### API 文档（3）
 | 工具 | 说明 |
 |---|---|
-| `list_docs` | 列出 API 文档分类及文件数 |
-| `read_doc` | 读取指定 API 文档页 |
-| `search_docs` | 搜索 API 文档 |
+| `list_docs` | 列出文档来源目录及文件分类数量 |
+| `read_doc` | 读取指定文档页（支持 API 参考、3D/4D 用户手册等） |
+| `search_docs` | 按关键词搜索全部文档（自动检测 AlphaCAM 安装目录 + 本地提取缓存） |
+
+> 文档搜索自动检测 AlphaCAM 安装目录，覆盖 **tempacamapi**（VBA API）、**ACAM3**（3D 模块）、**ACAM4**（4 轴模块）等所有已提取的 HTML 文档。未安装 AlphaCAM 时可放置 `*_html` 文件夹在 `chm/` 目录下作为离线回退。
 
 ### 实用工具（3）
 | 工具 | 说明 |

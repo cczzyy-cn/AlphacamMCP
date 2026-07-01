@@ -747,8 +747,12 @@ def _ensure_kw(**kwargs) -> dict:
 # Documentation helpers
 # ---------------------------------------------------------------------------
 
-_ALPHACAM_DIR = r"C:\Program Files (x86)\Vero Software\Alphacam 2016 R1"
-_API_DOC_DIR = os.path.join(_ALPHACAM_DIR, "tempacamapi")
+import winreg
+
+_COMMON_ACAM_DIRS = [
+    r"C:\Program Files (x86)\Vero Software\Alphacam 2016 R1",
+    r"C:\Program Files\Vero Software\Alphacam 2016 R1",
+]
 
 # Common CHM docs with descriptions
 _CHM_DOCS = {
@@ -768,19 +772,96 @@ _CHM_DOCS = {
 }
 
 
+def _detect_alphacam_dir() -> str | None:
+    """Detect the AlphaCAM installation directory (best-effort)."""
+    # Method 1: try the COM application path (if already connected)
+    try:
+        acam = get_acam()
+        info = acam.get_info()
+        exe_path = info.get("path", "")
+        if exe_path and os.path.isdir(exe_path):
+            return exe_path
+    except Exception:
+        pass
+
+    # Method 2: read registry
+    for reg_key in [
+        r"SOFTWARE\Vero Software\Alphacam 2016 R1",
+        r"SOFTWARE\WOW6432Node\Vero Software\Alphacam 2016 R1",
+        r"SOFTWARE\Licom\Alphacam\2016 R1",
+    ]:
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, reg_key) as key:
+                val, _ = winreg.QueryValueEx(key, "InstallPath")
+                if val and os.path.isdir(val):
+                    return val
+        except Exception:
+            pass
+
+    # Method 3: check common paths
+    for d in _COMMON_ACAM_DIRS:
+        if os.path.isdir(d):
+            return d
+
+    return None
+
+
+def _get_doc_roots() -> list[str]:
+    """Return directories to search for documentation HTML files."""
+    roots: list[str] = []
+
+    # 1. AlphaCAM install dir — search tempacamapi and any _html folders
+    acam_dir = _detect_alphacam_dir()
+    if acam_dir:
+        # Primary: tempacamapi (VBA API docs)
+        tempacamapi = os.path.join(acam_dir, "tempacamapi")
+        if os.path.isdir(tempacamapi):
+            roots.append(tempacamapi)
+        # Also look for _html suffixed folders (from chm_to_html extraction)
+        for entry in os.listdir(acam_dir):
+            full = os.path.join(acam_dir, entry)
+            if entry.endswith("_html") and os.path.isdir(full):
+                if full not in roots:
+                    roots.append(full)
+
+    # 2. Project-level chm/ folder (fallback for offline / extracted docs)
+    project_chm = os.path.join(_skill_dir, "chm")
+    if os.path.isdir(project_chm):
+        for entry in os.listdir(project_chm):
+            full = os.path.join(project_chm, entry)
+            if entry.endswith("_html") and os.path.isdir(full):
+                if full not in roots:
+                    roots.append(full)
+
+    return roots
+
+
+def _is_doc_file(name: str) -> bool:
+    return name.lower().endswith(".htm") or name.lower().endswith(".html")
+
+
+def _has_html_files(root: str) -> bool:
+    """Quick check whether a directory contains any .htm/.html files (non-recursive)."""
+    try:
+        for entry in os.listdir(root):
+            if _is_doc_file(entry):
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def _get_doc_categories() -> dict:
-    """Return doc categories with file counts (recursive for Objects)."""
-    categories = {}
-    base = _API_DOC_DIR
-    for entry in ["General", "Enums", "Events", "Objects", "Examples", "Post"]:
-        path = os.path.join(base, entry)
-        if os.path.isdir(path):
-            count = 0
-            for _root, _dirs, files in os.walk(path):
-                count += sum(1 for f in files
-                              if f.endswith(".htm") or f.endswith(".html"))
-            categories[entry] = count
-    return categories
+    """Return doc source directories with file counts."""
+    result: dict[str, int] = {}
+    for root in _get_doc_roots():
+        count = 0
+        for _r, _dirs, files in os.walk(root):
+            count += sum(1 for f in files if _is_doc_file(f))
+        if count > 0:
+            label = os.path.basename(root)
+            result[label] = count
+    return result
 
 
 def _find_doc_file(name: str) -> str | None:
@@ -789,16 +870,21 @@ def _find_doc_file(name: str) -> str | None:
     if not name_lower.endswith(".htm"):
         name_lower += ".htm"
 
-    for root, _dirs, files in os.walk(_API_DOC_DIR):
-        for f in files:
-            if f.lower() == name_lower:
-                return os.path.join(root, f)
+    roots = _get_doc_roots()
+
+    # First pass: exact match
+    for root in roots:
+        for r, _dirs, files in os.walk(root):
+            for f in files:
+                if f.lower() == name_lower:
+                    return os.path.join(r, f)
 
     # Second pass: partial match
-    for root, _dirs, files in os.walk(_API_DOC_DIR):
-        for f in files:
-            if f.lower().endswith(".htm") and name_lower in f.lower():
-                return os.path.join(root, f)
+    for root in roots:
+        for r, _dirs, files in os.walk(root):
+            for f in files:
+                if _is_doc_file(f) and name_lower in f.lower():
+                    return os.path.join(r, f)
 
     return None
 
@@ -832,28 +918,30 @@ def _get_doc_title(filepath: str) -> str:
 
 
 def _search_docs(query: str, max_results: int = 20) -> list[dict]:
-    """Search doc page filenames and titles for a query string."""
+    """Search doc page filenames and titles for a query string across all doc roots."""
     q = query.lower()
     results = []
-    for root, _dirs, files in os.walk(_API_DOC_DIR):
-        for f in files:
-            if not f.endswith(".htm"):
-                continue
-            filepath = os.path.join(root, f)
-            rel_path = os.path.relpath(filepath, _API_DOC_DIR)
-            score = 0
-            if q in f.lower():
-                score += 2
-            title = _get_doc_title(filepath)
-            if q in title.lower():
-                score += 1
-            if score > 0:
-                results.append({
-                    "file": f,
-                    "title": title,
-                    "path": rel_path,
-                    "score": score,
-                })
+    for root in _get_doc_roots():
+        for r, _dirs, files in os.walk(root):
+            for f in files:
+                if not _is_doc_file(f):
+                    continue
+                filepath = os.path.join(r, f)
+                rel_path = os.path.relpath(filepath, root)
+                score = 0
+                if q in f.lower():
+                    score += 2
+                title = _get_doc_title(filepath)
+                if q in title.lower():
+                    score += 1
+                if score > 0:
+                    results.append({
+                        "file": f,
+                        "title": title,
+                        "path": rel_path,
+                        "source": os.path.basename(root),
+                        "score": score,
+                    })
     results.sort(key=lambda x: -x["score"])
     return results[:max_results]
 
@@ -947,15 +1035,16 @@ async def handle_convert_chm_to_html(chm_path: str, output_dir: str | None = Non
 
 async def handle_list_docs() -> dict:
     """Handle the list_docs tool."""
+    roots = _get_doc_roots()
     categories = _get_doc_categories()
+    acam_dir = _detect_alphacam_dir()
     return {
-        "api_docs": {
-            "location": _API_DOC_DIR,
-            "total_files": sum(categories.values()),
-            "categories": categories,
-        },
+        "alphacam_install_dir": acam_dir or "(not detected)",
+        "doc_search_roots": roots,
+        "doc_categories": categories,
+        "total_html_files": sum(categories.values()),
         "chm_docs": {k: v["desc"] for k, v in _CHM_DOCS.items()},
-        "tip": "Use read_doc(name='Path_TrimWithCuttingGeos') to read a specific API page. Use search_docs(query='offset') to find docs by keyword.",
+        "tip": "Use read_doc(name='Path_TrimWithCuttingGeos') to read a specific API page. Use search_docs(query='offset') to find matching pages.",
     }
 
 
@@ -969,7 +1058,17 @@ async def handle_read_doc(name: str) -> dict:
     with open(filepath, "r", encoding="utf-8", errors="replace") as f:
         html = f.read()
     text = _strip_html(html)
-    rel_path = os.path.relpath(filepath, _API_DOC_DIR)
+    # Show path relative to the closest doc root
+    roots = _get_doc_roots()
+    rel_path = filepath
+    for root in roots:
+        try:
+            candidate = os.path.relpath(filepath, root)
+            if not candidate.startswith(".."):
+                rel_path = candidate
+                break
+        except Exception:
+            pass
     title = _get_doc_title(filepath)
     MAX_LEN = 8000
     if len(text) > MAX_LEN:
@@ -996,7 +1095,7 @@ async def handle_search_docs(query: str) -> dict:
         "query": query,
         "count": len(results),
         "results": [
-            {"file": r["file"], "title": r["title"], "path": r["path"]}
+            {"file": r["file"], "title": r["title"], "path": r["path"], "source": r.get("source", "")}
             for r in results
         ],
     }
