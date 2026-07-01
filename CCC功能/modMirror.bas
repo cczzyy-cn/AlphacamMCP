@@ -378,21 +378,20 @@ loopnext:
     Drw.ScreenUpdating = True
     Drw.Redraw
     
-    ' 通过当前 Drawing 重新获取 Operations 并调用 OrderAll
-    ' （Drw 变量可能已过期，用 App.ActiveDrawing 保证对象有效）
+    ' 用 OrderManual 重建操作列表——该 API 会强制 AlphaCAM 从路径重新创建 Operations
     On Error GoTo 0
-    ' 强制重建 Operations 列表：读取 Count 触发 AlphaCAM 重新扫描路径
-    On Error GoTo 0
-    App.ActiveDrawing.Operations.OrderAll
-    Dim dummyCount As Long
-    dummyCount = App.ActiveDrawing.Operations.Count
+    Dim orderedPaths As Paths
+    Set orderedPaths = App.ActiveDrawing.CreatePathCollection
+    Dim allP As Path
+    Set allP = App.ActiveDrawing.GetFirstToolPath
+    Do While Not (allP Is Nothing)
+        orderedPaths.Add allP
+        Set allP = allP.GetNext
+    Loop
+    If orderedPaths.Count > 0 Then
+        App.ActiveDrawing.OrderManual orderedPaths
+    End If
     On Error Resume Next
-    
-    ' 强制 Project Bar 重建（包含操作名称和顺序）
-    App.Frame.ProjectBarUpdating = False
-    DoEvents
-    App.Frame.ProjectBarUpdating = True
-    DoEvents
     
     If mirroredCount > 0 Then
         Drw.Redraw
