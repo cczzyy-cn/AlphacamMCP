@@ -11,8 +11,8 @@ from typing import Any
 from mcp.types import TextContent, CallToolResult
 
 from alphacam_com import AlphaCAM, AlphaCAMError, AlphaCAMNotRunning
-from .errors import ToolError, AlphaCAMNotConnected
-from .tools import get_tool_func, _tool_registry
+from .errors import ToolError
+from .tools import get_tool_func
 from .config import get_prog_id, get_visible
 from . import docs as doc_tools
 
@@ -42,7 +42,6 @@ def set_prog_id(prog_id: str):
     """Override the ProgID (called from CLI --progid)."""
     global _acam
     _acam = None
-    from .config import _load_dotenv
     import os
     os.environ["ALPHACAM_PROG_ID"] = prog_id
 
@@ -102,7 +101,6 @@ async def handle_tool(name: str, arguments: dict | None) -> CallToolResult:
 
     if name == "chm_to_html":
         try:
-            import asyncio
             result = await doc_tools.handle_convert_chm_to_html(
                 arguments["chm_path"],
                 arguments.get("output_dir"),

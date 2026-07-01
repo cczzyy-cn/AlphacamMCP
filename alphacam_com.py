@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import atexit
 import os
-import sys
 from typing import Any, Optional
 
 # ---------------------------------------------------------------------------
@@ -27,7 +26,6 @@ def _ensure_com():
         return
     try:
         import win32com.client as _win32com
-        from win32com.client import constants as _constants
     except ImportError:
         raise RuntimeError(
             "pywin32 is required. Install with: pip install pywin32"
@@ -252,11 +250,11 @@ class AlphaCAM:
         if drw is None:
             return {"error": "No active drawing"}
         try:
-            geos = self._safe_get(drw, "Geometries", None)
-            tps = self._safe_get(drw, "ToolPaths", None)
+            self._safe_get(drw, "Geometries", None)
+            self._safe_get(drw, "ToolPaths", None)
             ops = self._safe_get(drw, "Operations", None)
-            layers = self._safe_get(drw, "Layers", None)
-            surfs = self._safe_get(drw, "Surfaces", None)
+            self._safe_get(drw, "Layers", None)
+            self._safe_get(drw, "Surfaces", None)
             return {
                 "name": self._safe_get(drw, "Name", ""),
                 "full_name": self._safe_get(drw, "FullName", ""),
@@ -284,7 +282,7 @@ class AlphaCAM:
         try:
             count = drw.GetGeoCount()
             first = drw.GetFirstGeo()
-            last = drw.GetLastGeo()
+            drw.GetLastGeo()
             if first is not None:
                 result.append({
                     "index": 1,
@@ -310,7 +308,7 @@ class AlphaCAM:
         try:
             count = drw.GetToolPathCount()
             first = drw.GetFirstToolPath()
-            last = drw.GetLastToolPath()
+            drw.GetLastToolPath()
             if first is not None:
                 result.append({
                     "index": 1,
@@ -406,7 +404,7 @@ class AlphaCAM:
         drw = self.active_drawing
         if drw is None:
             raise AlphaCAMError("No active drawing")
-        t = drw.CreateText(height, angle, text, x, y, font, align)
+        drw.CreateText(height, angle, text, x, y, font, align)
         return {"text": text, "height": height, "x": x, "y": y}
 
     # ---- workplane & layer -----------------------------------------------
@@ -880,10 +878,14 @@ class AlphaCAM:
                 my1 = self._safe_get(geo, "MinYL", 1e20)
                 mx2 = self._safe_get(geo, "MaxXL", -1e20)
                 my2 = self._safe_get(geo, "MaxYL", -1e20)
-                if mx1 < min_x: min_x = mx1
-                if my1 < min_y: min_y = my1
-                if mx2 > max_x: max_x = mx2
-                if my2 > max_y: max_y = my2
+                if mx1 < min_x:
+                    min_x = mx1
+                if my1 < min_y:
+                    min_y = my1
+                if mx2 > max_x:
+                    max_x = mx2
+                if my2 > max_y:
+                    max_y = my2
             return {
                 "has_sheets": True,
                 "sheet_count": ni.Sheets.Count,
@@ -1169,7 +1171,7 @@ class AlphaCAM:
         # Get boundary identity marker
         boundary_len = boundary.Length
         boundary_closed = boundary.Closed
-        boundary_name = self._safe_get(boundary, "Name", "")
+        self._safe_get(boundary, "Name", "")
 
         if line_indices:
             idx = 1

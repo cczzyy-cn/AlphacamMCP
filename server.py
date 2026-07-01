@@ -18,7 +18,7 @@ from mcp.types import CallToolResult
 import mcp.server.stdio
 
 from mcp_bridge import TOOLS, handle_tool, set_prog_id
-from mcp_bridge.config import get_acPort, get_sse_token
+from mcp_bridge.config import get_acPort
 
 logging.basicConfig(
     level=logging.INFO,

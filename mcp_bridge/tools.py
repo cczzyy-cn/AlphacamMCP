@@ -9,8 +9,7 @@ import inspect
 import logging
 from typing import Any, Callable
 
-from .errors import ToolError, ToolComError, ToolArgumentError
-from .config import detect_alphacam_dir, CHM_DOCS
+from .errors import ToolComError
 
 log = logging.getLogger("alphacam-bridge.tools")
 
@@ -62,7 +61,7 @@ def mcp_tool(tool_name: str, description: str, **properties):
             return acam.create_circle(diameter, xc, yc)
     """
     def decorator(func):
-        sig = inspect.signature(func)
+        inspect.signature(func)
         required = _get_tool_required_params(func)
 
         _tool_registry[tool_name] = func
@@ -140,12 +139,10 @@ TOOLS.extend(_DOC_TOOLS)
 async def com_call(func, *args, max_retries: int = 2, delay: float = 0.5,
                    **kwargs) -> Any:
     """Call a COM method with automatic retry on transient errors."""
-    last_error = None
     for attempt in range(max_retries):
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            last_error = e
             if attempt < max_retries - 1:
                 log.warning(f"COM call failed (attempt {attempt + 1}): {e}")
                 await asyncio.sleep(delay)
