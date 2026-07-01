@@ -1,0 +1,135 @@
+Private Declare PtrSafe Function FindWindow Lib "user32" Alias "FindWindowA" (ByVal lpClassName As String, ByVal lpWindowName As String) As Long
+Private Declare PtrSafe Function GetWindowLong Lib "user32" Alias "GetWindowLongA" (ByVal hWnd As Long, ByVal nIndex As Long) As Long
+Private Declare PtrSafe Function SetWindowLong Lib "user32" Alias "SetWindowLongA" (ByVal hWnd As Long, ByVal nIndex As Long, ByVal dwNewLong As Long) As Long
+Private Declare PtrSafe Function SetWindowPos Lib "user32" (ByVal hWnd As Long, ByVal hWndInsertAfter As Long, ByVal X As Long, ByVal Y As Long, ByVal cx As Long, ByVal cy As Long, ByVal wFlags As Long) As Long
+Private Const GWL_STYLE As Long = (-16)
+Private Const WS_MINIMIZEBOX As Long = &H20000
+Private Const SWP_NOSIZE As Long = &H1
+Private Const SWP_NOMOVE As Long = &H2
+Private Const SWP_NOZORDER As Long = &H4
+Private Const SWP_FRAMECHANGED As Long = &H20
+Private Sub AddMinButton(frm As Object)
+    Dim hWnd As Long
+    hWnd = FindWindow("ThunderDFrame", frm.Caption)
+    If hWnd = 0 Then hWnd = FindWindow("ThunderRT5Form", frm.Caption)
+    If hWnd = 0 Then Exit Sub
+    Dim style As Long
+    style = GetWindowLong(hWnd, GWL_STYLE)
+    style = style Or WS_MINIMIZEBOX
+    SetWindowLong hWnd, GWL_STYLE, style
+    SetWindowPos hWnd, 0, 0, 0, 0, 0, SWP_NOMOVE Or SWP_NOSIZE Or SWP_NOZORDER Or SWP_FRAMECHANGED
+End Sub
+Private Sub UserForm_Activate(): AddMinButton Me: End Sub
+Private Sub UserForm_Initialize()
+    Me.Caption = "斜角下刀"
+    ' 默认值
+    txtMinSize.Text = "250"
+    txtCutDepth.Text = "18"
+    txtRampAngle.Text = "30"
+
+    ' 扫描加工方式+刀具组合
+    Dim drw As Drawing: Set drw = App.ActiveDrawing
+    If drw Is Nothing Then Exit Sub
+    Dim ops As Operations: Set ops = drw.Operations
+    Dim i As Long, j As Long
+
+    ' 无 Operations 时从刀具路径直接扫描
+    If ops Is Nothing Or ops.Count = 0 Then
+        Dim tpIdx As Long
+        Dim tpCnt As Long: tpCnt = drw.GetToolPathCount
+        If tpCnt > 0 Then
+            Dim tpItem As Path: Set tpItem = drw.GetFirstToolPath
+            For tpIdx = 1 To tpCnt
+                If Not (tpItem Is Nothing) Then
+                    Dim tItem As MillTool: Set tItem = tpItem.GetTool
+                    If Not (tItem Is Nothing) Then
+                        Dim dispTxt As String: dispTxt = "T" & CStr(tItem.Number) & " " & tItem.Name
+                        Dim foundDup As Boolean: foundDup = False
+                        Dim kk As Long
+                        For kk = 0 To cmbMethodTool.ListCount - 1
+                            If cmbMethodTool.List(kk) = dispTxt Then foundDup = True: Exit For
+                        Next kk
+                        If Not foundDup Then cmbMethodTool.AddItem dispTxt
+                    End If
+                    Set tpItem = tpItem.GetNext
+                End If
+            Next tpIdx
+        End If
+        If cmbMethodTool.ListCount > 0 Then cmbMethodTool.ListIndex = 0
+        Exit Sub
+    End If
+
+    ' 通过 Operations → SubOperations 扫描
+    For i = 1 To ops.Count
+        Dim op As Operation: Set op = ops(i)
+        Dim subs As SubOperations: Set subs = op.SubOperations
+        If Not (subs Is Nothing) Then
+            For j = 1 To subs.Count
+                Dim subop As SubOperation: Set subop = subs(j)
+                Dim t As MillTool: Set t = subop.Tool
+                If Not (t Is Nothing) Then
+                    Dim procName As String: procName = subop.Name
+                    Dim spacePos As Integer
+                    spacePos = InStr(procName, "  ")
+                    If spacePos > 0 Then
+                        procName = Left(procName, spacePos - 1)
+                    Else
+                        spacePos = InStr(procName, " ")
+                        If spacePos > 0 Then procName = Left(procName, spacePos - 1)
+                    End If
+                    Dim displayText As String: displayText = procName & " - T" & CStr(t.Number) & " " & t.Name
+                    Dim found As Boolean: found = False
+                    Dim k As Long
+                    For k = 0 To cmbMethodTool.ListCount - 1
+                        If cmbMethodTool.List(k) = displayText Then found = True: Exit For
+                    Next k
+                    If Not found Then cmbMethodTool.AddItem displayText
+                End If
+            Next j
+        End If
+    Next i
+    If cmbMethodTool.ListCount > 0 Then cmbMethodTool.ListIndex = 0
+End Sub
+Private Sub cmdOK_Click()
+    ' 验证输入
+    If cmbMethodTool.ListIndex < 0 Then
+        MsgBox "请选择加工方式-刀具！", vbExclamation, "斜角下刀"
+        Exit Sub
+    End If
+    Dim minSize As Double: minSize = Val(txtMinSize.Text)
+    Dim cutDepth As Double: cutDepth = Abs(Val(txtCutDepth.Text))
+    Dim rampAngle As Double: rampAngle = Val(txtRampAngle.Text)
+    If minSize <= 0 Then MsgBox "小条范围必须大于 0！", vbExclamation, "斜角下刀": Exit Sub
+    If cutDepth <= 0 Then MsgBox "切割深度必须大于 0！", vbExclamation, "斜角下刀": Exit Sub
+    If rampAngle <= 0 Or rampAngle >= 90 Then MsgBox "下刀角度必须在 1~89 之间！", vbExclamation, "斜角下刀": Exit Sub
+
+    ' 提取选择的加工方式+刀具信息
+    ' 显示格式: "粗加工 - T1 6mm Endmill"
+    Dim selText As String: selText = Trim(cmbMethodTool.Text)
+    Dim dashPos As Integer: dashPos = InStr(selText, " - ")
+    Dim methodName As String: methodName = ""
+    Dim toolMatch As String: toolMatch = ""
+    If dashPos > 0 Then
+        methodName = Trim(Left(selText, dashPos - 1))
+        ' "T3 6MM刀具" → 跳过 "T#" 前缀，只取刀具名
+        Dim rawTool As String: rawTool = Trim(Mid(selText, dashPos + 3))
+        Dim skipT As Integer: skipT = InStr(rawTool, " ")
+        If skipT > 0 Then
+            toolMatch = Trim(Mid(rawTool, skipT + 1))
+        Else
+            toolMatch = rawTool
+        End If
+        ' 额外提取 T 号用于数字匹配
+        Dim tNum As Long: tNum = 0
+        If Left(rawTool, 1) = "T" Then
+            tNum = CLng(Val(Mid(rawTool, 2)))
+        End If
+    Else
+        toolMatch = selText
+    End If
+
+    ' 调用执行
+    Unload Me
+    modRamp.ApplyRampEntry minSize, cutDepth, rampAngle, methodName, toolMatch, tNum
+End Sub
+Private Sub cmdCancel_Click(): Unload Me: End Sub

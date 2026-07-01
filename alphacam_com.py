@@ -636,6 +636,11 @@ class AlphaCAM:
             "sides": "Sides",
             "side_angle": "SideAngle",
             "pocket_type": "PocketType",
+            "auto_z": "AutoZ",
+            "auto_z_ramp_angle": "AutoZRampAngle",
+            "auto_z_max_depth_per_cut": "AutoZMaxDepthOfCut",
+            "auto_z_min_depth_per_cut": "AutoZMinDepthOfCut",
+            "helical_interpolation": "HelicalInterpolation",
         }
         for py_name, acam_name in prop_map.items():
             if py_name in params:

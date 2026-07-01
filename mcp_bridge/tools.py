@@ -358,12 +358,20 @@ async def handle_get_current_tool(acam, **kw):
     mc_comp={"type": "integer", "description": "0=ToolCenter, 1=MC, 2=Both"},
     bidirectional={"type": "boolean", "description": "Bidirectional cutting"},
     coolant={"type": "integer", "description": "0=None, 1=Mist, 2=Flood, 3=Tool"},
+    auto_z={"type": "boolean", "description": "True for automatic multi-level cuts"},
+    auto_z_ramp_angle={"type": "number", "description": "Ramp angle for auto-z cuts (degrees)"},
+    auto_z_max_depth_per_cut={"type": "number", "description": "Max depth per pass for auto-z"},
+    auto_z_min_depth_per_cut={"type": "number", "description": "Min depth per pass for auto-z"},
+    helical_interpolation={"type": "boolean", "description": "True to use helical interpolation for rough/finish"},
 )
 async def handle_run_machining(acam, process_type=1, cut_feed=1000, down_feed=500,
                                 spindle_speed=6000, depth_of_cut=2, final_depth=-5,
                                 material_top=0, safe_rapid_level=20, rapid_down_to=1,
                                 stock=0, width_of_cut=None, mc_comp=0,
-                                bidirectional=False, coolant=0, **kw):
+                                bidirectional=False, coolant=0,
+                                auto_z=None, auto_z_ramp_angle=None,
+                                auto_z_max_depth_per_cut=None, auto_z_min_depth_per_cut=None,
+                                helical_interpolation=None, **kw):
     return acam.run_machining(
         process_type=process_type, cut_feed=cut_feed, down_feed=down_feed,
         spindle_speed=spindle_speed, depth_of_cut=depth_of_cut,
@@ -371,6 +379,10 @@ async def handle_run_machining(acam, process_type=1, cut_feed=1000, down_feed=50
         safe_rapid_level=safe_rapid_level, rapid_down_to=rapid_down_to,
         stock=stock, width_of_cut=width_of_cut, mc_comp=mc_comp,
         bidirectional=bidirectional, coolant=coolant,
+        auto_z=auto_z, auto_z_ramp_angle=auto_z_ramp_angle,
+        auto_z_max_depth_per_cut=auto_z_max_depth_per_cut,
+        auto_z_min_depth_per_cut=auto_z_min_depth_per_cut,
+        helical_interpolation=helical_interpolation,
     )
 
 # ----- VBA & AddIn (4) ----------------------------------------------------
