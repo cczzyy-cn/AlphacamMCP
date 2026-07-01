@@ -74,6 +74,21 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     Dim selToolNum As Long
     Dim procName As String
     Dim foundSheet As Boolean
+    Dim smallParts As Object
+    Dim partGeo As Path
+    Dim geoIdx2 As Long
+    Dim sheetGeo2 As Path
+    Dim partCX As Double, partCY As Double
+    Dim partW As Double, partH As Double
+    Dim spKey As String
+    Dim tpItem As Path
+    Dim tpCenterX As Double, tpCenterY As Double
+    Dim isSmall As Boolean
+    Dim tol As Double
+    Dim spKeys As Variant
+    Dim ki As Long
+    Dim spParts As Variant
+    Dim spCx As Double, spCy As Double
 
     ' --- 基本检查 ---
     Set drw = App.ActiveDrawing
@@ -214,17 +229,16 @@ NextSheet0:
                 ' 判断是否为小板件
                 tpMinX = tpItem.MinXL: tpMaxX = tpItem.MaxXL
                 tpMinY = tpItem.MinYL: tpMaxY = tpItem.MaxYL
-                Dim tpCenterX As Double: tpCenterX = (tpMinX + tpMaxX) / 2
-                Dim tpCenterY As Double: tpCenterY = (tpMinY + tpMaxY) / 2
-                Dim isSmall As Boolean: isSmall = False
-                Dim tol As Double: tol = 20
-                Dim spKeys As Variant: spKeys = smallParts.Keys
-                Dim ki As Long
+                tpCenterX = (tpMinX + tpMaxX) / 2
+                tpCenterY = (tpMinY + tpMaxY) / 2
+                isSmall = False
+                tol = 20
+                spKeys = smallParts.Keys
                 For ki = 0 To smallParts.Count - 1
-                    Dim spParts() As String: spParts = Split(spKeys(ki), ",")
+                    spParts = Split(spKeys(ki), ",")
                     If UBound(spParts) >= 1 Then
-                        Dim spCx As Double: spCx = Val(spParts(0))
-                        Dim spCy As Double: spCy = Val(spParts(1))
+                        spCx = Val(spParts(0))
+                        spCy = Val(spParts(1))
                         If Abs(tpCenterX - spCx) < tol And Abs(tpCenterY - spCy) < tol Then
                             isSmall = True
                             Exit For
@@ -336,17 +350,16 @@ NextTpDirect:
                 ' 判断是否为小板件：检查刀具路径中心是否靠近 Phase 0 识别的几何
                 tpMinX = tp.MinXL: tpMaxX = tp.MaxXL
                 tpMinY = tp.MinYL: tpMaxY = tp.MaxYL
-                Dim tpCenterX As Double: tpCenterX = (tpMinX + tpMaxX) / 2
-                Dim tpCenterY As Double: tpCenterY = (tpMinY + tpMaxY) / 2
-                Dim isSmall As Boolean: isSmall = False
-                Dim tol As Double: tol = 20  ' 20mm 容差
-                Dim spKeys As Variant: spKeys = smallParts.Keys
-                Dim ki As Long
+                tpCenterX = (tpMinX + tpMaxX) / 2
+                tpCenterY = (tpMinY + tpMaxY) / 2
+                isSmall = False
+                tol = 20
+                spKeys = smallParts.Keys
                 For ki = 0 To smallParts.Count - 1
-                    Dim spParts() As String: spParts = Split(spKeys(ki), ",")
+                    spParts = Split(spKeys(ki), ",")
                     If UBound(spParts) >= 1 Then
-                        Dim spCx As Double: spCx = Val(spParts(0))
-                        Dim spCy As Double: spCy = Val(spParts(1))
+                        spCx = Val(spParts(0))
+                        spCy = Val(spParts(1))
                         If Abs(tpCenterX - spCx) < tol And Abs(tpCenterY - spCy) < tol Then
                             isSmall = True
                             Exit For
