@@ -396,6 +396,10 @@ loopnext:
     Drw.Operations.OrderAll
     On Error Resume Next
     
+    ' 强制刷新 Project Bar 以更新操作名称和顺序显示
+    App.Frame.ProjectBarUpdating = False
+    App.Frame.ProjectBarUpdating = True
+    
     If mirroredCount > 0 Then
         Drw.Redraw
         Drw.ZoomAll
