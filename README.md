@@ -62,7 +62,7 @@ pip install -r requirements.txt
 }
 ```
 
-## MCP 工具清单（49 个）
+## MCP 工具清单（52 个）
 
 ### 状态与信息（2）
 | 工具 | 说明 |
@@ -90,6 +90,11 @@ pip install -r requirements.txt
 | `create_polygon` | 创建正多边形（指定边数/半径） |
 | `create_ellipse` | 创建椭圆（指定长/短轴） |
 | `create_text` | 创建文字标注 |
+
+### 几何查询（1）
+| 工具 | 说明 |
+|---|---|
+| `get_all_geometries` | 列出全部几何的完整信息（类型、范围、属性） |
 
 ### 查询列表（3）
 | 工具 | 说明 |
@@ -127,12 +132,41 @@ pip install -r requirements.txt
 | `set_workplane` | 设置当前工作平面 |
 | `create_layer` | 创建或获取图层（可设颜色） |
 
-### VBA 与插件（3）
+### 屏幕控制（2）
+| 工具 | 说明 |
+|---|---|
+| `lock_acam` | 禁用屏幕刷新（批量操作时加速） |
+| `unlock_acam` | 恢复屏幕刷新（可选缩放全图） |
+
+### 路径操作（5）
+| 工具 | 说明 |
+|---|---|
+| `mirror_path` | 沿直线镜像路径（几何/刀具路径） |
+| `offset_path` | 偏置封闭路径（左/右侧，指定距离） |
+| `copy_temporary_store` | 复制路径为临时几何，可镜像后存储 |
+| `get_path_attributes` | 读取路径的用户属性 |
+| `set_path_attribute` | 设置路径的用户属性 |
+
+### 排版信息（3）
+| 工具 | 说明 |
+|---|---|
+| `has_nesting` | 检查当前图纸是否包含排版信息 |
+| `get_nesting_info` | 获取排版详情（Sheet、零件、实例数据） |
+| `get_sheet_extents` | 获取全部排版 Sheet 的全局范围 |
+
+### 操作排序（2）
+| 工具 | 说明 |
+|---|---|
+| `order_operations_all` | 按排版 Sheet 顺序自动排序所有刀具路径 |
+| `order_manual` | 手动指定顺序重排几何/刀具路径 |
+
+### VBA 与插件（4）
 | 工具 | 说明 |
 |---|---|
 | `run_vba_macro` | 运行 VBA 宏（支持传参） |
 | `load_addin` | 加载插件 DLL / VBA 项目 |
 | `enable_addin` | 启用/禁用插件 |
+| `list_addins` | 列出已加载的全部插件 |
 
 ### 后处理器（1）
 | 工具 | 说明 |
@@ -143,10 +177,15 @@ pip install -r requirements.txt
 | 工具 | 说明 |
 |---|---|
 | `list_docs` | 列出文档来源目录及文件分类数量 |
-| `read_doc` | 读取指定文档页（支持 API 参考、3D/4D 用户手册等） |
-| `search_docs` | 按关键词搜索全部文档（自动检测 AlphaCAM 安装目录 + 本地提取缓存） |
+| `read_doc` | 读取指定文档页（API 参考、3D/4D 用户手册等） |
+| `search_docs` | 按关键词搜索全部文档（自动检测 AlphaCAM 安装目录） |
 
 > 文档搜索自动检测 AlphaCAM 安装目录，覆盖 **tempacamapi**（VBA API）、**ACAM3**（3D 模块）、**ACAM4**（4 轴模块）等所有已提取的 HTML 文档。未安装 AlphaCAM 时可放置 `*_html` 文件夹在 `chm/` 目录下作为离线回退。
+
+### 文档转换（1）
+| 工具 | 说明 |
+|---|---|
+| `chm_to_html` | 将 `.chm` 编译帮助文件转换为 HTML 文件 |
 
 ### 实用工具（3）
 | 工具 | 说明 |
