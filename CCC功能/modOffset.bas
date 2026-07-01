@@ -38,7 +38,7 @@ Public Sub ApplyToolOffset(ByVal selectedTool As String, ByVal xOff As Double, B
                         isMatch = True
                     ElseIf InStr(1, t.Name, selTool, vbTextCompare) > 0 Then
                         isMatch = True
-                    ElseIf Not foundFirst And InStr(1, CStr(t.Number), selTool, vbTextCompare) > 0 Then
+                    ElseIf Not foundFirst And CStr(t.Number) = selTool Then
                         isMatch = True
                     ElseIf Left(selTool, 1) = "T" Then
                         Dim tNumVal As Long: tNumVal = Val(Mid(selTool, 2))
@@ -72,7 +72,7 @@ Public Sub ApplyToolOffset(ByVal selectedTool As String, ByVal xOff As Double, B
                 If Not (tpP2 Is Nothing) Then
                     Dim t2 As MillTool: Set t2 = tpP2.GetTool
                     If Not (t2 Is Nothing) Then
-                        If t2.Name = selectedTool Or (selectedTool <> "" And (InStr(1, t2.Name, selectedTool, vbTextCompare) > 0 Or InStr(1, CStr(t2.Number), selectedTool, vbTextCompare) > 0)) Then
+                        If t2.Name = selTool Or (selTool <> "" And (InStr(1, t2.Name, selTool, vbTextCompare) > 0 Or CStr(t2.Number) = selTool)) Then
                             tpP2.MoveG xOff, yOff, zOff: count = count + 1
                         End If
                     End If

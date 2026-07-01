@@ -289,6 +289,10 @@ loopnext:
         Next I
     Next sh
     
+    ' 修正：Renumber 已将所有路径合并到 lastop，lastop 已成为"垃圾收集操作"。
+    ' 在此递增 lastop，使其指向一个干净的空操作号给第一组镜像路径使用。
+    lastop = lastop + 1
+    
     ' 镜像匹配的刀具路径（保留原路径，后面再删除）
     ' 分组策略：解散原 OP，按加工方式+刀具重新分组
     ' 加工方式从原始 SubOperation 名称提取（"刀具" 前部分）

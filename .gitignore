@@ -14,3 +14,7 @@ nul
 
 # Reasonix tool metadata
 .reasonix/
+
+# CHM files (extracted help docs, 500MB+, regeneratable)
+chm/
+ReverseNest_extracted/

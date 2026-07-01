@@ -487,10 +487,36 @@ Public Sub ApplySortToDrawing(ByRef sortedKeys() As String)
         Next sj
     Next si
     
-    ' --- 3e: 让 AlphaCAM 按 OpNo 重新排序所有刀具路径 ---
+    ' --- 3e: 给未匹配用户排序键的路径分配 OpNo（排在所有已排序路径之后）---
+    ' 已匹配的路径 OpNo = 101, 102, 103...，未匹配的仍为 0，
+    ' 如果不赋值，OrderAll 会把 OpNo=0 的路径排在最前面。
+    pos = sheetCount2 * 100 + 999   ' 从已排序路径之后开始
+    For ox = 1 To ops.Count
+        Set oc = ops(ox)
+        Set sc = oc.SubOperations
+        If Not (sc Is Nothing) Then
+            For sx = 1 To sc.Count
+                Set sbc = sc(sx)
+                Set tpc = sbc.ToolPaths
+                If Not (tpc Is Nothing) Then
+                    For tx = 1 To tpc.Count
+                        Set tpc2 = tpc(tx)
+                        If Not (tpc2 Is Nothing) Then
+                            If tpc2.OpNo = 0 Then
+                                pos = pos + 1
+                                tpc2.OpNo = pos
+                            End If
+                        End If
+                    Next tx
+                End If
+            Next sx
+        End If
+    Next ox
+    
+    ' --- 3f: 让 AlphaCAM 按 OpNo 重新排序所有刀具路径 ---
     ops.OrderAll
     
-    ' --- 3f: 恢复屏幕刷新并重绘 ---
+    ' --- 3g: 恢复屏幕刷新并重绘 ---
     drw.ScreenUpdating = True
     drw.Redraw
     

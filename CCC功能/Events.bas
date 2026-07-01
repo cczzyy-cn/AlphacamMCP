@@ -4,8 +4,6 @@
 Option Explicit
 Option Private Module
 
-Public g_mapPathToSheet As Object
-
 Function InitAlphacamAddIn(AcamVersion As Long) As Integer
     Dim frm As Frame: Set frm = App.Frame
     With frm

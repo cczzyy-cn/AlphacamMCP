@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import logging
 import os
@@ -676,6 +677,49 @@ TOOLS: list[dict] = [
             "required": ["query"],
         },
     },
+    # ----- Operations Ordering -----
+    {
+        "name": "order_operations_all",
+        "description": "Order all tool paths to match nested sheet order (equivalent to the 'Order Toolpaths in Nested Sheets' button in the Operations panel).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "order_manual",
+        "description": "Reorder geometries or tool paths in a specified order by providing a list of 1-based path indices.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path_indices": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "1-based indices of paths in the desired order",
+                },
+            },
+            "required": ["path_indices"],
+        },
+    },
+    # ----- CHM Conversion -----
+    {
+        "name": "chm_to_html",
+        "description": "Convert a .chm (Compiled HTML Help) file to HTML files using hh.exe. Extracts all pages, images, and assets to an output directory.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "chm_path": {
+                    "type": "string",
+                    "description": "Full path to the .chm file to convert",
+                },
+                "output_dir": {
+                    "type": "string",
+                    "description": "Optional output directory path. If omitted, creates a folder next to the .chm file with the same base name plus '_html'",
+                },
+            },
+            "required": ["chm_path"],
+        },
+    },
 ]
 
 
@@ -812,6 +856,93 @@ def _search_docs(query: str, max_results: int = 20) -> list[dict]:
                 })
     results.sort(key=lambda x: -x["score"])
     return results[:max_results]
+
+async def handle_convert_chm_to_html(chm_path: str, output_dir: str | None = None) -> dict:
+    """Convert a .chm file to HTML using hh.exe decompile.
+
+    Args:
+        chm_path: Path to the .chm file.
+        output_dir: Optional output directory. Defaults to <chm_name>_html next to the file.
+
+    Returns:
+        dict with output_dir, file_count, total_size, and a list of extracted files.
+    """
+    import shutil
+    import subprocess
+    import tempfile
+
+    # Validate input
+    if not os.path.isfile(chm_path):
+        raise FileNotFoundError(f"CHM file not found: {chm_path}")
+    if not chm_path.lower().endswith(".chm"):
+        raise ValueError(f"File is not a .chm file: {chm_path}")
+
+    # Determine output directory
+    if output_dir is None:
+        base = os.path.splitext(chm_path)[0]
+        output_dir = base + "_html"
+
+    output_dir = os.path.abspath(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+
+    # hh.exe -decompile can fail silently on long paths, so copy the CHM
+    # to a short temp name first.
+    chm_abspath = os.path.abspath(chm_path)
+    chm_dir, chm_name = os.path.split(chm_abspath)
+    with tempfile.TemporaryDirectory(prefix="chm_extract_") as tmp_dir:
+        tmp_chm = os.path.join(tmp_dir, "source.chm")
+        shutil.copy2(chm_abspath, tmp_chm)
+
+        cmd = [
+            "hh.exe",
+            "-decompile",
+            output_dir,
+            tmp_chm,
+        ]
+        log.info(f"Running: {' '.join(cmd)}")
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=120
+            )
+        except asyncio.TimeoutError:
+            raise RuntimeError(
+                "hh.exe timed out after 120 seconds. The .chm file may be "
+                "corrupted or very large."
+            )
+
+        if proc.returncode != 0:
+            error_msg = stderr.decode("utf-8", errors="replace").strip()
+            raise RuntimeError(
+                f"hh.exe failed (exit code {proc.returncode}): {error_msg}"
+            )
+
+    # Collect extracted files
+    extracted = []
+    total_size = 0
+    for root, _dirs, files in os.walk(output_dir):
+        for f in sorted(files):
+            filepath = os.path.join(root, f)
+            size = os.path.getsize(filepath)
+            total_size += size
+            rel_path = os.path.relpath(filepath, output_dir)
+            extracted.append({
+                "path": rel_path,
+                "size": size,
+            })
+
+    return {
+        "output_dir": output_dir,
+        "chm_file": os.path.abspath(chm_path),
+        "file_count": len(extracted),
+        "total_size_bytes": total_size,
+        "files": extracted,
+    }
 
 
 async def handle_list_docs() -> dict:
@@ -1055,6 +1186,12 @@ async def handle_tool(name: str, arguments: dict | None) -> CallToolResult:
             result = acam.get_all_geometries(
                 arguments.get("include_attributes", False))
 
+        # Operations Ordering
+        elif name == "order_operations_all":
+            result = acam.order_operations_all()
+        elif name == "order_manual":
+            result = acam.order_manual(arguments["path_indices"])
+
         # Documentation
         elif name == "list_docs":
             result = await handle_list_docs()
@@ -1062,6 +1199,10 @@ async def handle_tool(name: str, arguments: dict | None) -> CallToolResult:
             result = await handle_read_doc(arguments["name"])
         elif name == "search_docs":
             result = await handle_search_docs(arguments["query"])
+        elif name == "chm_to_html":
+            result = await handle_convert_chm_to_html(
+                arguments["chm_path"],
+                arguments.get("output_dir"))
 
         else:
             return CallToolResult(

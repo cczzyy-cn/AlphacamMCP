@@ -895,6 +895,50 @@ class AlphaCAM:
         except Exception as exc:
             return {"error": str(exc)}
 
+    def order_operations_all(self) -> dict:
+        """Order all tool paths to match nested sheet order (Order Toolpaths in Nested Sheets).
+
+        Calls Operations.OrderAll to reorder operations so they match the
+        order of the nested sheets to which they belong.
+        """
+        drw = self.active_drawing
+        if drw is None:
+            raise AlphaCAMError("No active drawing")
+        try:
+            drw.Operations.OrderAll
+            return {"status": "ok", "message": "Operations ordered by nested sheet order"}
+        except Exception as exc:
+            raise AlphaCAMError(f"OrderAll failed: {exc}") from exc
+
+    def order_manual(self, path_indices: list[int]) -> dict:
+        """Reorder geometries or tool paths in a specified order.
+
+        Calls Drawing.OrderManual with a Paths collection built from the
+        given 1-based path indices.
+
+        Args:
+            path_indices: 1-based indices of paths in the desired order.
+        """
+        drw = self.active_drawing
+        if drw is None:
+            raise AlphaCAMError("No active drawing")
+        try:
+            paths_col = drw.CreatePathCollection()
+            for idx in path_indices:
+                p = drw.Path(idx)
+                if p is None:
+                    raise AlphaCAMError(f"Path at index {idx} not found")
+                paths_col.Add(p)
+            drw.OrderManual(paths_col)
+            return {
+                "status": "ok",
+                "message": f"Paths reordered ({len(path_indices)} paths)",
+            }
+        except AlphaCAMError:
+            raise
+        except Exception as exc:
+            raise AlphaCAMError(f"OrderManual failed: {exc}") from exc
+
     def mirror_path(self, x1: float, y1: float, x2: float, y2: float, path_index: int = 0) -> dict:
         drw = self.active_drawing
         if drw is None:
