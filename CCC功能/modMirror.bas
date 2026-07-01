@@ -389,16 +389,21 @@ loopnext:
     Next tpIdx
     Erase collectTP
     
-    ' 恢复屏幕刷新后再 OrderAll（ScreenUpdating=False 时 OrderAll 不生效）
+    ' 恢复屏幕刷新
     Drw.ScreenUpdating = True
     Drw.Redraw
+    
+    ' 通过当前 Drawing 重新获取 Operations 并调用 OrderAll
+    ' （Drw 变量可能已过期，用 App.ActiveDrawing 保证对象有效）
     On Error GoTo 0
-    Drw.Operations.OrderAll
+    App.ActiveDrawing.Operations.OrderAll
     On Error Resume Next
     
-    ' 强制刷新 Project Bar 以更新操作名称和顺序显示
+    ' 强制 Project Bar 重建（包含操作名称和顺序）
     App.Frame.ProjectBarUpdating = False
+    DoEvents
     App.Frame.ProjectBarUpdating = True
+    DoEvents
     
     If mirroredCount > 0 Then
         Drw.Redraw
