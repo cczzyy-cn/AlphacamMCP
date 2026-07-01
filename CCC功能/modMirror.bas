@@ -275,6 +275,38 @@ loopnext:
         GoTo afterPhase2
     End If
     
+    ' ======================================================================
+    ' 缓存每条路径的原始 OpNo 和所属版件名称（在 Renumber 之前执行，
+    ' 因为 Renumber 会改变所有 OpNo，导致后续无法区分路径属于哪张板）
+    ' ======================================================================
+    Dim origOpNos() As Long
+    Dim sheetNames() As String
+    ReDim origOpNos(1 To tpCount)
+    ReDim sheetNames(1 To tpCount)
+    
+    For tpIdx = 1 To tpCount
+        Set tp = collectTP(tpIdx)
+        If Not (tp Is Nothing) Then
+            origOpNos(tpIdx) = tp.OpNo
+            
+            ' 在当前 OpNo（原始值）下查找所属版件
+            Dim shtName As String: shtName = ""
+            Dim s3 As NestSheet
+            For Each s3 In ni.Sheets
+                Dim tpInSht As Path
+                For Each tpInSht In s3.Paths
+                    If tpInSht.OpNo = origOpNos(tpIdx) Then
+                        shtName = s3.Geometry.Attribute(ATT_SHEET_IDENT)
+                        Exit For
+                    End If
+                Next tpInSht
+                If shtName <> "" Then Exit For
+            Next s3
+            If shtName = "" Then shtName = "未知"
+            sheetNames(tpIdx) = shtName
+        End If
+    Next tpIdx
+    
     lastop = Drw.Operations.count + 1
     
     ' 按 Sheet 排序
@@ -310,19 +342,9 @@ loopnext:
             Dim tNum As Long: tNum = 0
             If Not (mTool Is Nothing) Then tNum = mTool.Number
             
-            ' 获取该路径所在的版件名称
+            ' 获取该路径所在的版件名称（从 Renumber 前的预缓存中读取）
             Dim sheetName As String: sheetName = ""
-            Dim s2 As NestSheet
-            For Each s2 In ni.Sheets
-                Dim tpInSheet As Path
-                For Each tpInSheet In s2.Paths
-                    If tpInSheet.OpNo = tp.OpNo Then
-                        sheetName = s2.Geometry.Attribute(ATT_SHEET_IDENT)
-                        Exit For
-                    End If
-                Next tpInSheet
-                If sheetName <> "" Then Exit For
-            Next s2
+            If tpIdx <= UBound(sheetNames) Then sheetName = sheetNames(tpIdx)
             If sheetName = "" Then sheetName = "未知"
             
             ' 分组键：版件 + 刀具号（加工方式由刀具决定）
