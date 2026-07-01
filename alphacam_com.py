@@ -1092,7 +1092,12 @@ class AlphaCAM:
         try:
             val = getattr(obj, attr)
             if callable(val):
-                return val()
+                # COM dispatch objects (CDispatch) are callable but are
+                # properties, not methods — calling them would fail.
+                # Only call actual methods (functions/builtins).
+                type_name = type(val).__name__
+                if type_name not in ('CDispatch', 'Dispatch'):
+                    return val()
             return val
         except Exception:
             return default
