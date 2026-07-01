@@ -378,21 +378,6 @@ loopnext:
     Drw.ScreenUpdating = True
     Drw.Redraw
     
-    ' 用 OrderManual 重建操作列表——该 API 会强制 AlphaCAM 从路径重新创建 Operations
-    On Error GoTo 0
-    Dim orderedPaths As Paths
-    Set orderedPaths = App.ActiveDrawing.CreatePathCollection
-    Dim allP As Path
-    Set allP = App.ActiveDrawing.GetFirstToolPath
-    Do While Not (allP Is Nothing)
-        orderedPaths.Add allP
-        Set allP = allP.GetNext
-    Loop
-    If orderedPaths.Count > 0 Then
-        App.ActiveDrawing.OrderManual orderedPaths
-    End If
-    On Error Resume Next
-    
     If mirroredCount > 0 Then
         Drw.Redraw
         Drw.ZoomAll

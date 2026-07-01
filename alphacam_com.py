@@ -898,15 +898,36 @@ class AlphaCAM:
     def order_operations_all(self) -> dict:
         """Order all tool paths to match nested sheet order (Order Toolpaths in Nested Sheets).
 
-        Calls Operations.OrderAll to reorder operations so they match the
-        order of the nested sheets to which they belong.
+        Uses NestInformation to collect paths sheet-by-sheet, then calls
+        Drawing.OrderManual to reorder them. This is the exact equivalent
+        of the 'Order Toolpaths in Nested Sheets' button in the Operations panel.
         """
         drw = self.active_drawing
         if drw is None:
             raise AlphaCAMError("No active drawing")
         try:
-            drw.Operations.OrderAll
-            return {"status": "ok", "message": "Operations ordered by nested sheet order"}
+            ni = drw.GetNestInformation()
+            if ni is None or ni.Sheets.Count == 0:
+                # No nesting — fallback to simple OrderAll
+                drw.Operations.OrderAll
+                return {"status": "ok", "method": "OrderAll", "message": "No nesting info, used OrderAll"}
+            
+            ordered = drw.CreatePathCollection()
+            for s in range(1, ni.Sheets.Count + 1):
+                sheet = ni.Sheets(s)
+                sp = sheet.Paths
+                for pi in range(1, sp.Count + 1):
+                    ordered.Add(sp(pi))
+            
+            if ordered.Count > 0:
+                drw.OrderManual(ordered)
+                return {
+                    "status": "ok",
+                    "method": "OrderManual via NestInformation",
+                    "sheets": ni.Sheets.Count,
+                    "paths_ordered": ordered.Count,
+                }
+            return {"status": "ok", "method": "none", "message": "No paths found in nesting sheets"}
         except Exception as exc:
             raise AlphaCAMError(f"OrderAll failed: {exc}") from exc
 
