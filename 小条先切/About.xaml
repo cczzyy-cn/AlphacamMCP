@@ -1,0 +1,46 @@
+<Window
+	x:Class="小条先切.About"
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	Title="关于插件"
+	Height="160"
+	Width="300"
+	WindowStartupLocation="CenterScreen"
+	ResizeMode="NoResize"
+	xmlns:小条先切="clr-namespace:小条先切">
+	<Grid>
+		<Grid>
+			<Grid.RowDefinitions>
+				<RowDefinition />
+				<RowDefinition />
+				<RowDefinition />
+				<RowDefinition />
+			</Grid.RowDefinitions>
+			<TextBlock
+				Grid.Row="0"
+				Text="版本日期：20161212"
+				TextAlignment="Center"
+				VerticalAlignment="Center"
+				FontSize="16" />
+			<TextBlock
+				Grid.Row="1"
+				Text="------------------------"
+				TextAlignment="Center"
+				VerticalAlignment="Center"
+				FontSize="16" />
+			<TextBlock
+				Grid.Row="2"
+				Text="QQ--447160005"
+				TextAlignment="Center"
+				VerticalAlignment="Center"
+				FontSize="16" />
+			<Button
+				Name="btnOK"
+				Grid.Row="3"
+				Height="25"
+				Width="80"
+				Content="确定"
+				Click="btnOK_Click" />
+		</Grid>
+	</Grid>
+</Window>

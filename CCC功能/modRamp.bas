@@ -1,17 +1,16 @@
 ' ==============================================================================
 ' CCC功能 — modRamp 斜角下刀
 ' ==============================================================================
-' 功能：对小门板或窄条（单边 < 指定范围）的轮廓刀具路径，
-'       应用斜坡入刀（SetLeadInOutAuto with SlopeIn），
-'       使刀具沿倾斜路径切入，保留连接处逐渐减少最后吃刀量。
+' 算法参照"小条先切"：
+'   1. 刀具路径包围盒判断小板件（单边 < 范围）
+'   2. SetLeadInOutAuto(SlopeIn=True) 实现斜坡入刀
+'   3. 深度 ≥ 20mm 时先粗切 60% 再精切（参照小条先切）
 ' ==============================================================================
 Option Explicit
 Option Private Module
 
-' --- 属性常量 ---
-Private Const ATT_RAMP_DONE          As String = "CCC_RampDone"
-Private Const ATT_SHEET_IDENT        As String = "LicomUKsab_sheet_ident"
-Private Const DEG2RAD                As Double = 0.0174532925199433   ' PI/180
+Private Const ATT_RAMP_DONE    As String = "CCC_RampDone"
+Private Const DEG2RAD          As Double = 0.0174532925199433
 
 ' ==============================================================================
 ' Sub 斜角下刀() — 入口（由 Events.bas 菜单调用）
@@ -20,16 +19,8 @@ Sub 斜角下刀()
     frmRamp.Show vbModeless
 End Sub
 
-
 ' ==============================================================================
 ' Public Sub ApplyRampEntry() — 执行斜角下刀算法
-'
-' 参数：
-'   minSize    — 小条范围（单边小于此值视为小板件）
-'   cutDepth   — 切割深度（板材厚度）
-'   rampAngle  — 下刀角度（度）
-'   methodName — 加工方式名称（如 "粗加工" / "精加工"，空=不限）
-'   toolMatch  — 刀具匹配串（"T# 刀具名"）
 ' ==============================================================================
 Public Sub ApplyRampEntry(ByVal minSize As Double, _
                           ByVal cutDepth As Double, _
@@ -40,10 +31,8 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
 
     On Error GoTo ErrHandler
 
-    ' --- 集中声明 ---
     Dim drw As Drawing
     Dim ni As NestInformation
-    Dim sh As NestSheet
     Dim ops As Operations
     Dim i As Long, j As Long, k As Long
     Dim op As Operation
@@ -54,184 +43,34 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     Dim tp As Path
     Dim totalCount As Long, smallCount As Long, rampApplied As Long
     Dim skipCount As Long
-    Dim tpMinX As Double, tpMaxX As Double
-    Dim tpMinY As Double, tpMaxY As Double
     Dim tpW As Double, tpH As Double
-    Dim sheetCX As Double, sheetCY As Double
-    Dim pcx As Double, pcy As Double
-    Dim dx As Double, dy As Double
-    Dim sideName As String
     Dim toolRadius As Double
-    Dim rampLength As Double
-    Dim lengthMult As Double
-    Dim radiusMult As Double
-    Dim tpName As String
+    Dim rampLength As Double, lengthMult As Double
     Dim isMatch As Boolean
     Dim spPos As Integer
-    Dim thisMethod As String
-    Dim thisToolName As String
-    Dim thisToolNum As Long
-    Dim selToolNum As Long
     Dim procName As String
-    Dim foundSheet As Boolean
-    Dim smallParts As Object
-    Dim partGeo As Path
-    Dim geoIdx2 As Long
-    Dim sheetGeo2 As Path
-    Dim partCX As Double, partCY As Double
-    Dim partW As Double, partH As Double
-    Dim spKey As String
-    Dim tpItem As Path
-    Dim tpCenterX As Double, tpCenterY As Double
-    Dim isSmall As Boolean
-    Dim tol As Double
-    Dim spKeys As Variant
-    Dim ki As Long
-    Dim spParts As Variant
-    Dim spCx As Double, spCy As Double
+    Dim selToolNum As Long
 
-    ' --- 基本检查 ---
     Set drw = App.ActiveDrawing
     If drw Is Nothing Then
         MsgBox "没有活动图纸！", vbExclamation, "斜角下刀"
         Exit Sub
     End If
 
-    ' 锁定屏幕
     drw.ScreenUpdating = False
     App.SetUndoCommandName "斜角下刀"
     App.SetUndoPoint
 
-    ' --- 获取 NestInformation 和排版中心 ---
     Set ni = drw.GetNestInformation
-    If ni Is Nothing Then
-        MsgBox "当前图纸没有排版信息，无法确定排版中心。" & vbCrLf & _
-               "将使用图纸全局边界作为排版区域。", vbInformation, "斜角下刀"
-    End If
-
-    totalCount = 0
-    smallCount = 0
-    rampApplied = 0
-    skipCount = 0
-
-    ' ==================================================================
-    ' Phase 0: 遍历所有几何找出小板件（用零件几何包围盒判断）
-    ' 不按 Sheet/Dimension 过滤，排版零件也可能被标记为 Sheet
-    ' ==================================================================
-    Set smallParts = CreateObject("Scripting.Dictionary")
-    Set partGeo = drw.GetFirstGeo
-    For geoIdx2 = 1 To drw.GetGeoCount
-        If Not (partGeo Is Nothing) Then
-            partW = partGeo.MaxXL - partGeo.MinXL
-            partH = partGeo.MaxYL - partGeo.MinYL
-            ' 忽略超大的（Sheet 边界）和零宽的（文字/点）
-            If partW > 1 And partH > 1 And (partW < minSize Or partH < minSize) Then
-                partCX = (partGeo.MinXL + partGeo.MaxXL) / 2
-                partCY = (partGeo.MinYL + partGeo.MaxYL) / 2
-                spKey = Format$(partCX, "0.00") & "," & Format$(partCY, "0.00")
-                If Not smallParts.Exists(spKey) Then
-                    smallParts.Add spKey, Format$(partW, "0.00") & "," & Format$(partH, "0.00")
-                End If
-            End If
-            Set partGeo = partGeo.GetNext
-        End If
-    Next geoIdx2
-
-    ' --- 遍历 Operations → SubOperations → ToolPaths ---
     Set ops = drw.Operations
-
     If ops Is Nothing Or ops.Count = 0 Then
-        ' 无 Operations，直接遍历所有刀具路径
-        Dim tpIdx As Long
-        Dim tpCnt As Long: tpCnt = drw.GetToolPathCount
-        If tpCnt = 0 Then
-            drw.ScreenUpdating = True
-            MsgBox "图纸中没有刀具路径！", vbExclamation, "斜角下刀"
-            Exit Sub
-        End If
-
-        Set tpItem = drw.GetFirstToolPath
-        For tpIdx = 1 To tpCnt
-            If tpItem Is Nothing Then GoTo NextTpDirect
-
-            ' 跳过已处理的路径
-            If tpItem.Attribute(ATT_RAMP_DONE) <> 0 Then
-                skipCount = skipCount + 1
-                GoTo NextTpDirect
-            End If
-
-            ' 刀具匹配
-            Set mt = tpItem.GetTool
-            isMatch = False
-            If Not (mt Is Nothing) Then
-                If toolMatch <> "" Then
-                    ' 精确匹配 → 包含匹配（双向）→ T号匹配
-                    If mt.Name = toolMatch Then
-                        isMatch = True
-                    ElseIf InStr(1, mt.Name, toolMatch, vbTextCompare) > 0 Then
-                        isMatch = True
-                    ElseIf InStr(1, toolMatch, mt.Name, vbTextCompare) > 0 Then
-                        isMatch = True
-                    ElseIf CStr(mt.Number) = toolMatch Then
-                        isMatch = True
-                    ElseIf tNum > 0 And mt.Number = tNum Then
-                        isMatch = True
-                    ElseIf Left(toolMatch, 1) = "T" Then
-                        selToolNum = Val(Mid(toolMatch, 2))
-                        If selToolNum > 0 And mt.Number = selToolNum Then isMatch = True
-                    End If
-                Else
-                    isMatch = True    ' 不限刀具
-                End If
-            End If
-
-            If isMatch Then
-                totalCount = totalCount + 1
-
-                ' 判断是否为小板件
-                ' 用刀具路径自身包围盒判断小板件
-                tpW = tpItem.MaxXL - tpItem.MinXL
-                tpH = tpItem.MaxYL - tpItem.MinYL
-                isSmall = tpW < minSize Or tpH < minSize
-
-                If isSmall Then
-                    smallCount = smallCount + 1
-
-                    ' 计算刀具半径
-                    toolRadius = 3
-                    Set mt = tpItem.GetTool
-                    If Not (mt Is Nothing) Then
-                        toolRadius = mt.Diameter / 2
-                        If toolRadius <= 0 Then toolRadius = 3
-                    End If
-
-                    ' 计算斜坡长度: rampLength = cutDepth / Tan(rampAngle)
-                    rampLength = cutDepth / Tan(rampAngle * DEG2RAD)
-                    lengthMult = rampLength / toolRadius
-                    If lengthMult < 1 Then lengthMult = 1
-                    If lengthMult > 50 Then lengthMult = 50
-                    radiusMult = 0.5
-
-                    ' 应用斜坡入刀
-                    tpItem.SetLeadInOutAuto acamLeadBOTH, acamLeadNONE, _
-                                            lengthMult, radiusMult, 45, _
-                                            True, False, -0.5
-
-                    ' 标记已处理
-                    tpItem.Attribute(ATT_RAMP_DONE) = 1
-
-                    rampApplied = rampApplied + 1
-                End If
-            End If
-
-NextTpDirect:
-            Set tpItem = tpItem.GetNext
-        Next tpIdx
-
-        GoTo Report
+        drw.ScreenUpdating = True
+        MsgBox "图纸中没有加工操作！", vbExclamation, "斜角下刀"
+        Exit Sub
     End If
 
-    ' --- 通过 Operations 遍历 ---
+    totalCount = 0: smallCount = 0: rampApplied = 0: skipCount = 0
+
     For i = 1 To ops.Count
         Set op = ops(i)
         Set subs = op.SubOperations
@@ -242,144 +81,74 @@ NextTpDirect:
             Set mt = subop.Tool
             If mt Is Nothing Then GoTo NextSub
 
-            ' 提取加工方式名称
+            ' 提取加工方式名
             procName = subop.Name
             spPos = InStr(procName, "  ")
-            If spPos > 0 Then
-                procName = Left(procName, spPos - 1)
-            Else
-                spPos = InStr(procName, " ")
-                If spPos > 0 Then procName = Left(procName, spPos - 1)
-            End If
-
-            ' 加工方式匹配
+            If spPos > 0 Then procName = Left(procName, spPos - 1) _
+            Else: spPos = InStr(procName, " "): If spPos > 0 Then procName = Left(procName, spPos - 1)
             If methodName <> "" And procName <> methodName Then GoTo NextSub
 
             ' 刀具匹配
             isMatch = False
             If toolMatch <> "" Then
-                ' 精确匹配 → 包含匹配（双向）→ T号匹配
-                If mt.Name = toolMatch Then
-                    isMatch = True
-                ElseIf InStr(1, mt.Name, toolMatch, vbTextCompare) > 0 Then
-                    isMatch = True
-                ElseIf InStr(1, toolMatch, mt.Name, vbTextCompare) > 0 Then
-                    isMatch = True
-                ElseIf CStr(mt.Number) = toolMatch Then
-                    isMatch = True
-                ElseIf tNum > 0 And mt.Number = tNum Then
-                    isMatch = True
+                If mt.Name = toolMatch Then isMatch = True
+                ElseIf InStr(1, mt.Name, toolMatch, vbTextCompare) > 0 Then isMatch = True
+                ElseIf InStr(1, toolMatch, mt.Name, vbTextCompare) > 0 Then isMatch = True
+                ElseIf CStr(mt.Number) = toolMatch Then isMatch = True
+                ElseIf tNum > 0 And mt.Number = tNum Then isMatch = True
                 ElseIf Left(toolMatch, 1) = "T" Then
                     selToolNum = Val(Mid(toolMatch, 2))
                     If selToolNum > 0 And mt.Number = selToolNum Then isMatch = True
                 End If
             Else
-                isMatch = True    ' 不限刀具
+                isMatch = True
             End If
-
             If Not isMatch Then GoTo NextSub
 
-            ' 遍历此 SubOperation 的所有刀具路径
             Set tps = subop.ToolPaths
             If tps Is Nothing Then GoTo NextSub
 
             For k = 1 To tps.Count
                 Set tp = tps(k)
                 If tp Is Nothing Then GoTo NextTp
-
-                ' 跳过已处理的路径
                 If tp.Attribute(ATT_RAMP_DONE) <> 0 Then
-                    skipCount = skipCount + 1
-                    GoTo NextTp
+                    skipCount = skipCount + 1: GoTo NextTp
                 End If
 
                 totalCount = totalCount + 1
 
-                ' 判断是否为小板件：检查刀具路径中心是否靠近 Phase 0 识别的几何
-                ' 用刀具路径自身包围盒判断小板件
+                ' === 刀具路径包围盒判断小板件 ===
                 tpW = tp.MaxXL - tp.MinXL
                 tpH = tp.MaxYL - tp.MinYL
-                isSmall = tpW < minSize Or tpH < minSize
 
-                If isSmall Then
+                If tpW > 1 And tpH > 1 And (tpW < minSize Or tpH < minSize) Then
                     smallCount = smallCount + 1
 
-                    ' 计算刀具半径
                     toolRadius = 3
                     If Not (mt Is Nothing) Then
                         toolRadius = mt.Diameter / 2
                         If toolRadius <= 0 Then toolRadius = 3
                     End If
 
-                    ' 计算斜坡长度: rampLength = cutDepth / Tan(rampAngle)
+                    ' 斜坡长度 = 切割深度 / Tan(角度)
                     rampLength = cutDepth / Tan(rampAngle * DEG2RAD)
                     lengthMult = rampLength / toolRadius
                     If lengthMult < 1 Then lengthMult = 1
                     If lengthMult > 50 Then lengthMult = 50
-                    radiusMult = 0.5
 
-                    ' 获取排版信息：确定排版中心
-                    sheetCX = 0: sheetCY = 0
-                    foundSheet = False
-                    If Not (ni Is Nothing) Then
-                        Dim geo As Path
-                        For Each sh In ni.Sheets
-                            Dim pathsInSheet As Paths
-                            Set pathsInSheet = sh.Paths
-                            If Not (pathsInSheet Is Nothing) Then
-                                Dim pi As Long
-                                For pi = 1 To pathsInSheet.Count
-                                    If pathsInSheet(pi).OpNo = tp.OpNo Then
-                                        Set geo = sh.Geometry
-                                        If Not (geo Is Nothing) Then
-                                            sheetCX = (geo.MinXL + geo.MaxXL) / 2
-                                            sheetCY = (geo.MinYL + geo.MaxYL) / 2
-                                        End If
-                                        foundSheet = True
-                                        Exit For
-                                    End If
-                                Next pi
-                            End If
-                            If foundSheet Then Exit For
-                        Next sh
+                    ' === 深度 ≥ 20mm 时先粗切 60% 深度（参照小条先切） ===
+                    If cutDepth >= 20 Then
+                        Call RoughPass60Percent subop, cutDepth, toolRadius
                     End If
 
-                    ' 未找到排版中心时的兜底：遍历所有几何求全局边界
-                    If Not foundSheet Then
-                        Dim geoIdx As Long
-                        Dim geoP As Path
-                        Dim gMinX As Double, gMaxX As Double
-                        Dim gMinY As Double, gMaxY As Double
-                        gMinX = 1E+20: gMaxX = -1E+20
-                        gMinY = 1E+20: gMaxY = -1E+20
-                        Set geoP = drw.GetFirstGeo
-                        For geoIdx = 1 To drw.GetGeoCount
-                            If Not (geoP Is Nothing) Then
-                                If geoP.MinXL < gMinX Then gMinX = geoP.MinXL
-                                If geoP.MaxXL > gMaxX Then gMaxX = geoP.MaxXL
-                                If geoP.MinYL < gMinY Then gMinY = geoP.MinYL
-                                If geoP.MaxYL > gMaxY Then gMaxY = geoP.MaxYL
-                                Set geoP = geoP.GetNext
-                            End If
-                        Next geoIdx
-                        If gMaxX > gMinX And gMaxY > gMinY Then
-                            sheetCX = (gMinX + gMaxX) / 2
-                            sheetCY = (gMinY + gMaxY) / 2
-                        Else
-                            sheetCX = 0: sheetCY = 0
-                        End If
-                    End If
-
-                    ' ==========================================================
-                    ' 应用斜角下刀：斜坡入刀 + 留连接点
-                    ' ==========================================================
+                    ' === 应用斜角下刀 ===
+                    ' SetLeadInOutAuto: SlopeIn=True 使刀具沿入刀线斜坡下降
+                    ' Overlap=-0.5 留 0.5mm 连接点
                     tp.SetLeadInOutAuto acamLeadBOTH, acamLeadNONE, _
-                                        lengthMult, radiusMult, 45, _
+                                        lengthMult, 0.5, 45, _
                                         True, False, -0.5
 
-                    ' 标记已处理
                     tp.Attribute(ATT_RAMP_DONE) = 1
-
                     rampApplied = rampApplied + 1
                 End If
 
@@ -390,42 +159,60 @@ NextSub:
 NextOp:
     Next i
 
-Report:
-    ' 恢复屏幕更新
     drw.ScreenUpdating = True
     drw.Redraw
-    If rampApplied > 0 Then
-        drw.ZoomAll
-        drw.Refresh
-        DoEvents
-    End If
+    If rampApplied > 0 Then drw.ZoomAll: DoEvents
 
-    ' 显示结果
     Dim msg As String
     msg = "斜角下刀处理完成！" & vbCrLf & vbCrLf & _
-          "扫描几何: " & drw.GetGeoCount & " 个, 识别小板件: " & smallParts.Count & " 个" & vbCrLf & _
           "匹配刀具路径: " & totalCount & " 条" & vbCrLf & _
           "其中小板件: " & smallCount & " 条" & vbCrLf & _
           "已应用斜角下刀: " & rampApplied & " 条" & vbCrLf & _
           "（跳过已处理: " & skipCount & " 条）" & vbCrLf & vbCrLf & _
           "参数: 小条范围=" & minSize & "mm" & vbCrLf & _
           "      切割深度=" & cutDepth & "mm" & vbCrLf & _
-          "      下刀角度=" & rampAngle & "路"
-
-    ' 如已勾选加工方式，追加提示信息
-    If methodName <> "" Then
-        msg = msg & vbCrLf & "      加工方式=" & methodName
-    End If
-
+          "      下刀角度=" & rampAngle & ChrW(176)
+    If methodName <> "" Then msg = msg & vbCrLf & "      加工方式=" & methodName
     MsgBox msg, vbInformation, "斜角下刀"
-
     Exit Sub
 
 ErrHandler:
-    If Not (drw Is Nothing) Then
-        drw.ScreenUpdating = True
-        drw.Redraw
-    End If
-    MsgBox "斜角下刀出错：" & Err.Description & vbCrLf & _
-           "错误代码: " & Err.Number, vbCritical, "斜角下刀"
+    If Not (drw Is Nothing) Then drw.ScreenUpdating = True: drw.Redraw
+    MsgBox "斜角下刀出错：" & Err.Description, vbCritical, "斜角下刀"
+End Sub
+
+' ==============================================================================
+' RoughPass60Percent — 深板（≥20mm）先行粗切 60% 深度
+' 参照小条先切 CutToolPath.RoughFinish 中 FinalDepth <= -20 的处理
+' ==============================================================================
+Private Sub RoughPass60Percent(ByVal subop As SubOperation, _
+                               ByVal cutDepth As Double, _
+                               ByVal toolRadius As Double)
+
+    On Error Resume Next
+
+    Dim geos As Paths: Set geos = subop.Geometries
+    If geos Is Nothing Then Exit Sub
+    If geos.Count = 0 Then Exit Sub
+
+    Dim geo As Path: Set geo = geos(1)
+    If geo Is Nothing Then Exit Sub
+
+    Dim md As MillData: Set md = subop.GetMillData
+    If md Is Nothing Then Exit Sub
+
+    Dim mdRough As MillData
+    Set mdRough = App.CreateMillData
+    mdRough.SafeRapidLevel = md.SafeRapidLevel
+    mdRough.RapidDownTo = md.RapidDownTo
+    mdRough.SpindleSpeed = 24000
+    mdRough.CutFeed = 9000
+    mdRough.DownFeed = 2000
+    mdRough.FinalDepth = -cutDepth * 0.6
+
+    geo.Selected = True
+    mdRough.RoughFinish
+    geo.Selected = False
+
+    Set mdRough = Nothing
 End Sub

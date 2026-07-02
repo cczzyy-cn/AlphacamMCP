@@ -1,0 +1,60 @@
+<Window
+	x:Class="小条先切.UserInfo"
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	Title="用户信息"
+	Height="180"
+	Width="350"
+	ResizeMode="NoResize"
+	WindowStartupLocation="CenterScreen"
+	xmlns:小条先切="clr-namespace:小条先切"
+	Loaded="Window_Loaded">
+	<Grid>
+		<Grid>
+			<Grid.RowDefinitions>
+				<RowDefinition />
+				<RowDefinition />
+				<RowDefinition />
+				<RowDefinition />
+				<RowDefinition />
+			</Grid.RowDefinitions>
+			<TextBlock
+				Grid.Row="0"
+				Text="授权到期日"
+				Height="25"
+				VerticalAlignment="Center"
+				FontSize="16"
+				TextAlignment="Center" />
+			<TextBlock
+				Name="txtDueDay"
+				Grid.Row="1"
+				Text=""
+				Height="25"
+				VerticalAlignment="Center"
+				FontSize="12"
+				TextAlignment="Center" />
+			<TextBlock
+				Grid.Row="2"
+				Text="授权联系人"
+				Height="25"
+				VerticalAlignment="Center"
+				FontSize="16"
+				TextAlignment="Center" />
+			<TextBlock
+				Name="txtAuthorGuy"
+				Grid.Row="3"
+				Text=""
+				Height="25"
+				VerticalAlignment="Center"
+				FontSize="12"
+				TextAlignment="Center" />
+			<Button
+				Name="btnOK"
+				Grid.Row="4"
+				Width="80"
+				Content="确定"
+				Margin="2"
+				Click="btnOK_Click" />
+		</Grid>
+	</Grid>
+</Window>
