@@ -115,62 +115,27 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     skipCount = 0
 
     ' ==================================================================
-    ' Phase 0: 遍历 NestInformation Sheet 找出所有小板件几何（用零件几何包围盒判断）
+    ' Phase 0: 遍历所有几何找出小板件（用零件几何包围盒判断）
+    ' 不按 Sheet/Dimension 过滤，排版零件也可能被标记为 Sheet
     ' ==================================================================
     Set smallParts = CreateObject("Scripting.Dictionary")
     Set partGeo = drw.GetFirstGeo
-    geoIdx2 = 0
-
-    If Not (ni Is Nothing) Then
-        For Each sh In ni.Sheets
-            Set sheetGeo2 = sh.Geometry
-            If sheetGeo2 Is Nothing Then GoTo NextSheet0
-
-            Set partGeo = drw.GetFirstGeo
-            For geoIdx2 = 1 To drw.GetGeoCount
-                If Not (partGeo Is Nothing) Then
-                    If Not partGeo.Sheet And Not partGeo.Dimension Then
-                        partCX = (partGeo.MinXL + partGeo.MaxXL) / 2
-                        partCY = (partGeo.MinYL + partGeo.MaxYL) / 2
-                        If sheetGeo2.IsPointInside(partCX, partCY) = acamResultTRUE Then
-                            partW = partGeo.MaxXL - partGeo.MinXL
-                            partH = partGeo.MaxYL - partGeo.MinYL
-                            If partW < minSize Or partH < minSize Then
-                                spKey = Format$(partCX, "0.00") & "," & Format$(partCY, "0.00")
-                                If Not smallParts.Exists(spKey) Then
-                                    smallParts.Add spKey, Format$(partW, "0.00") & "," & Format$(partH, "0.00")
-                                End If
-                            End If
-                        End If
-                    End If
-                    Set partGeo = partGeo.GetNext
+    For geoIdx2 = 1 To drw.GetGeoCount
+        If Not (partGeo Is Nothing) Then
+            partW = partGeo.MaxXL - partGeo.MinXL
+            partH = partGeo.MaxYL - partGeo.MinYL
+            ' 忽略超大的（Sheet 边界）和零宽的（文字/点）
+            If partW > 1 And partH > 1 And (partW < minSize Or partH < minSize) Then
+                partCX = (partGeo.MinXL + partGeo.MaxXL) / 2
+                partCY = (partGeo.MinYL + partGeo.MaxYL) / 2
+                spKey = Format$(partCX, "0.00") & "," & Format$(partCY, "0.00")
+                If Not smallParts.Exists(spKey) Then
+                    smallParts.Add spKey, Format$(partW, "0.00") & "," & Format$(partH, "0.00")
                 End If
-            Next geoIdx2
-NextSheet0:
-        Next sh
-    End If
-
-    ' 无 NestInformation 时的兜底：遍历所有非 Sheet 几何按实际尺寸判断
-    If ni Is Nothing Or smallParts.Count = 0 Then
-        Set partGeo = drw.GetFirstGeo
-        For geoIdx2 = 1 To drw.GetGeoCount
-            If Not (partGeo Is Nothing) Then
-                If Not partGeo.Sheet And Not partGeo.Dimension Then
-                    partW = partGeo.MaxXL - partGeo.MinXL
-                    partH = partGeo.MaxYL - partGeo.MinYL
-                    If partW < minSize Or partH < minSize Then
-                        partCX = (partGeo.MinXL + partGeo.MaxXL) / 2
-                        partCY = (partGeo.MinYL + partGeo.MaxYL) / 2
-                        spKey = Format$(partCX, "0.00") & "," & Format$(partCY, "0.00")
-                        If Not smallParts.Exists(spKey) Then
-                            smallParts.Add spKey, Format$(partW, "0.00") & "," & Format$(partH, "0.00")
-                        End If
-                    End If
-                End If
-                Set partGeo = partGeo.GetNext
             End If
-        Next geoIdx2
-    End If
+            Set partGeo = partGeo.GetNext
+        End If
+    Next geoIdx2
 
     ' --- 遍历 Operations → SubOperations → ToolPaths ---
     Set ops = drw.Operations
