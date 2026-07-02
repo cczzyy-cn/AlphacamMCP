@@ -117,29 +117,26 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     ' ==================================================================
     ' Phase 0: 遍历 NestInformation Sheet 找出所有小板件几何（用零件几何包围盒判断）
     ' ==================================================================
-    Dim smallParts As Object  ' Dictionary: key="CX,CY" value="W,H"
     Set smallParts = CreateObject("Scripting.Dictionary")
-    Dim partGeo As Path
-    Dim geoIdx2 As Long
-    Dim sheetGeo2 As Path
+    Set partGeo = drw.GetFirstGeo
+    geoIdx2 = 0
 
     If Not (ni Is Nothing) Then
         For Each sh In ni.Sheets
             Set sheetGeo2 = sh.Geometry
             If sheetGeo2 Is Nothing Then GoTo NextSheet0
 
-            ' 遍历图纸中所有几何，找属于本 Sheet 的非边界几何（即零件）
             Set partGeo = drw.GetFirstGeo
             For geoIdx2 = 1 To drw.GetGeoCount
                 If Not (partGeo Is Nothing) Then
                     If Not partGeo.Sheet And Not partGeo.Dimension Then
-                        Dim partCX As Double: partCX = (partGeo.MinXL + partGeo.MaxXL) / 2
-                        Dim partCY As Double: partCY = (partGeo.MinYL + partGeo.MaxYL) / 2
+                        partCX = (partGeo.MinXL + partGeo.MaxXL) / 2
+                        partCY = (partGeo.MinYL + partGeo.MaxYL) / 2
                         If sheetGeo2.IsPointInside(partCX, partCY) = acamResultTRUE Then
-                            Dim partW As Double: partW = partGeo.MaxXL - partGeo.MinXL
-                            Dim partH As Double: partH = partGeo.MaxYL - partGeo.MinYL
+                            partW = partGeo.MaxXL - partGeo.MinXL
+                            partH = partGeo.MaxYL - partGeo.MinYL
                             If partW < minSize Or partH < minSize Then
-                                Dim spKey As String: spKey = Format$(partCX, "0.00") & "," & Format$(partCY, "0.00")
+                                spKey = Format$(partCX, "0.00") & "," & Format$(partCY, "0.00")
                                 If Not smallParts.Exists(spKey) Then
                                     smallParts.Add spKey, Format$(partW, "0.00") & "," & Format$(partH, "0.00")
                                 End If
@@ -188,7 +185,7 @@ NextSheet0:
             Exit Sub
         End If
 
-        Dim tpItem As Path: Set tpItem = drw.GetFirstToolPath
+        Set tpItem = drw.GetFirstToolPath
         For tpIdx = 1 To tpCnt
             If tpItem Is Nothing Then GoTo NextTpDirect
 
