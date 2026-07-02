@@ -189,24 +189,10 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
                 totalCount = totalCount + 1
 
                 ' 判断是否为小板件
-                tpMinX = tpItem.MinXL: tpMaxX = tpItem.MaxXL
-                tpMinY = tpItem.MinYL: tpMaxY = tpItem.MaxYL
-                tpCenterX = (tpMinX + tpMaxX) / 2
-                tpCenterY = (tpMinY + tpMaxY) / 2
-                isSmall = False
-                tol = 20
-                spKeys = smallParts.Keys
-                For ki = 0 To smallParts.Count - 1
-                    spParts = Split(spKeys(ki), ",")
-                    If UBound(spParts) >= 1 Then
-                        spCx = Val(spParts(0))
-                        spCy = Val(spParts(1))
-                        If Abs(tpCenterX - spCx) < tol And Abs(tpCenterY - spCy) < tol Then
-                            isSmall = True
-                            Exit For
-                        End If
-                    End If
-                Next ki
+                ' 用刀具路径自身包围盒判断小板件
+                tpW = tpItem.MaxXL - tpItem.MinXL
+                tpH = tpItem.MaxYL - tpItem.MinYL
+                isSmall = tpW < minSize Or tpH < minSize
 
                 If isSmall Then
                     smallCount = smallCount + 1
@@ -310,24 +296,10 @@ NextTpDirect:
                 totalCount = totalCount + 1
 
                 ' 判断是否为小板件：检查刀具路径中心是否靠近 Phase 0 识别的几何
-                tpMinX = tp.MinXL: tpMaxX = tp.MaxXL
-                tpMinY = tp.MinYL: tpMaxY = tp.MaxYL
-                tpCenterX = (tpMinX + tpMaxX) / 2
-                tpCenterY = (tpMinY + tpMaxY) / 2
-                isSmall = False
-                tol = 20
-                spKeys = smallParts.Keys
-                For ki = 0 To smallParts.Count - 1
-                    spParts = Split(spKeys(ki), ",")
-                    If UBound(spParts) >= 1 Then
-                        spCx = Val(spParts(0))
-                        spCy = Val(spParts(1))
-                        If Abs(tpCenterX - spCx) < tol And Abs(tpCenterY - spCy) < tol Then
-                            isSmall = True
-                            Exit For
-                        End If
-                    End If
-                Next ki
+                ' 用刀具路径自身包围盒判断小板件
+                tpW = tp.MaxXL - tp.MinXL
+                tpH = tp.MaxYL - tp.MinYL
+                isSmall = tpW < minSize Or tpH < minSize
 
                 If isSmall Then
                     smallCount = smallCount + 1
