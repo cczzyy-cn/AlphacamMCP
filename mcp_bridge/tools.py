@@ -9,6 +9,8 @@ import inspect
 import logging
 from typing import Any, Callable
 
+from mcp.types import Tool
+
 from .errors import ToolComError
 
 log = logging.getLogger("alphacam-bridge.tools")
@@ -18,7 +20,7 @@ log = logging.getLogger("alphacam-bridge.tools")
 # ---------------------------------------------------------------------------
 
 _tool_registry: dict[str, Callable] = {}
-TOOLS: list[dict] = []
+TOOLS: list[Tool] = []
 
 
 def _get_tool_param_names(func: Callable) -> list[str]:
@@ -65,15 +67,15 @@ def mcp_tool(tool_name: str, description: str, **properties):
         required = _get_tool_required_params(func)
 
         _tool_registry[tool_name] = func
-        TOOLS.append({
-            "name": tool_name,
-            "description": description,
-            "inputSchema": {
+        TOOLS.append(Tool(
+            name=tool_name,
+            description=description,
+            inputSchema={
                 "type": "object",
                 "properties": properties,
                 "required": required,
             },
-        })
+        ))
         return func
     return decorator
 
@@ -88,37 +90,37 @@ def get_tool_func(name: str) -> Callable | None:
 # ---------------------------------------------------------------------------
 
 _DOC_TOOLS = [
-    {
-        "name": "list_docs",
-        "description": "List AlphaCAM API documentation categories and their file counts. Returns an overview of all available doc sections (General, Enums, Events, Objects, Post, Examples) with document counts.",
-        "inputSchema": {"type": "object", "properties": {}},
-    },
-    {
-        "name": "read_doc",
-        "description": "Read an AlphaCAM API documentation page by name. Provide a filename (e.g. 'Path_TrimWithCuttingGeos', 'Drawing_CreateRectangle', 'Application_OpenDrawing') or a partial path. The full HTML content is returned as plain text. Browse docs with list_docs first.",
-        "inputSchema": {
+    Tool(
+        name="list_docs",
+        description="List AlphaCAM API documentation categories and their file counts. Returns an overview of all available doc sections (General, Enums, Events, Objects, Post, Examples) with document counts.",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="read_doc",
+        description="Read an AlphaCAM API documentation page by name. Provide a filename (e.g. 'Path_TrimWithCuttingGeos', 'Drawing_CreateRectangle', 'Application_OpenDrawing') or a partial path. The full HTML content is returned as plain text. Browse docs with list_docs first.",
+        inputSchema={
             "type": "object",
             "properties": {
                 "name": {"type": "string", "description": "Doc filename or identifier, e.g. 'Path_TrimWithCuttingGeos', 'DrawingObject', 'InitAlphacamAddIn'"},
             },
             "required": ["name"],
         },
-    },
-    {
-        "name": "search_docs",
-        "description": "Search AlphaCAM API documentation pages by keyword. Finds all pages whose filename or content matches the query. Returns matching file names with one-line summaries. Use read_doc to read a specific page.",
-        "inputSchema": {
+    ),
+    Tool(
+        name="search_docs",
+        description="Search AlphaCAM API documentation pages by keyword. Finds all pages whose filename or content matches the query. Returns matching file names with one-line summaries. Use read_doc to read a specific page.",
+        inputSchema={
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Search keyword, e.g. 'trim', 'offset', 'circle', 'drawing', 'tool'"},
             },
             "required": ["query"],
         },
-    },
-    {
-        "name": "chm_to_html",
-        "description": "Convert a .chm (Compiled HTML Help) file to HTML files using hh.exe. Extracts all pages, images, and assets to an output directory.",
-        "inputSchema": {
+    ),
+    Tool(
+        name="chm_to_html",
+        description="Convert a .chm (Compiled HTML Help) file to HTML files using hh.exe. Extracts all pages, images, and assets to an output directory.",
+        inputSchema={
             "type": "object",
             "properties": {
                 "chm_path": {"type": "string", "description": "Full path to the .chm file to convert"},
@@ -126,7 +128,7 @@ _DOC_TOOLS = [
             },
             "required": ["chm_path"],
         },
-    },
+    ),
 ]
 
 TOOLS.extend(_DOC_TOOLS)
