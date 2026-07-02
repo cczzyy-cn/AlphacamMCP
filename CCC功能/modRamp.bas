@@ -431,6 +431,7 @@ Report:
     ' 显示结果
     Dim msg As String
     msg = "斜角下刀处理完成！" & vbCrLf & vbCrLf & _
+          "扫描几何: " & drw.GetGeoCount & " 个, 识别小板件: " & smallParts.Count & " 个" & vbCrLf & _
           "匹配刀具路径: " & totalCount & " 条" & vbCrLf & _
           "其中小板件: " & smallCount & " 条" & vbCrLf & _
           "已应用斜角下刀: " & rampApplied & " 条" & vbCrLf & _
