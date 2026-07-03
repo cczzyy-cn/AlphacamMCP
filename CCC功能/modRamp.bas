@@ -1,10 +1,9 @@
 ' ==============================================================================
 ' CCC功能 — modRamp 斜角下刀
 ' ==============================================================================
-' 算法参照"小条先切"：
-'   1. 刀具路径包围盒判断小板件（单边 < 范围）
-'   2. SetLeadInOutAuto(SlopeIn=True) 实现斜坡入刀
-'   3. 深度 ≥ 20mm 时先粗切 60% 再精切（参照小条先切）
+' 功能：对小门板或窄条（单边 < 指定范围）的轮廓刀具路径，
+'       应用 SetLeadInOutAuto(SlopeIn=True) 实现斜坡入刀，
+'       使刀具沿倾斜路径切入，保留连接处逐渐减少最后吃刀量。
 ' ==============================================================================
 Option Explicit
 Option Private Module
@@ -32,7 +31,6 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     On Error GoTo ErrHandler
 
     Dim drw As Drawing
-    Dim ni As NestInformation
     Dim ops As Operations
     Dim i As Long, j As Long, k As Long
     Dim op As Operation
@@ -61,7 +59,6 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     App.SetUndoCommandName "斜角下刀"
     App.SetUndoPoint
 
-    Set ni = drw.GetNestInformation
     Set ops = drw.Operations
     If ops Is Nothing Or ops.Count = 0 Then
         drw.ScreenUpdating = True
@@ -91,11 +88,16 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
             ' 刀具匹配
             isMatch = False
             If toolMatch <> "" Then
-                If mt.Name = toolMatch Then isMatch = True
-                ElseIf InStr(1, mt.Name, toolMatch, vbTextCompare) > 0 Then isMatch = True
-                ElseIf InStr(1, toolMatch, mt.Name, vbTextCompare) > 0 Then isMatch = True
-                ElseIf CStr(mt.Number) = toolMatch Then isMatch = True
-                ElseIf tNum > 0 And mt.Number = tNum Then isMatch = True
+                If mt.Name = toolMatch Then
+                    isMatch = True
+                ElseIf InStr(1, mt.Name, toolMatch, vbTextCompare) > 0 Then
+                    isMatch = True
+                ElseIf InStr(1, toolMatch, mt.Name, vbTextCompare) > 0 Then
+                    isMatch = True
+                ElseIf CStr(mt.Number) = toolMatch Then
+                    isMatch = True
+                ElseIf tNum > 0 And mt.Number = tNum Then
+                    isMatch = True
                 ElseIf Left(toolMatch, 1) = "T" Then
                     selToolNum = Val(Mid(toolMatch, 2))
                     If selToolNum > 0 And mt.Number = selToolNum Then isMatch = True
@@ -117,12 +119,23 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
 
                 totalCount = totalCount + 1
 
-                ' === 刀具路径包围盒判断小板件 ===
-                tpW = tp.MaxXL - tp.MinXL
-                tpH = tp.MaxYL - tp.MinYL
+                ' === 用 GetFeedExtent 判断小板件（忽略快速移动，与小条先切一致） ===
+                Dim fx1 As Double, fy1 As Double, fx2 As Double, fy2 As Double
+                If tp.GetFeedExtent(fx1, fy1, fx2, fy2) Then
+                    tpW = fx2 - fx1
+                    tpH = fy2 - fy1
+                Else
+                    tpW = tp.MaxXL - tp.MinXL
+                    tpH = tp.MaxYL - tp.MinYL
+                End If
 
                 If tpW > 1 And tpH > 1 And (tpW < minSize Or tpH < minSize) Then
                     smallCount = smallCount + 1
+
+                    ' 跳过中心铣路径（不支持进刀线）
+                    If tp.ToolInOut = acamCENTER Then
+                        GoTo NextTp
+                    End If
 
                     toolRadius = 3
                     If Not (mt Is Nothing) Then
@@ -135,11 +148,6 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
                     lengthMult = rampLength / toolRadius
                     If lengthMult < 1 Then lengthMult = 1
                     If lengthMult > 50 Then lengthMult = 50
-
-                    ' === 深度 ≥ 20mm 时先粗切 60% 深度（参照小条先切） ===
-                    If cutDepth >= 20 Then
-                        Call RoughPass60Percent subop, cutDepth, toolRadius
-                    End If
 
                     ' === 应用斜角下刀 ===
                     ' SetLeadInOutAuto: SlopeIn=True 使刀具沿入刀线斜坡下降
@@ -179,40 +187,4 @@ NextOp:
 ErrHandler:
     If Not (drw Is Nothing) Then drw.ScreenUpdating = True: drw.Redraw
     MsgBox "斜角下刀出错：" & Err.Description, vbCritical, "斜角下刀"
-End Sub
-
-' ==============================================================================
-' RoughPass60Percent — 深板（≥20mm）先行粗切 60% 深度
-' 参照小条先切 CutToolPath.RoughFinish 中 FinalDepth <= -20 的处理
-' ==============================================================================
-Private Sub RoughPass60Percent(ByVal subop As SubOperation, _
-                               ByVal cutDepth As Double, _
-                               ByVal toolRadius As Double)
-
-    On Error Resume Next
-
-    Dim geos As Paths: Set geos = subop.Geometries
-    If geos Is Nothing Then Exit Sub
-    If geos.Count = 0 Then Exit Sub
-
-    Dim geo As Path: Set geo = geos(1)
-    If geo Is Nothing Then Exit Sub
-
-    Dim md As MillData: Set md = subop.GetMillData
-    If md Is Nothing Then Exit Sub
-
-    Dim mdRough As MillData
-    Set mdRough = App.CreateMillData
-    mdRough.SafeRapidLevel = md.SafeRapidLevel
-    mdRough.RapidDownTo = md.RapidDownTo
-    mdRough.SpindleSpeed = 24000
-    mdRough.CutFeed = 9000
-    mdRough.DownFeed = 2000
-    mdRough.FinalDepth = -cutDepth * 0.6
-
-    geo.Selected = True
-    mdRough.RoughFinish
-    geo.Selected = False
-
-    Set mdRough = Nothing
 End Sub
