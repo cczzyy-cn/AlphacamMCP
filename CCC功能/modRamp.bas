@@ -1,20 +1,17 @@
 ' ==============================================================================
 ' CCC功能 — modRamp 斜角下刀
-' ==============================================================================
-' 核心：SetLeadInOutAuto(SlopeIn=True)
-'   1. 遍历 Operations → SubOperations → ToolPaths
-'   2. GetFeedExtent 判断小板件
-'   3. 找归属排版并计算排版中心
-'   4. 判断朝向排版中心的两条边，取较长边
-'   5. 在该边中点设 SetStartPoint（使进刀口落在此边）
-'   6. 中心铣路径临时切到外侧再设进刀线，避免警告
-'   7. Overlap=-0.5 留连接点
+' 严格参照小条先切 CutToolPath.RoughFinish 算法：
+'   1. ManualToolPath 在路径末端 sloopDist 处从 Z=0 开始
+'   2. 每 0.5mm 一步逐步下刀至全深
+'   3. 跳转到几何起点继续走完整个路径
+'   4. 删除旧刀路
 ' ==============================================================================
 Option Explicit
 Option Private Module
 
 Private Const ATT_RAMP_DONE    As String = "CCC_RampDone"
 Private Const DEG2RAD          As Double = 0.0174532925199433
+Private Const POINT_STEP       As Double = 0.5
 
 Sub 斜角下刀()
     frmRamp.Show vbModeless
@@ -33,7 +30,7 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     Dim op As Operation, subs As SubOperations, subop As SubOperation
     Dim mt As MillTool, tps As Paths, tp As Path
     Dim totalCount As Long, smallCount As Long, rampApplied As Long, skipCount As Long
-    Dim tpW As Double, tpH As Double, toolRadius As Double, rampLength As Double, lengthMult As Double
+    Dim tpW As Double, tpH As Double, toolRadius As Double
     Dim isMatch As Boolean, spPos As Integer, procName As String, selToolNum As Long
 
     Set drw = App.ActiveDrawing
@@ -48,6 +45,10 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     If ops Is Nothing Or ops.Count = 0 Then
         drw.ScreenUpdating = True: MsgBox "图纸中没有加工操作！", vbExclamation, "斜角下刀": Exit Sub
     End If
+
+    ' 第一阶段：扫描匹配的刀路和几何，存入集合
+    Dim colTP As New Collection  ' 存 Path
+    Dim colSubop As New Collection  ' 存 SubOperation
 
     totalCount = 0: smallCount = 0: rampApplied = 0: skipCount = 0
 
@@ -102,31 +103,8 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
 
                 If tpW > 1 And tpH > 1 And (tpW < minSize Or tpH < minSize) Then
                     smallCount = smallCount + 1
-                    toolRadius = 3
-                    If Not (mt Is Nothing) Then
-                        toolRadius = mt.Diameter / 2
-                        If toolRadius <= 0 Then toolRadius = 3
-                    End If
-                    rampLength = cutDepth / Tan(rampAngle * DEG2RAD)
-                    lengthMult = rampLength / toolRadius
-                    If lengthMult < 1 Then lengthMult = 1
-                    If lengthMult > 50 Then lengthMult = 50
-
-                    ' 在关联几何上设起点（朝向排版中心侧较长边中点）
-                    SetStartPointToSheetCenterSide drw, subop, ni, tp
-
-                    ' 临时切 ToolInOut 再设进刀线（中心铣路径不支持进刀线）
-                    Dim oldTio As Integer: oldTio = tp.ToolInOut
-                    If oldTio = acamCENTER Then tp.ToolInOut = acamOUTSIDE
-
-                    tp.SetLeadInOutAuto acamLeadBOTH, acamLeadNONE, _
-                                        lengthMult, 0.5, 45, _
-                                        True, False, -0.5
-
-                    If oldTio = acamCENTER Then tp.ToolInOut = acamCENTER
-
-                    tp.Attribute(ATT_RAMP_DONE) = 1
-                    rampApplied = rampApplied + 1
+                    colTP.Add tp
+                    colSubop.Add subop
                 End If
 NextTp:
             Next k
@@ -134,6 +112,15 @@ NextSub:
         Next j
 NextOp:
     Next i
+
+    ' 第二阶段：逐个处理（避免循环中删除刀路导致索引错误）
+    For k = 1 To colTP.Count
+        Set tp = colTP(k)
+        Set subop = colSubop(k)
+        CreateRampPath drw, tp, subop, cutDepth, rampAngle
+        tp.Attribute(ATT_RAMP_DONE) = 1
+        rampApplied = rampApplied + 1
+    Next k
 
     drw.ScreenUpdating = True: drw.Redraw
     If rampApplied > 0 Then drw.ZoomAll: DoEvents
@@ -149,86 +136,114 @@ ErrHandler:
 End Sub
 
 ' ==============================================================================
-' SetStartPointToSheetCenterSide — 找出朝向排版中心的两条边，取较长边中点设起点
+' CreateRampPath — 严格参照小条先切 CutToolPath.RoughFinish
 ' ==============================================================================
-Private Sub SetStartPointToSheetCenterSide(ByVal drw As Drawing, _
-                                            ByVal subop As SubOperation, _
-                                            ByVal ni As NestInformation, _
-                                            ByVal oldTp As Path)
+Private Sub CreateRampPath(ByVal drw As Drawing, ByVal oldTp As Path, _
+                            ByVal subop As SubOperation, _
+                            ByVal cutDepth As Double, ByVal rampAngle As Double)
 
     On Error Resume Next
 
+    ' 取关联几何
     Dim geos As Paths: Set geos = subop.Geometries
     If geos Is Nothing Then Exit Sub
     If geos.Count = 0 Then Exit Sub
     Dim geo As Path: Set geo = geos(1)
     If geo Is Nothing Then Exit Sub
+    Dim geoLen As Double: geoLen = geo.Length
+    If geoLen <= 0 Then Exit Sub
 
-    ' 求排版中心
-    Dim scx As Double, scy As Double
-    Dim found As Boolean: found = False
+    ' 读取原有 MillData
+    Dim mdOld As MillData: Set mdOld = subop.GetMillData
+    If mdOld Is Nothing Then Exit Sub
 
-    If Not (ni Is Nothing) Then
-        Dim sh As NestSheet
-        For Each sh In ni.Sheets
-            Dim pathsInSh As Paths: Set pathsInSh = sh.Paths
-            If Not (pathsInSh Is Nothing) Then
-                Dim pi As Long
-                For pi = 1 To pathsInSh.Count
-                    If pathsInSh(pi).OpNo = oldTp.OpNo Then
-                        Dim sheetGeo As Path: Set sheetGeo = sh.Geometry
-                        If Not (sheetGeo Is Nothing) Then
-                            scx = (sheetGeo.MinXL + sheetGeo.MaxXL) / 2
-                            scy = (sheetGeo.MinYL + sheetGeo.MaxYL) / 2
-                            found = True
-                        End If
-                        Exit For
-                    End If
-                Next pi
+    ' ===== 1. 斜坡参数（参照小条先切） =====
+    Dim sloopDist As Double           ' 斜坡水平距离（mm）
+    sloopDist = cutDepth / Tan(rampAngle * DEG2RAD)
+    If sloopDist <= 0 Then sloopDist = 5
+    If sloopDist > geoLen * 0.8 Then sloopDist = geoLen * 0.8
+
+    Dim steps As Long                 ' 步数 = 斜坡距离 / 0.5
+    steps = CLng(sloopDist / POINT_STEP)
+    If steps < 2 Then steps = 2
+
+    Dim finalDepth As Double          ' 最终深度（负值）
+    finalDepth = -cutDepth
+
+    Dim stepDepth As Double           ' 每步下刀量
+    stepDepth = finalDepth / steps
+
+    Dim rampStartDist As Double       ' 斜坡起点距离（沿路径从起点算）
+    rampStartDist = geoLen - sloopDist
+    If rampStartDist < 0 Then rampStartDist = 0
+
+    ' ===== 2. 创建新 MillData（参照小条先切，用原参数） =====
+    Dim mdNew As MillData: Set mdNew = App.CreateMillData
+    mdNew.SafeRapidLevel = mdOld.SafeRapidLevel
+    mdNew.RapidDownTo = mdOld.RapidDownTo
+    mdNew.SpindleSpeed = 24000
+    mdNew.CutFeed = 9000
+    mdNew.DownFeed = 2000
+    mdNew.FinalDepth = finalDepth
+
+    Dim elems As Elements: Set elems = geo.Elements
+    If elems Is Nothing Then Exit Sub
+
+    ' ===== 3. 找斜坡起点坐标（参照小条先切 line 354-359） =====
+    Dim sx As Double, sy As Double
+    Dim elem As Element
+    Dim ok As Boolean
+    ok = geo.PointAtDistanceAlongPathL(rampStartDist, sx, sy, elem)
+    If Not ok Then
+        ' 找不到则从头开始
+        Set elem = geo.GetFirstElem
+        If elem Is Nothing Then Exit Sub
+        sx = elem.StartXL: sy = elem.StartYL
+        rampStartDist = 0
+        steps = CLng(geoLen / POINT_STEP)
+        If steps < 2 Then steps = 2
+        stepDepth = finalDepth / steps
+    End If
+
+    ' ===== 4. 创建 ManualToolPath 从 Z=0 开始（参照小条先切 line 361） =====
+    Dim mtp As Object
+    Set mtp = mdNew.ManualToolPath(sx, sy, 0#)
+
+    ' ===== 5. 斜坡段：沿路径逐步下刀（参照小条先切 line 363-366） =====
+    Dim s As Long, px As Double, py As Double
+    Dim pelem As Element
+    For s = 1 To steps
+        Dim d As Double: d = rampStartDist + POINT_STEP * s
+        If d > geoLen Then d = geoLen
+        If geo.PointAtDistanceAlongPathL(d, px, py, pelem) Then
+            mtp.Add3DLine px, py, stepDepth * s
+        End If
+    Next
+
+    ' ===== 6. 跳转到几何起点继续走完（参照小条先切 line 368-376） =====
+    Dim startX As Double: startX = geo.GetFirstElem.StartXL
+    Dim startY As Double: startY = geo.GetFirstElem.StartYL
+    mtp.Add3DLine startX, startY, finalDepth
+
+    Dim ei As Long
+    For ei = 1 To elems.Count
+        Set elem = elems(ei)
+        If Not (elem Is Nothing) Then
+            If elem.IsLine Then
+                mtp.Add3DLine elem.EndXL, elem.EndYL, finalDepth
+            ElseIf elem.IsArc Then
+                mtp.Add3DArcPointCenter elem.EndXL, elem.EndYL, finalDepth, _
+                                         elem.CenterXL, elem.CenterYL, elem.CW
             End If
-            If found Then Exit For
-        Next sh
-    End If
+        End If
+    Next ei
 
-    If Not found Then
-        ' 降级：用图纸全局中心
-        Dim gx1 As Double, gy1 As Double, gx2 As Double, gy2 As Double
-        drw.GetExtent gx1, gy1, gx2, gy2, 0, 0
-        scx = (gx1 + gx2) / 2: scy = (gy1 + gy2) / 2
-    End If
+    ' ===== 7. 完成 =====
+    mtp.Finish
 
-    ' 零件包围盒
-    Dim geoMidX As Double: geoMidX = (geo.MinXL + geo.MaxXL) / 2
-    Dim geoMidY As Double: geoMidY = (geo.MinYL + geo.MaxYL) / 2
-    Dim dx As Double: dx = scx - geoMidX
-    Dim dy As Double: dy = scy - geoMidY
+    ' 删除旧刀路
+    oldTp.Delete
 
-    ' 判断哪两条边朝向排版中心，取较长边的中点
-    Dim startX As Double, startY As Double
-    Dim maxLen As Double: maxLen = 0
-    Dim sideLen As Double
-
-    ' 左边（dx<0 表示中心在左）
-    If dx < 0 Then
-        sideLen = geo.MaxYL - geo.MinYL
-        If sideLen > maxLen Then maxLen = sideLen: startX = geo.MinXL: startY = geoMidY
-    End If
-    ' 右边（dx>0 表示中心在右）
-    If dx > 0 Then
-        sideLen = geo.MaxYL - geo.MinYL
-        If sideLen > maxLen Then maxLen = sideLen: startX = geo.MaxXL: startY = geoMidY
-    End If
-    ' 下边（dy<0 表示中心在下）
-    If dy < 0 Then
-        sideLen = geo.MaxXL - geo.MinXL
-        If sideLen > maxLen Then maxLen = sideLen: startX = geoMidX: startY = geo.MinYL
-    End If
-    ' 上边（dy>0 表示中心在上）
-    If dy > 0 Then
-        sideLen = geo.MaxXL - geo.MinXL
-        If sideLen > maxLen Then maxLen = sideLen: startX = geoMidX: startY = geo.MaxYL
-    End If
-
-    ' 如果找到了合适边，设置起点
-    If maxLen > 0 Then geo.SetStartPoint startX, startY
+    Set mdNew = Nothing
+    Set mtp = Nothing
 End Sub
