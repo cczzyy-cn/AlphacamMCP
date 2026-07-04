@@ -224,7 +224,7 @@ NextOp: Next i
         ' 创建 ManualToolPath 从 Z=0 开始
         Dim mtp As Object: Set mtp = mdNew.ManualToolPath(sx, sy, 0#)
 
-        ' 斜坡段：最后 1mm 上抬 0.5mm 留连接点（tag）
+        ' 斜坡段：沿路径逐步下刀
         Dim s As Long, px As Double, py As Double, pelem As Element
         For s = 1 To steps
             Dim d As Double: d = rampStartDist + POINT_STEP * s
@@ -232,9 +232,6 @@ NextOp: Next i
             Dim actDist As Double: actDist = d - rampStartDist
             Dim ratio As Double: ratio = actDist / sloopDist
             Dim z As Double: z = -actualDepthAbs * ratio
-            If ratio > 0.9 Then
-                z = z + 0.5 * ((ratio - 0.9) / 0.1)
-            End If
             If toolGeo.PointAtDistanceAlongPathL(d, px, py, pelem) Then
                 mtp.Add3DLine px, py, z
             End If
@@ -250,8 +247,6 @@ NextOp: Next i
             For ei = 1 To elems2.Count
                 Set elem = elems2(ei)
                 If Not (elem Is Nothing) Then
-                    Dim z As Double: z = finalDepth
-                    If ei = elems2.Count Then z = finalDepth + 0.5
                     If elem.IsLine Then
                         mtp.Add3DLine elem.EndXL, elem.EndYL, z
                     ElseIf elem.IsArc Then
@@ -334,16 +329,18 @@ Private Sub SetGeoStartToSheetSide(ByVal drw As Drawing, _
     d = Abs(scx - mx) + Abs(scy - toolGeo.MaxYL)
     If d < bestDist Then bestDist = d: startX = mx: startY = toolGeo.MaxYL
 
-    ' 基于几何位置哈希偏移，每块板的起点不同（防重叠）
-    Dim uniOff As Double: uniOff = (Abs(toolGeo.MinXL * 10 + toolGeo.MaxYL * 7)) Mod 50
+    ' 沿边偏移 = 边长，朝向排版中心方向
+    Dim edgeLen As Double
     If startX = toolGeo.MinXL Or startX = toolGeo.MaxXL Then
-        startY = startY + uniOff
-        If startY > toolGeo.MaxYL - 5 Then startY = toolGeo.MinYL + 5
-        If startY < toolGeo.MinYL + 5 Then startY = toolGeo.MinYL + 5
+        ' 左/右边 → Y 方向偏移
+        edgeLen = toolGeo.MaxYL - toolGeo.MinYL
+        startY = startY + edgeLen
+        If startY > toolGeo.MaxYL Then startY = toolGeo.MinYL + (startY - toolGeo.MaxYL)
     Else
-        startX = startX + uniOff
-        If startX > toolGeo.MaxXL - 5 Then startX = toolGeo.MinXL + 5
-        If startX < toolGeo.MinXL + 5 Then startX = toolGeo.MinXL + 5
+        ' 上/下边 → X 方向偏移
+        edgeLen = toolGeo.MaxXL - toolGeo.MinXL
+        startX = startX + edgeLen
+        If startX > toolGeo.MaxXL Then startX = toolGeo.MinXL + (startX - toolGeo.MaxXL)
     End If
 
     toolGeo.SetStartPoint startX, startY
