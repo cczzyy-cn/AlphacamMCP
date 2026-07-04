@@ -329,18 +329,14 @@ Private Sub SetGeoStartToSheetSide(ByVal drw As Drawing, _
     d = Abs(scx - mx) + Abs(scy - toolGeo.MaxYL)
     If d < bestDist Then bestDist = d: startX = mx: startY = toolGeo.MaxYL
 
-    ' 沿边偏移 = 边长，朝向排版中心方向
+    ' 从边中点偏移整条边长，下刀点自然落在另一边
     Dim edgeLen As Double
     If startX = toolGeo.MinXL Or startX = toolGeo.MaxXL Then
-        ' 左/右边 → Y 方向偏移
         edgeLen = toolGeo.MaxYL - toolGeo.MinYL
         startY = startY + edgeLen
-        If startY > toolGeo.MaxYL Then startY = toolGeo.MinYL + (startY - toolGeo.MaxYL)
     Else
-        ' 上/下边 → X 方向偏移
         edgeLen = toolGeo.MaxXL - toolGeo.MinXL
         startX = startX + edgeLen
-        If startX > toolGeo.MaxXL Then startX = toolGeo.MinXL + (startX - toolGeo.MaxXL)
     End If
 
     toolGeo.SetStartPoint startX, startY
