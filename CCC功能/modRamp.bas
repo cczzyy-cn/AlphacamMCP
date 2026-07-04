@@ -27,7 +27,7 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
                           ByVal toolMatch As String, _
                           Optional ByVal tNum As Long = 0)
     On Error GoTo ErrHandler
-    Dim drw As Drawing, ops As Operations
+    Dim drw As Drawing, ops As Operations, ni As NestInformation
     Dim i As Long, j As Long, k As Long
     Dim op As Operation, subs As SubOperations, subop As SubOperation
     Dim mt As MillTool, tps As Paths, tp As Path
@@ -38,6 +38,7 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     If drw Is Nothing Then MsgBox "没有活动图纸！": Exit Sub
     drw.ScreenUpdating = False: App.SetUndoCommandName "斜角下刀": App.SetUndoPoint
     Set ops = drw.Operations
+    Set ni = drw.GetNestInformation
     If ops Is Nothing Or ops.Count = 0 Then drw.ScreenUpdating = True: MsgBox "图纸中没有加工操作！": Exit Sub
 
     ' 第一遍：收集需要处理的 (tp, subop, mt, origDepth)
@@ -172,6 +173,9 @@ NextOp: Next i
         Dim rampStartDist As Double: rampStartDist = geoLen - sloopDist
         If rampStartDist < 0 Then rampStartDist = 0
 
+        ' 设几何起点在朝向排版中心侧较长边的中点（使斜坡落在该边）
+        SetGeoStartToSheetSide drw, subop, ni, tp, toolGeo
+
         ' 创建 MillData
         Dim mdNew As MillData: Set mdNew = App.CreateMillData
         mdNew.SafeRapidLevel = safeR: mdNew.RapidDownTo = 10
@@ -187,19 +191,21 @@ NextOp: Next i
             rampStartDist = 0
             steps = CLng(geoLen / POINT_STEP)
             If steps < 2 Then steps = 2
+            sloopDist = geoLen
             stepDepth = finalDepth / steps
         End If
 
         ' 创建 ManualToolPath 从 Z=0 开始
         Dim mtp As Object: Set mtp = mdNew.ManualToolPath(sx, sy, 0#)
 
-        ' 斜坡段：沿路径逐步下刀
+        ' 斜坡段：沿路径逐步下刀（Z 按实际水平距离比例，保证角度精确）
         Dim s As Long, px As Double, py As Double, pelem As Element
         For s = 1 To steps
             Dim d As Double: d = rampStartDist + POINT_STEP * s
             If d > geoLen Then d = geoLen
+            Dim actDist As Double: actDist = d - rampStartDist
             If toolGeo.PointAtDistanceAlongPathL(d, px, py, pelem) Then
-                mtp.Add3DLine px, py, stepDepth * s
+                mtp.Add3DLine px, py, -actualDepthAbs * (actDist / sloopDist)
             End If
         Next
 
@@ -242,4 +248,64 @@ SkipItem:
 ErrHandler:
     If Not (drw Is Nothing) Then drw.ScreenUpdating = True: drw.Redraw
     MsgBox "斜角下刀出错：" & Err.Description, vbCritical
+End Sub
+
+' ==============================================================================
+' SetGeoStartToSheetSide — 设几何起点在朝向排版中心侧较长边的中点
+' ==============================================================================
+Private Sub SetGeoStartToSheetSide(ByVal drw As Drawing, _
+                                    ByVal subop As SubOperation, _
+                                    ByVal ni As NestInformation, _
+                                    ByVal oldTp As Path, _
+                                    ByVal toolGeo As Path)
+    On Error Resume Next
+    Dim scx As Double, scy As Double, found As Boolean: found = False
+    If Not (ni Is Nothing) Then
+        Dim sh As NestSheet
+        For Each sh In ni.Sheets
+            Dim pInSh As Paths: Set pInSh = sh.Paths
+            If Not (pInSh Is Nothing) Then
+                Dim pi As Long
+                For pi = 1 To pInSh.Count
+                    If pInSh(pi).OpNo = oldTp.OpNo Then
+                        Dim sg As Path: Set sg = sh.Geometry
+                        If Not (sg Is Nothing) Then
+                            scx = (sg.MinXL + sg.MaxXL) / 2
+                            scy = (sg.MinYL + sg.MaxYL) / 2
+                            found = True
+                        End If
+                        Exit For
+                    End If
+                Next pi
+            End If
+            If found Then Exit For
+        Next sh
+    End If
+    If Not found Then
+        Dim gx1 As Double, gy1 As Double, gx2 As Double, gy2 As Double
+        drw.GetExtent gx1, gy1, gx2, gy2, 0, 0
+        scx = (gx1 + gx2) / 2: scy = (gy1 + gy2) / 2
+    End If
+    Dim mx As Double: mx = (toolGeo.MinXL + toolGeo.MaxXL) / 2
+    Dim my As Double: my = (toolGeo.MinYL + toolGeo.MaxYL) / 2
+    Dim dx As Double, dy As Double: dx = scx - mx: dy = scy - my
+    Dim startX As Double, startY As Double, maxLen As Double: maxLen = 0
+    Dim sl As Double
+    If dx < 0 Then
+        sl = toolGeo.MaxYL - toolGeo.MinYL
+        If sl > maxLen Then maxLen = sl: startX = toolGeo.MinXL: startY = my
+    End If
+    If dx > 0 Then
+        sl = toolGeo.MaxYL - toolGeo.MinYL
+        If sl > maxLen Then maxLen = sl: startX = toolGeo.MaxXL: startY = my
+    End If
+    If dy < 0 Then
+        sl = toolGeo.MaxXL - toolGeo.MinXL
+        If sl > maxLen Then maxLen = sl: startX = mx: startY = toolGeo.MinYL
+    End If
+    If dy > 0 Then
+        sl = toolGeo.MaxXL - toolGeo.MinXL
+        If sl > maxLen Then maxLen = sl: startX = mx: startY = toolGeo.MaxYL
+    End If
+    If maxLen > 0 Then toolGeo.SetStartPoint startX, startY
 End Sub
