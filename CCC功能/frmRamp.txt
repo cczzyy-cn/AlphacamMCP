@@ -22,10 +22,22 @@ End Sub
 Private Sub UserForm_Activate(): AddMinButton Me: End Sub
 Private Sub UserForm_Initialize()
     Me.Caption = "斜角下刀"
-    ' 默认值
-    txtMinSize.Text = "250"
-    txtCutDepth.Text = "18"
-    txtRampAngle.Text = "30"
+    ' 恢复上次窗体的值
+    If modRamp.g_lastMinSize > 0 Then
+        txtMinSize.Text = CStr(modRamp.g_lastMinSize)
+    Else
+        txtMinSize.Text = "250"
+    End If
+    If modRamp.g_lastCutDepth > 0 Then
+        txtCutDepth.Text = CStr(modRamp.g_lastCutDepth)
+    Else
+        txtCutDepth.Text = "18"
+    End If
+    If modRamp.g_lastRampAngle > 0 Then
+        txtRampAngle.Text = CStr(modRamp.g_lastRampAngle)
+    Else
+        txtRampAngle.Text = "30"
+    End If
 
     ' 扫描加工方式+刀具组合
     Dim drw As Drawing: Set drw = App.ActiveDrawing
@@ -88,7 +100,18 @@ Private Sub UserForm_Initialize()
             Next j
         End If
     Next i
-    If cmbMethodTool.ListCount > 0 Then cmbMethodTool.ListIndex = 0
+    ' 恢复上次选中的加工方式-刀具
+    If modRamp.g_lastMethodTool <> "" Then
+        Dim li As Long
+        For li = 0 To cmbMethodTool.ListCount - 1
+            If cmbMethodTool.List(li) = modRamp.g_lastMethodTool Then
+                cmbMethodTool.ListIndex = li
+                Exit For
+            End If
+        Next li
+    Else
+        If cmbMethodTool.ListCount > 0 Then cmbMethodTool.ListIndex = 0
+    End If
 End Sub
 Private Sub cmdOK_Click()
     ' 验证输入
@@ -127,6 +150,12 @@ Private Sub cmdOK_Click()
     Else
         toolMatch = selText
     End If
+
+    ' 保存本次窗体的值
+    modRamp.g_lastMinSize = minSize
+    modRamp.g_lastCutDepth = cutDepth
+    modRamp.g_lastRampAngle = rampAngle
+    modRamp.g_lastMethodTool = cmbMethodTool.Text
 
     ' 调用执行
     Unload Me

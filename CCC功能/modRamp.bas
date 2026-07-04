@@ -11,6 +11,12 @@ Private Const ATT_RAMP_DONE    As String = "CCC_RampDone"
 Private Const DEG2RAD          As Double = 0.0174532925199433
 Private Const POINT_STEP       As Double = 0.5
 
+' 上次窗体值（跨打开保持）
+Public g_lastMinSize    As Double
+Public g_lastCutDepth   As Double
+Public g_lastRampAngle  As Double
+Public g_lastMethodTool As String
+
 Sub 斜角下刀()
     frmRamp.Show vbModeless
 End Sub
