@@ -51,16 +51,22 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
             If methodName <> "" And procName <> methodName Then GoTo NextSub
             isMatch = False
             If toolMatch <> "" Then
-                If mt.Name = toolMatch Then isMatch = True
-                ElseIf InStr(1, mt.Name, toolMatch, vbTextCompare) > 0 Then isMatch = True
-                ElseIf InStr(1, toolMatch, mt.Name, vbTextCompare) > 0 Then isMatch = True
-                ElseIf CStr(mt.Number) = toolMatch Then isMatch = True
-                ElseIf tNum > 0 And mt.Number = tNum Then isMatch = True
+                If mt.Name = toolMatch Then
+                    isMatch = True
+                ElseIf InStr(1, mt.Name, toolMatch, vbTextCompare) > 0 Then
+                    isMatch = True
+                ElseIf InStr(1, toolMatch, mt.Name, vbTextCompare) > 0 Then
+                    isMatch = True
+                ElseIf CStr(mt.Number) = toolMatch Then
+                    isMatch = True
+                ElseIf tNum > 0 And mt.Number = tNum Then
+                    isMatch = True
                 ElseIf Left(toolMatch, 1) = "T" Then
                     selToolNum = Val(Mid(toolMatch, 2))
                     If selToolNum > 0 And mt.Number = selToolNum Then isMatch = True
                 End If
-            Else: isMatch = True
+            Else
+                isMatch = True
             End If
             If Not isMatch Then GoTo NextSub
 
