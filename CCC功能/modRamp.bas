@@ -5,7 +5,6 @@
 '   沿原路径的一条边逐渐降低 Z，角度为与水平面的夹角
 ' ==============================================================================
 Option Explicit
-Option Private Module
 
 Private Const ATT_RAMP_DONE    As String = "CCC_RampDone"
 Private Const DEG2RAD          As Double = 0.0174532925199433
@@ -88,12 +87,12 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
                 Else: tpW = tp.MaxXL - tp.MinXL: tpH = tp.MaxYL - tp.MinYL
                 If tpW > 1 And tpH > 1 And (tpW < minSize Or tpH < minSize) Then
                     smallCount = smallCount + 1
-                    ' 读取原路径深度，>= 阈值才加入执行队列
-                    Dim mdCheck As MillData: Set mdCheck = subop.GetMillData
+                    ' 读取原路径深度（从刀路自身读，更精确）
+                    Dim mdCheck As MillData: Set mdCheck = tp.GetMillData
                     Dim depthOk As Boolean: depthOk = False
                     Dim origDepth As Double: origDepth = -cutDepth
                     If Not (mdCheck Is Nothing) Then
-                        origDepth = mdCheck.FinalDepth
+                        origDepth = CDbl(mdCheck.FinalDepth)
                         If origDepth < 0 And Abs(origDepth) >= cutDepth Then depthOk = True
                     Else
                         ' 取不到 MillData 也执行
@@ -110,7 +109,7 @@ NextOp: Next i
     ' 第二遍：逐个处理
     For k = 1 To colTP.Count
         Set tp = colTP(k): Set subop = colSO(k): Set mt = colMT(k)
-        Dim actualDepth As Double: actualDepth = colDepth(k)
+        Dim actualDepth As Double: actualDepth = CDbl(colDepth(k))
         Dim actualDepthAbs As Double: actualDepthAbs = Abs(actualDepth)
 
         ' 选刀具
@@ -177,7 +176,7 @@ NextOp: Next i
         Dim mdNew As MillData: Set mdNew = App.CreateMillData
         mdNew.SafeRapidLevel = safeR: mdNew.RapidDownTo = 10
         mdNew.SpindleSpeed = spindle: mdNew.CutFeed = cutF: mdNew.DownFeed = downF
-        mdNew.FinalDepth = finalDepth
+        mdNew.FinalDepth = CDbl(finalDepth)
 
         ' 找斜坡起点坐标
         Dim sx As Double, sy As Double, elem0 As Element
