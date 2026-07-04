@@ -35,8 +35,8 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     Set ops = drw.Operations
     If ops Is Nothing Or ops.Count = 0 Then drw.ScreenUpdating = True: MsgBox "图纸中没有加工操作！": Exit Sub
 
-    ' 第一遍：收集需要处理的 (tp, subop, mt)
-    Dim colTP As New Collection, colSO As New Collection, colMT As New Collection
+    ' 第一遍：收集需要处理的 (tp, subop, mt, origDepth)
+    Dim colTP As New Collection, colSO As New Collection, colMT As New Collection, colDepth As New Collection
     totalCount = 0: smallCount = 0: rampApplied = 0: skipCount = 0
 
     For i = 1 To ops.Count
@@ -81,8 +81,15 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
                 If tp.GetFeedExtent(fx1, fy1, fx2, fy2) Then tpW = fx2 - fx1: tpH = fy2 - fy1 _
                 Else: tpW = tp.MaxXL - tp.MinXL: tpH = tp.MaxYL - tp.MinYL
                 If tpW > 1 And tpH > 1 And (tpW < minSize Or tpH < minSize) Then
-                    smallCount = smallCount + 1
-                    colTP.Add tp: colSO.Add subop: colMT.Add mt
+                    ' 读取原路径深度，> 阈值才执行
+                    Dim mdCheck As MillData: Set mdCheck = subop.GetMillData
+                    If Not (mdCheck Is Nothing) Then
+                        Dim origDepth As Double: origDepth = mdCheck.FinalDepth
+                        If origDepth < 0 And Abs(origDepth) > cutDepth Then
+                            smallCount = smallCount + 1
+                            colTP.Add tp: colSO.Add subop: colMT.Add mt: colDepth.Add origDepth
+                        End If
+                    End If
                 End If
 NextTp: Next k
 NextSub: Next j
@@ -91,6 +98,8 @@ NextOp: Next i
     ' 第二遍：逐个处理
     For k = 1 To colTP.Count
         Set tp = colTP(k): Set subop = colSO(k): Set mt = colMT(k)
+        Dim actualDepth As Double: actualDepth = colDepth(k)
+        Dim actualDepthAbs As Double: actualDepthAbs = Abs(actualDepth)
 
         ' 选刀具
         If Not (mt Is Nothing) Then
@@ -140,21 +149,21 @@ NextOp: Next i
             toolRadius = mt.Diameter / 2
             If toolRadius <= 0 Then toolRadius = 3
         End If
-        Dim sloopDist As Double: sloopDist = cutDepth / Tan(rampAngle * DEG2RAD)
+        Dim sloopDist As Double: sloopDist = actualDepthAbs / Tan(rampAngle * DEG2RAD)
         If sloopDist <= 0 Then sloopDist = 5
         Dim geoLen As Double: geoLen = toolGeo.Length
         If geoLen <= 0 Then GoTo SkipItem
         If sloopDist > geoLen * 0.8 Then sloopDist = geoLen * 0.8
         Dim steps As Long: steps = CLng(sloopDist / POINT_STEP)
         If steps < 2 Then steps = 2
-        Dim finalDepth As Double: finalDepth = -cutDepth
+        Dim finalDepth As Double: finalDepth = actualDepth
         Dim stepDepth As Double: stepDepth = finalDepth / steps
         Dim rampStartDist As Double: rampStartDist = geoLen - sloopDist
         If rampStartDist < 0 Then rampStartDist = 0
 
         ' 创建 MillData
         Dim mdNew As MillData: Set mdNew = App.CreateMillData
-        mdNew.SafeRapidLevel = safeR: mdNew.RapidDownTo = rapidD
+        mdNew.SafeRapidLevel = safeR: mdNew.RapidDownTo = 10
         mdNew.SpindleSpeed = spindle: mdNew.CutFeed = cutF: mdNew.DownFeed = downF
         mdNew.FinalDepth = finalDepth
 
