@@ -42,7 +42,7 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     If ops Is Nothing Or ops.Count = 0 Then drw.ScreenUpdating = True: MsgBox "图纸中没有加工操作！": Exit Sub
 
     ' 第一遍：收集需要处理的 (tp, subop, mt, origDepth)
-    Dim colTP As New Collection, colSO As New Collection, colMT As New Collection, colDepth As New Collection
+    Dim colTP As New Collection, colSO As New Collection, colMT As New Collection, colDepth As New Collection, colDist As New Collection
     totalCount = 0: smallCount = 0: rampApplied = 0: skipCount = 0
 
     For i = 1 To ops.Count
@@ -100,15 +100,41 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
                         depthOk = True
                     End If
                     If depthOk Then
-                        colTP.Add tp: colSO.Add subop: colMT.Add mt: colDepth.Add origDepth
+                        ' 计算零件中心到排版中心的距离（远的先切）
+                        Dim scX As Double, scY As Double, sf As Boolean: sf = False
+                        If Not (ni Is Nothing) Then
+                            Dim sh1 As NestSheet
+                            For Each sh1 In ni.Sheets
+                                Dim ps1 As Paths: Set ps1 = sh1.Paths
+                                If Not (ps1 Is Nothing) Then
+                                    Dim pi1 As Long
+                                    For pi1 = 1 To ps1.Count
+                                        If ps1(pi1).OpNo = tp.OpNo Then
+                                            Dim sg1 As Path: Set sg1 = sh1.Geometry
+                                            If Not (sg1 Is Nothing) Then
+                                                scX = (sg1.MinXL + sg1.MaxXL) / 2
+                                                scY = (sg1.MinYL + sg1.MaxYL) / 2
+                                                sf = True
+                                            End If
+                                            Exit For
+                                        End If
+                                    Next pi1
+                                End If
+                                If sf Then Exit For
+                            Next sh1
+                        End If
+                        Dim partCx As Double: partCx = (tp.MinXL + tp.MaxXL) / 2
+                        Dim partCy As Double: partCy = (tp.MinYL + tp.MaxYL) / 2
+                        Dim dist As Double: dist = Abs(scX - partCx) + Abs(scY - partCy)
+                        colTP.Add tp: colSO.Add subop: colMT.Add mt: colDepth.Add origDepth: colDist.Add dist
                     End If
                 End If
 NextTp: Next k
 NextSub: Next j
 NextOp: Next i
 
-    ' 第二遍：逐个处理
-    For k = 1 To colTP.Count
+    ' 第二遍：逐个处理（远的先切：按距离倒序）
+    For k = colTP.Count To 1 Step -1
         Set tp = colTP(k): Set subop = colSO(k): Set mt = colMT(k)
         Dim actualDepth As Double: actualDepth = CDbl(colDepth(k))
         Dim actualDepthAbs As Double: actualDepthAbs = Abs(actualDepth)
@@ -288,24 +314,25 @@ Private Sub SetGeoStartToSheetSide(ByVal drw As Drawing, _
     End If
     Dim mx As Double: mx = (toolGeo.MinXL + toolGeo.MaxXL) / 2
     Dim my As Double: my = (toolGeo.MinYL + toolGeo.MaxYL) / 2
-    Dim dx As Double, dy As Double: dx = scx - mx: dy = scy - my
-    Dim startX As Double, startY As Double, maxLen As Double: maxLen = 0
-    Dim sl As Double
-    If dx < 0 Then
-        sl = toolGeo.MaxYL - toolGeo.MinYL
-        If sl > maxLen Then maxLen = sl: startX = toolGeo.MinXL: startY = my
-    End If
-    If dx > 0 Then
-        sl = toolGeo.MaxYL - toolGeo.MinYL
-        If sl > maxLen Then maxLen = sl: startX = toolGeo.MaxXL: startY = my
-    End If
-    If dy < 0 Then
-        sl = toolGeo.MaxXL - toolGeo.MinXL
-        If sl > maxLen Then maxLen = sl: startX = mx: startY = toolGeo.MinYL
-    End If
-    If dy > 0 Then
-        sl = toolGeo.MaxXL - toolGeo.MinXL
-        If sl > maxLen Then maxLen = sl: startX = mx: startY = toolGeo.MaxYL
-    End If
-    If maxLen > 0 Then toolGeo.SetStartPoint startX, startY
+    Dim startX As Double, startY As Double
+    Dim bestDist As Double: bestDist = 1E+30
+    Dim d As Double
+
+    ' 左边中点
+    d = Abs(scx - toolGeo.MinXL) + Abs(scy - my)
+    If d < bestDist Then bestDist = d: startX = toolGeo.MinXL: startY = my
+
+    ' 右边中点
+    d = Abs(scx - toolGeo.MaxXL) + Abs(scy - my)
+    If d < bestDist Then bestDist = d: startX = toolGeo.MaxXL: startY = my
+
+    ' 下边中点
+    d = Abs(scx - mx) + Abs(scy - toolGeo.MinYL)
+    If d < bestDist Then bestDist = d: startX = mx: startY = toolGeo.MinYL
+
+    ' 上边中点
+    d = Abs(scx - mx) + Abs(scy - toolGeo.MaxYL)
+    If d < bestDist Then bestDist = d: startX = mx: startY = toolGeo.MaxYL
+
+    toolGeo.SetStartPoint startX, startY
 End Sub
