@@ -224,19 +224,14 @@ NextOp: Next i
         ' 创建 ManualToolPath 从 Z=0 开始
         Dim mtp As Object: Set mtp = mdNew.ManualToolPath(sx, sy, 0#)
 
-        ' 斜坡段：最后 1mm 上抬 0.5mm 留连接点（tag）
+        ' 斜坡段：沿路径逐步下刀（Z 按实际水平距离比例，保证角度精确）
         Dim s As Long, px As Double, py As Double, pelem As Element
         For s = 1 To steps
             Dim d As Double: d = rampStartDist + POINT_STEP * s
             If d > geoLen Then d = geoLen
             Dim actDist As Double: actDist = d - rampStartDist
-            Dim ratio As Double: ratio = actDist / sloopDist
-            Dim z As Double: z = -actualDepthAbs * ratio
-            If ratio > 0.9 Then
-                z = z + 0.5 * ((ratio - 0.9) / 0.1)
-            End If
             If toolGeo.PointAtDistanceAlongPathL(d, px, py, pelem) Then
-                mtp.Add3DLine px, py, z
+                mtp.Add3DLine px, py, -actualDepthAbs * (actDist / sloopDist)
             End If
         Next
 
@@ -250,12 +245,10 @@ NextOp: Next i
             For ei = 1 To elems2.Count
                 Set elem = elems2(ei)
                 If Not (elem Is Nothing) Then
-                    Dim z As Double: z = finalDepth
-                    If ei = elems2.Count Then z = finalDepth + 0.5
                     If elem.IsLine Then
-                        mtp.Add3DLine elem.EndXL, elem.EndYL, z
+                        mtp.Add3DLine elem.EndXL, elem.EndYL, finalDepth
                     ElseIf elem.IsArc Then
-                        mtp.Add3DArcPointCenter elem.EndXL, elem.EndYL, z, _
+                        mtp.Add3DArcPointCenter elem.EndXL, elem.EndYL, finalDepth, _
                                                  elem.CenterXL, elem.CenterYL, elem.CW
                     End If
                 End If
@@ -325,26 +318,21 @@ Private Sub SetGeoStartToSheetSide(ByVal drw As Drawing, _
     Dim bestDist As Double: bestDist = 1E+30
     Dim d As Double
 
+    ' 左边中点
     d = Abs(scx - toolGeo.MinXL) + Abs(scy - my)
     If d < bestDist Then bestDist = d: startX = toolGeo.MinXL: startY = my
+
+    ' 右边中点
     d = Abs(scx - toolGeo.MaxXL) + Abs(scy - my)
     If d < bestDist Then bestDist = d: startX = toolGeo.MaxXL: startY = my
+
+    ' 下边中点
     d = Abs(scx - mx) + Abs(scy - toolGeo.MinYL)
     If d < bestDist Then bestDist = d: startX = mx: startY = toolGeo.MinYL
+
+    ' 上边中点
     d = Abs(scx - mx) + Abs(scy - toolGeo.MaxYL)
     If d < bestDist Then bestDist = d: startX = mx: startY = toolGeo.MaxYL
-
-    ' 基于几何位置哈希偏移，每块板的起点不同（防重叠）
-    Dim uniOff As Double: uniOff = (Abs(toolGeo.MinXL * 10 + toolGeo.MaxYL * 7)) Mod 50
-    If startX = toolGeo.MinXL Or startX = toolGeo.MaxXL Then
-        startY = startY + uniOff
-        If startY > toolGeo.MaxYL - 5 Then startY = toolGeo.MinYL + 5
-        If startY < toolGeo.MinYL + 5 Then startY = toolGeo.MinYL + 5
-    Else
-        startX = startX + uniOff
-        If startX > toolGeo.MaxXL - 5 Then startX = toolGeo.MinXL + 5
-        If startX < toolGeo.MinXL + 5 Then startX = toolGeo.MinXL + 5
-    End If
 
     toolGeo.SetStartPoint startX, startY
 End Sub
