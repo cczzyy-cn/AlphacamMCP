@@ -1,11 +1,15 @@
 ' ==============================================================================
 ' CCC功能 — modRamp 斜角下刀
+' 严格参照小条先切算法：
+'   DrawToolGeo 复制刀路元素为几何 → SetStartPoint → ManualToolPath
+'   沿原路径的一条边逐渐降低 Z，角度为与水平面的夹角
 ' ==============================================================================
 Option Explicit
 Option Private Module
 
 Private Const ATT_RAMP_DONE    As String = "CCC_RampDone"
 Private Const DEG2RAD          As Double = 0.0174532925199433
+Private Const POINT_STEP       As Double = 0.5
 
 Sub 斜角下刀()
     frmRamp.Show vbModeless
@@ -17,26 +21,22 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
                           ByVal methodName As String, _
                           ByVal toolMatch As String, _
                           Optional ByVal tNum As Long = 0)
-
     On Error GoTo ErrHandler
-    Dim drw As Drawing, ops As Operations, ni As NestInformation
+    Dim drw As Drawing, ops As Operations
     Dim i As Long, j As Long, k As Long
     Dim op As Operation, subs As SubOperations, subop As SubOperation
     Dim mt As MillTool, tps As Paths, tp As Path
     Dim totalCount As Long, smallCount As Long, rampApplied As Long, skipCount As Long
-    Dim tpW As Double, tpH As Double, toolRadius As Double, rampLength As Double, lengthMult As Double
-    Dim isMatch As Boolean, spPos As Integer, procName As String, selToolNum As Long
+    Dim tpW As Double, tpH As Double, isMatch As Boolean, spPos As Integer, procName As String, selToolNum As Long
 
     Set drw = App.ActiveDrawing
     If drw Is Nothing Then MsgBox "没有活动图纸！": Exit Sub
     drw.ScreenUpdating = False: App.SetUndoCommandName "斜角下刀": App.SetUndoPoint
-
-    Set ni = drw.GetNestInformation
     Set ops = drw.Operations
     If ops Is Nothing Or ops.Count = 0 Then drw.ScreenUpdating = True: MsgBox "图纸中没有加工操作！": Exit Sub
 
-    ' 第一遍：收集需要处理的 (tp, subop)
-    Dim colTP As New Collection, colSub As New Collection
+    ' 第一遍：收集需要处理的 (tp, subop, mt)
+    Dim colTP As New Collection, colSO As New Collection, colMT As New Collection
     totalCount = 0: smallCount = 0: rampApplied = 0: skipCount = 0
 
     For i = 1 To ops.Count
@@ -70,7 +70,6 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
                 isMatch = True
             End If
             If Not isMatch Then GoTo NextSub
-
             Set tps = subop.ToolPaths
             If tps Is Nothing Then GoTo NextSub
             For k = 1 To tps.Count
@@ -83,33 +82,15 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
                 Else: tpW = tp.MaxXL - tp.MinXL: tpH = tp.MaxYL - tp.MinYL
                 If tpW > 1 And tpH > 1 And (tpW < minSize Or tpH < minSize) Then
                     smallCount = smallCount + 1
-                    colTP.Add tp
-                    colSub.Add subop
+                    colTP.Add tp: colSO.Add subop: colMT.Add mt
                 End If
-NextTp:
-            Next k
-NextSub:
-        Next j
-NextOp:
-    Next i
+NextTp: Next k
+NextSub: Next j
+NextOp: Next i
 
-    ' 第二遍：逐个处理（避免循环内删除导致索引偏移）
+    ' 第二遍：逐个处理
     For k = 1 To colTP.Count
-        Set tp = colTP(k)
-        Set subop = colSub(k)
-        Set mt = subop.Tool
-
-        toolRadius = 3
-        If Not (mt Is Nothing) Then
-            toolRadius = mt.Diameter / 2: If toolRadius <= 0 Then toolRadius = 3
-        End If
-        rampLength = cutDepth / Tan(rampAngle * DEG2RAD)
-        lengthMult = rampLength / toolRadius
-        If lengthMult < 1 Then lengthMult = 1
-        If lengthMult > 50 Then lengthMult = 50
-
-        ' 设几何起点
-        SetStartPointToSheetCenterSide drw, subop, ni, tp
+        Set tp = colTP(k): Set subop = colSO(k): Set mt = colMT(k)
 
         ' 选刀具
         If Not (mt Is Nothing) Then
@@ -117,42 +98,116 @@ NextOp:
             If tf <> "" Then App.SelectTool tf
         End If
 
-        ' 取几何
-        Dim geos As Paths: Set geos = subop.Geometries
-        If geos Is Nothing Then GoTo SkipItem
-        If geos.Count = 0 Then GoTo SkipItem
-        Dim rampGeo As Path: Set rampGeo = geos(1)
-        If rampGeo Is Nothing Then GoTo SkipItem
+        ' 读取 MillData 参数
+        Dim mdOld As MillData: Set mdOld = subop.GetMillData
+        Dim safeR As Double, rapidD As Double, spindle As Double, cutF As Double, downF As Double
+        If Not (mdOld Is Nothing) Then
+            safeR = mdOld.SafeRapidLevel: rapidD = mdOld.RapidDownTo
+            spindle = mdOld.SpindleSpeed: cutF = mdOld.CutFeed: downF = mdOld.DownFeed
+        End If
+        If spindle <= 0 Then spindle = 24000
+        If cutF <= 0 Then cutF = 9000
+        If downF <= 0 Then downF = 2000
+
+        ' 从刀路元素复制几何（参照小条先切 DrawToolGeo，跳过快速移动）
+        Dim geoObj As Object: Set geoObj = Nothing
+        Dim elems As Elements: Set elems = tp.Elements
+        If elems Is Nothing Then GoTo SkipItem
+        Dim ei As Long
+        For ei = 1 To elems.Count
+            Dim elem As Element: Set elem = elems(ei)
+            If Not (elem Is Nothing) Then
+                If Not elem.IsRapid Then
+                    If geoObj Is Nothing Then
+                        Set geoObj = drw.Create2DGeometry(elem.StartXL, elem.StartYL)
+                    End If
+                    If elem.IsLine Then
+                        geoObj.AddLine elem.EndXL, elem.EndYL
+                    ElseIf elem.IsArc Then
+                        geoObj.AddArcPointCenter elem.EndXL, elem.EndYL, elem.CenterXL, elem.CenterYL, elem.CW
+                    End If
+                End If
+            End If
+        Next ei
+        If geoObj Is Nothing Then GoTo SkipItem
+        Dim toolGeo As Path: Set toolGeo = geoObj.Finish
+        If toolGeo Is Nothing Then GoTo SkipItem
+        toolGeo.ToolInOut = acamCENTER
+
+        ' 计算斜坡参数
+        Dim toolRadius As Double: toolRadius = 3
+        If Not (mt Is Nothing) Then
+            toolRadius = mt.Diameter / 2
+            If toolRadius <= 0 Then toolRadius = 3
+        End If
+        Dim sloopDist As Double: sloopDist = cutDepth / Tan(rampAngle * DEG2RAD)
+        If sloopDist <= 0 Then sloopDist = 5
+        Dim geoLen As Double: geoLen = toolGeo.Length
+        If geoLen <= 0 Then GoTo SkipItem
+        If sloopDist > geoLen * 0.8 Then sloopDist = geoLen * 0.8
+        Dim steps As Long: steps = CLng(sloopDist / POINT_STEP)
+        If steps < 2 Then steps = 2
+        Dim finalDepth As Double: finalDepth = -cutDepth
+        Dim stepDepth As Double: stepDepth = finalDepth / steps
+        Dim rampStartDist As Double: rampStartDist = geoLen - sloopDist
+        If rampStartDist < 0 Then rampStartDist = 0
 
         ' 创建 MillData
         Dim mdNew As MillData: Set mdNew = App.CreateMillData
-        Dim mdOld As MillData: Set mdOld = subop.GetMillData
-        If Not (mdOld Is Nothing) Then
-            mdNew.SafeRapidLevel = mdOld.SafeRapidLevel
-            mdNew.RapidDownTo = mdOld.RapidDownTo
-            mdNew.FinalDepth = -cutDepth
-            mdNew.SpindleSpeed = 24000
-            mdNew.CutFeed = 9000
-            mdNew.DownFeed = 2000
+        mdNew.SafeRapidLevel = safeR: mdNew.RapidDownTo = rapidD
+        mdNew.SpindleSpeed = spindle: mdNew.CutFeed = cutF: mdNew.DownFeed = downF
+        mdNew.FinalDepth = finalDepth
+
+        ' 找斜坡起点坐标
+        Dim sx As Double, sy As Double, elem0 As Element
+        If Not toolGeo.PointAtDistanceAlongPathL(rampStartDist, sx, sy, elem0) Then
+            Set elem0 = toolGeo.GetFirstElem
+            If elem0 Is Nothing Then GoTo SkipItem
+            sx = elem0.StartXL: sy = elem0.StartYL
+            rampStartDist = 0
+            steps = CLng(geoLen / POINT_STEP)
+            If steps < 2 Then steps = 2
+            stepDepth = finalDepth / steps
         End If
 
-        ' 删除旧刀路，选几何重建
-        tp.Delete
-        rampGeo.Selected = True
-        Dim result As Object: Set result = mdNew.RoughFinish
-        rampGeo.Selected = False
+        ' 创建 ManualToolPath 从 Z=0 开始
+        Dim mtp As Object: Set mtp = mdNew.ManualToolPath(sx, sy, 0#)
 
-        If Not (result Is Nothing) Then
-            If result.Count > 0 Then
-                Dim newTp As Path: Set newTp = result(1)
-                Dim oldTio As Integer: oldTio = newTp.ToolInOut
-                If oldTio = acamCENTER Then newTp.ToolInOut = acamOUTSIDE
-                newTp.SetLeadInOutAuto acamLeadBOTH, acamLeadNONE, _
-                                        lengthMult, 0.5, 45, _
-                                        True, False, -0.5
-                If oldTio = acamCENTER Then newTp.ToolInOut = acamCENTER
+        ' 斜坡段：沿路径逐步下刀
+        Dim s As Long, px As Double, py As Double, pelem As Element
+        For s = 1 To steps
+            Dim d As Double: d = rampStartDist + POINT_STEP * s
+            If d > geoLen Then d = geoLen
+            If toolGeo.PointAtDistanceAlongPathL(d, px, py, pelem) Then
+                mtp.Add3DLine px, py, stepDepth * s
             End If
+        Next
+
+        ' 跳转到几何起点继续走完
+        Dim startX As Double: startX = toolGeo.GetFirstElem.StartXL
+        Dim startY As Double: startY = toolGeo.GetFirstElem.StartYL
+        mtp.Add3DLine startX, startY, finalDepth
+
+        Dim elems2 As Elements: Set elems2 = toolGeo.Elements
+        If Not (elems2 Is Nothing) Then
+            For ei = 1 To elems2.Count
+                Set elem = elems2(ei)
+                If Not (elem Is Nothing) Then
+                    If elem.IsLine Then
+                        mtp.Add3DLine elem.EndXL, elem.EndYL, finalDepth
+                    ElseIf elem.IsArc Then
+                        mtp.Add3DArcPointCenter elem.EndXL, elem.EndYL, finalDepth, _
+                                                 elem.CenterXL, elem.CenterYL, elem.CW
+                    End If
+                End If
+            Next ei
         End If
+
+        mtp.Finish
+        toolGeo.Selected = True: toolGeo.Delete
+
+        ' 删除旧刀路
+        tp.Delete
 
         tp.Attribute(ATT_RAMP_DONE) = 1
         rampApplied = rampApplied + 1
@@ -167,65 +222,4 @@ SkipItem:
 ErrHandler:
     If Not (drw Is Nothing) Then drw.ScreenUpdating = True: drw.Redraw
     MsgBox "斜角下刀出错：" & Err.Description, vbCritical
-End Sub
-
-Private Sub SetStartPointToSheetCenterSide(ByVal drw As Drawing, _
-                                            ByVal subop As SubOperation, _
-                                            ByVal ni As NestInformation, _
-                                            ByVal oldTp As Path)
-    On Error Resume Next
-    Dim geos As Paths: Set geos = subop.Geometries
-    If geos Is Nothing Then Exit Sub
-    If geos.Count = 0 Then Exit Sub
-    Dim geo As Path: Set geo = geos(1)
-    If geo Is Nothing Then Exit Sub
-
-    Dim scx As Double, scy As Double, found As Boolean: found = False
-    If Not (ni Is Nothing) Then
-        Dim sh As NestSheet
-        For Each sh In ni.Sheets
-            Dim pInSh As Paths: Set pInSh = sh.Paths
-            If Not (pInSh Is Nothing) Then
-                Dim pi As Long
-                For pi = 1 To pInSh.Count
-                    If pInSh(pi).OpNo = oldTp.OpNo Then
-                        Dim sg As Path: Set sg = sh.Geometry
-                        If Not (sg Is Nothing) Then
-                            scx = (sg.MinXL + sg.MaxXL) / 2: scy = (sg.MinYL + sg.MaxYL) / 2
-                            found = True
-                        End If
-                        Exit For
-                    End If
-                Next pi
-            End If
-            If found Then Exit For
-        Next sh
-    End If
-    If Not found Then
-        Dim gx1 As Double, gy1 As Double, gx2 As Double, gy2 As Double
-        drw.GetExtent gx1, gy1, gx2, gy2, 0, 0
-        scx = (gx1 + gx2) / 2: scy = (gy1 + gy2) / 2
-    End If
-
-    Dim mx As Double: mx = (geo.MinXL + geo.MaxXL) / 2
-    Dim my As Double: my = (geo.MinYL + geo.MaxYL) / 2
-    Dim dx As Double: dx = scx - mx: dy = scy - my
-    Dim startX As Double, startY As Double, maxLen As Double: maxLen = 0
-    If dx < 0 Then
-        Dim sl As Double: sl = geo.MaxYL - geo.MinYL
-        If sl > maxLen Then maxLen = sl: startX = geo.MinXL: startY = my
-    End If
-    If dx > 0 Then
-        Dim sl As Double: sl = geo.MaxYL - geo.MinYL
-        If sl > maxLen Then maxLen = sl: startX = geo.MaxXL: startY = my
-    End If
-    If dy < 0 Then
-        Dim sl As Double: sl = geo.MaxXL - geo.MinXL
-        If sl > maxLen Then maxLen = sl: startX = mx: startY = geo.MinYL
-    End If
-    If dy > 0 Then
-        Dim sl As Double: sl = geo.MaxXL - geo.MinXL
-        If sl > maxLen Then maxLen = sl: startX = mx: startY = geo.MaxYL
-    End If
-    If maxLen > 0 Then geo.SetStartPoint startX, startY
 End Sub
