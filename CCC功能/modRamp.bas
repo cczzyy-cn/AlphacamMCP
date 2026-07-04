@@ -87,14 +87,20 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
                 If tp.GetFeedExtent(fx1, fy1, fx2, fy2) Then tpW = fx2 - fx1: tpH = fy2 - fy1 _
                 Else: tpW = tp.MaxXL - tp.MinXL: tpH = tp.MaxYL - tp.MinYL
                 If tpW > 1 And tpH > 1 And (tpW < minSize Or tpH < minSize) Then
-                    ' 读取原路径深度，> 阈值才执行
+                    smallCount = smallCount + 1
+                    ' 读取原路径深度，>= 阈值才加入执行队列
                     Dim mdCheck As MillData: Set mdCheck = subop.GetMillData
+                    Dim depthOk As Boolean: depthOk = False
+                    Dim origDepth As Double: origDepth = -cutDepth
                     If Not (mdCheck Is Nothing) Then
-                        Dim origDepth As Double: origDepth = mdCheck.FinalDepth
-                        If origDepth < 0 And Abs(origDepth) > cutDepth Then
-                            smallCount = smallCount + 1
-                            colTP.Add tp: colSO.Add subop: colMT.Add mt: colDepth.Add origDepth
-                        End If
+                        origDepth = mdCheck.FinalDepth
+                        If origDepth < 0 And Abs(origDepth) >= cutDepth Then depthOk = True
+                    Else
+                        ' 取不到 MillData 也执行
+                        depthOk = True
+                    End If
+                    If depthOk Then
+                        colTP.Add tp: colSO.Add subop: colMT.Add mt: colDepth.Add origDepth
                     End If
                 End If
 NextTp: Next k
