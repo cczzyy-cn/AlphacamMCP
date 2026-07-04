@@ -28,14 +28,15 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     Dim isMatch As Boolean, spPos As Integer, procName As String, selToolNum As Long
 
     Set drw = App.ActiveDrawing
-    If drw Is Nothing Then MsgBox "没有活动图纸！", vbExclamation, "斜角下刀": Exit Sub
-
+    If drw Is Nothing Then MsgBox "没有活动图纸！": Exit Sub
     drw.ScreenUpdating = False: App.SetUndoCommandName "斜角下刀": App.SetUndoPoint
 
     Set ni = drw.GetNestInformation
     Set ops = drw.Operations
     If ops Is Nothing Or ops.Count = 0 Then drw.ScreenUpdating = True: MsgBox "图纸中没有加工操作！": Exit Sub
 
+    ' 第一遍：收集需要处理的 (tp, subop)
+    Dim colTP As New Collection, colSub As New Collection
     totalCount = 0: smallCount = 0: rampApplied = 0: skipCount = 0
 
     For i = 1 To ops.Count
@@ -82,63 +83,8 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
                 Else: tpW = tp.MaxXL - tp.MinXL: tpH = tp.MaxYL - tp.MinYL
                 If tpW > 1 And tpH > 1 And (tpW < minSize Or tpH < minSize) Then
                     smallCount = smallCount + 1
-                    toolRadius = 3
-                    If Not (mt Is Nothing) Then
-                        toolRadius = mt.Diameter / 2: If toolRadius <= 0 Then toolRadius = 3
-                    End If
-                    rampLength = cutDepth / Tan(rampAngle * DEG2RAD)
-                    lengthMult = rampLength / toolRadius
-                    If lengthMult < 1 Then lengthMult = 1
-                    If lengthMult > 50 Then lengthMult = 50
-
-                    ' 设几何起点（朝向排版中心侧的较长边中点）
-                    SetStartPointToSheetCenterSide drw, subop, ni, tp
-
-                    ' 选择刀具，选关联几何，删除旧路径，重建新路径
-                    If Not (mt Is Nothing) Then
-                        Dim tf As String: tf = mt.FileName
-                        If tf <> "" Then App.SelectTool tf
-                    End If
-
-                    Dim mdNew As MillData: Set mdNew = App.CreateMillData
-                    Dim mdOld As MillData: Set mdOld = subop.GetMillData
-                    If Not (mdOld Is Nothing) Then
-                        mdNew.SafeRapidLevel = mdOld.SafeRapidLevel
-                        mdNew.RapidDownTo = mdOld.RapidDownTo
-                        mdNew.FinalDepth = -cutDepth
-                        mdNew.SpindleSpeed = 24000
-                        mdNew.CutFeed = 9000
-                        mdNew.DownFeed = 2000
-                    End If
-
-                    ' 设起点后选几何重建路径
-                    Dim geos As Paths: Set geos = subop.Geometries
-                    If Not (geos Is Nothing) Then
-                        If geos.Count > 0 Then
-                            Dim rampGeo As Path: Set rampGeo = geos(1)
-                            If Not (rampGeo Is Nothing) Then
-                                oldTp.Delete
-                                rampGeo.Selected = True
-                                Dim result As Object: Set result = mdNew.RoughFinish
-                                rampGeo.Selected = False
-                                If Not (result Is Nothing) Then
-                                    If result.Count > 0 Then
-                                        Dim newTp As Path: Set newTp = result(1)
-                                        ' 进刀线（从起点朝排版中心侧延长）
-                                        Dim oldTio As Integer: oldTio = newTp.ToolInOut
-                                        If oldTio = acamCENTER Then newTp.ToolInOut = acamOUTSIDE
-                                        newTp.SetLeadInOutAuto acamLeadBOTH, acamLeadNONE, _
-                                                                lengthMult, 0.5, 45, _
-                                                                True, False, -0.5
-                                        If oldTio = acamCENTER Then newTp.ToolInOut = acamCENTER
-                                    End If
-                                End If
-                            End If
-                        End If
-                    End If
-
-                    tp.Attribute(ATT_RAMP_DONE) = 1
-                    rampApplied = rampApplied + 1
+                    colTP.Add tp
+                    colSub.Add subop
                 End If
 NextTp:
             Next k
@@ -146,6 +92,72 @@ NextSub:
         Next j
 NextOp:
     Next i
+
+    ' 第二遍：逐个处理（避免循环内删除导致索引偏移）
+    For k = 1 To colTP.Count
+        Set tp = colTP(k)
+        Set subop = colSub(k)
+        Set mt = subop.Tool
+
+        toolRadius = 3
+        If Not (mt Is Nothing) Then
+            toolRadius = mt.Diameter / 2: If toolRadius <= 0 Then toolRadius = 3
+        End If
+        rampLength = cutDepth / Tan(rampAngle * DEG2RAD)
+        lengthMult = rampLength / toolRadius
+        If lengthMult < 1 Then lengthMult = 1
+        If lengthMult > 50 Then lengthMult = 50
+
+        ' 设几何起点
+        SetStartPointToSheetCenterSide drw, subop, ni, tp
+
+        ' 选刀具
+        If Not (mt Is Nothing) Then
+            Dim tf As String: tf = mt.FileName
+            If tf <> "" Then App.SelectTool tf
+        End If
+
+        ' 取几何
+        Dim geos As Paths: Set geos = subop.Geometries
+        If geos Is Nothing Then GoTo SkipItem
+        If geos.Count = 0 Then GoTo SkipItem
+        Dim rampGeo As Path: Set rampGeo = geos(1)
+        If rampGeo Is Nothing Then GoTo SkipItem
+
+        ' 创建 MillData
+        Dim mdNew As MillData: Set mdNew = App.CreateMillData
+        Dim mdOld As MillData: Set mdOld = subop.GetMillData
+        If Not (mdOld Is Nothing) Then
+            mdNew.SafeRapidLevel = mdOld.SafeRapidLevel
+            mdNew.RapidDownTo = mdOld.RapidDownTo
+            mdNew.FinalDepth = -cutDepth
+            mdNew.SpindleSpeed = 24000
+            mdNew.CutFeed = 9000
+            mdNew.DownFeed = 2000
+        End If
+
+        ' 删除旧刀路，选几何重建
+        tp.Delete
+        rampGeo.Selected = True
+        Dim result As Object: Set result = mdNew.RoughFinish
+        rampGeo.Selected = False
+
+        If Not (result Is Nothing) Then
+            If result.Count > 0 Then
+                Dim newTp As Path: Set newTp = result(1)
+                Dim oldTio As Integer: oldTio = newTp.ToolInOut
+                If oldTio = acamCENTER Then newTp.ToolInOut = acamOUTSIDE
+                newTp.SetLeadInOutAuto acamLeadBOTH, acamLeadNONE, _
+                                        lengthMult, 0.5, 45, _
+                                        True, False, -0.5
+                If oldTio = acamCENTER Then newTp.ToolInOut = acamCENTER
+            End If
+        End If
+
+        tp.Attribute(ATT_RAMP_DONE) = 1
+        rampApplied = rampApplied + 1
+SkipItem:
+    Next k
 
     drw.ScreenUpdating = True: drw.Redraw
     If rampApplied > 0 Then drw.ZoomAll: DoEvents
@@ -199,7 +211,6 @@ Private Sub SetStartPointToSheetCenterSide(ByVal drw As Drawing, _
     Dim my As Double: my = (geo.MinYL + geo.MaxYL) / 2
     Dim dx As Double: dx = scx - mx: dy = scy - my
     Dim startX As Double, startY As Double, maxLen As Double: maxLen = 0
-
     If dx < 0 Then
         Dim sl As Double: sl = geo.MaxYL - geo.MinYL
         If sl > maxLen Then maxLen = sl: startX = geo.MinXL: startY = my
