@@ -192,11 +192,23 @@ NextOp: Next i
         Dim geoLen As Double: geoLen = toolGeo.Length
         If geoLen <= 0 Then GoTo SkipItem
         If sloopDist > geoLen * 0.8 Then sloopDist = geoLen * 0.8
-        Dim steps As Long: steps = CLng(sloopDist / POINT_STEP)
-        If steps < 2 Then steps = 2
+        Dim rampSteps As Long: rampSteps = CLng(sloopDist / POINT_STEP)
+        If rampSteps < 2 Then rampSteps = 2
         Dim finalDepth As Double: finalDepth = actualDepth
-        Dim stepDepth As Double: stepDepth = finalDepth / steps
-        Dim rampStartDist As Double: rampStartDist = geoLen - sloopDist
+        Dim stepDepth As Double: stepDepth = finalDepth / rampSteps
+
+        ' 后退距离 = 边长（斜刀跨越整条边到另一条边）
+        Dim backDist As Double
+        If tp.MaxXL - tp.MinXL > tp.MaxYL - tp.MinYL Then
+            backDist = (tp.MaxXL - tp.MinXL) * 2
+        Else
+            backDist = (tp.MaxYL - tp.MinYL) * 2
+        End If
+        backDist = backDist * 2
+        If backDist < sloopDist Then backDist = sloopDist
+        Dim backSteps As Long: backSteps = CLng(backDist / POINT_STEP)
+        Dim totalSteps As Long: totalSteps = rampSteps + backSteps
+        Dim rampStartDist As Double: rampStartDist = geoLen - sloopDist - backDist
         If rampStartDist < 0 Then rampStartDist = 0
 
         ' 设几何起点在朝向排版中心侧较长边的中点（使斜坡落在该边）
@@ -215,23 +227,26 @@ NextOp: Next i
             If elem0 Is Nothing Then GoTo SkipItem
             sx = elem0.StartXL: sy = elem0.StartYL
             rampStartDist = 0
-            steps = CLng(geoLen / POINT_STEP)
-            If steps < 2 Then steps = 2
+            backSteps = 0
+            totalSteps = rampSteps
             sloopDist = geoLen
-            stepDepth = finalDepth / steps
         End If
 
         ' 创建 ManualToolPath 从 Z=0 开始
         Dim mtp As Object: Set mtp = mdNew.ManualToolPath(sx, sy, 0#)
 
-        ' 斜坡段：沿路径逐步下刀
+        ' 斜坡段：先水平后退，再逐步下刀
         Dim s As Long, px As Double, py As Double, pelem As Element
-        For s = 1 To steps
+        For s = 1 To totalSteps
             Dim d As Double: d = rampStartDist + POINT_STEP * s
             If d > geoLen Then d = geoLen
             Dim actDist As Double: actDist = d - rampStartDist
-            Dim ratio As Double: ratio = actDist / sloopDist
-            Dim z As Double: z = -actualDepthAbs * ratio
+            Dim z As Double
+            If s <= backSteps Then
+                z = 0
+            Else
+                z = -actualDepthAbs * ((actDist - backDist) / sloopDist)
+            End If
             If toolGeo.PointAtDistanceAlongPathL(d, px, py, pelem) Then
                 mtp.Add3DLine px, py, z
             End If
@@ -329,14 +344,18 @@ Private Sub SetGeoStartToSheetSide(ByVal drw As Drawing, _
     d = Abs(scx - mx) + Abs(scy - toolGeo.MaxYL)
     If d < bestDist Then bestDist = d: startX = mx: startY = toolGeo.MaxYL
 
-    ' 偏移整条边长，落到另一条近边上
+    ' 朝排版中心方向偏移整条边长，落到另一条边的中点上
     Dim edgeLen As Double
     If startX = toolGeo.MinXL Or startX = toolGeo.MaxXL Then
+        ' 左/右边 → 沿 Y 偏移边长，X 改为零件中心（落到上/下边的中点）
         edgeLen = toolGeo.MaxYL - toolGeo.MinYL
         If scy > my Then startY = startY + edgeLen Else startY = startY - edgeLen
+        startX = mx
     Else
+        ' 上/下边 → 沿 X 偏移边长，Y 改为零件中心（落到左/右边的中点）
         edgeLen = toolGeo.MaxXL - toolGeo.MinXL
         If scx > mx Then startX = startX + edgeLen Else startX = startX - edgeLen
+        startY = my
     End If
 
     toolGeo.SetStartPoint startX, startY
