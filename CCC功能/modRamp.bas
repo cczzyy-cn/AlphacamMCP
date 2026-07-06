@@ -203,10 +203,13 @@ NextOp: Next i
         ' 设几何起点在朝向排版中心侧较长边的中点（使斜坡落在该边）
         SetGeoStartToSheetSide drw, subop, ni, tp, toolGeo
 
-        ' Z-18路径后退距离 = 近边长度（留连接点）
+        ' Z-18路径后退距离 = 近边长度（斜坡+全深整体后退）
         Dim backDist As Double: backDist = Abs(g_lastEdgeLen)
         If backDist <= 0 Then backDist = sloopDist
-        rampStartDist = geoLen - sloopDist
+        Dim backSteps As Long: backSteps = CLng(backDist / POINT_STEP)
+        If backSteps < 1 Then backSteps = 1
+        Dim totalSteps As Long: totalSteps = rampSteps + backSteps
+        rampStartDist = geoLen - sloopDist - backDist
         If rampStartDist < 0 Then rampStartDist = 0
         ' 清理临时变量
 
@@ -228,14 +231,19 @@ NextOp: Next i
         ' 创建 ManualToolPath 从 Z=0 开始
         Dim mtp As Object: Set mtp = mdNew.ManualToolPath(sx, sy, 0#)
 
-        ' 斜坡段：沿路径逐步下刀
+        ' 斜坡段：先水平后退，再逐步下刀到底点连接
         Dim s As Long, px As Double, py As Double, pelem As Element
-        Dim d As Double, actDist As Double, z As Double
-        For s = 1 To rampSteps
+        Dim d As Double, actDist As Double, z As Double, rampDist As Double
+        For s = 1 To totalSteps
             d = rampStartDist + POINT_STEP * s
-            If d > geoLen Then d = geoLen
+            If d > geoLen - backDist Then d = geoLen - backDist
             actDist = d - rampStartDist
-            z = -actualDepthAbs * (actDist / sloopDist)
+            rampDist = actDist - backDist
+            If rampDist <= 0 Then
+                z = 0
+            Else
+                z = -actualDepthAbs * (rampDist / sloopDist)
+            End If
             If toolGeo.PointAtDistanceAlongPathL(d, px, py, pelem) Then
                 mtp.Add3DLine px, py, z
             End If
