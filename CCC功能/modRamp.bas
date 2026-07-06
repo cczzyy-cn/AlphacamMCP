@@ -195,20 +195,8 @@ NextOp: Next i
         Dim rampSteps As Long: rampSteps = CLng(sloopDist / POINT_STEP)
         If rampSteps < 2 Then rampSteps = 2
         Dim finalDepth As Double: finalDepth = actualDepth
-        Dim stepDepth As Double: stepDepth = finalDepth / rampSteps
 
-        ' 后退距离 = 边长（斜刀跨越整条边到另一条边）
-        Dim backDist As Double
-        If tp.MaxXL - tp.MinXL > tp.MaxYL - tp.MinYL Then
-            backDist = (tp.MaxXL - tp.MinXL) * 2
-        Else
-            backDist = (tp.MaxYL - tp.MinYL) * 2
-        End If
-        backDist = backDist * 2
-        If backDist < sloopDist Then backDist = sloopDist
-        Dim backSteps As Long: backSteps = CLng(backDist / POINT_STEP)
-        Dim totalSteps As Long: totalSteps = rampSteps + backSteps
-        Dim rampStartDist As Double: rampStartDist = geoLen - sloopDist - backDist
+        Dim rampStartDist As Double: rampStartDist = geoLen - sloopDist
         If rampStartDist < 0 Then rampStartDist = 0
 
         ' 设几何起点在朝向排版中心侧较长边的中点（使斜坡落在该边）
@@ -227,26 +215,18 @@ NextOp: Next i
             If elem0 Is Nothing Then GoTo SkipItem
             sx = elem0.StartXL: sy = elem0.StartYL
             rampStartDist = 0
-            backSteps = 0
-            totalSteps = rampSteps
-            sloopDist = geoLen
         End If
 
         ' 创建 ManualToolPath 从 Z=0 开始
         Dim mtp As Object: Set mtp = mdNew.ManualToolPath(sx, sy, 0#)
 
-        ' 斜坡段：先水平后退，再逐步下刀
+        ' 斜坡段：沿路径逐步下刀
         Dim s As Long, px As Double, py As Double, pelem As Element
-        For s = 1 To totalSteps
+        For s = 1 To rampSteps
             Dim d As Double: d = rampStartDist + POINT_STEP * s
             If d > geoLen Then d = geoLen
             Dim actDist As Double: actDist = d - rampStartDist
-            Dim z As Double
-            If s <= backSteps Then
-                z = 0
-            Else
-                z = -actualDepthAbs * ((actDist - backDist) / sloopDist)
-            End If
+            Dim z As Double: z = -actualDepthAbs * (actDist / sloopDist)
             If toolGeo.PointAtDistanceAlongPathL(d, px, py, pelem) Then
                 mtp.Add3DLine px, py, z
             End If
@@ -263,9 +243,9 @@ NextOp: Next i
                 Set elem = elems2(ei)
                 If Not (elem Is Nothing) Then
                     If elem.IsLine Then
-                        mtp.Add3DLine elem.EndXL, elem.EndYL, z
+                        mtp.Add3DLine elem.EndXL, elem.EndYL, finalDepth
                     ElseIf elem.IsArc Then
-                        mtp.Add3DArcPointCenter elem.EndXL, elem.EndYL, z, _
+                        mtp.Add3DArcPointCenter elem.EndXL, elem.EndYL, finalDepth, _
                                                  elem.CenterXL, elem.CenterYL, elem.CW
                     End If
                 End If
