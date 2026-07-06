@@ -15,6 +15,7 @@ Public g_lastMinSize    As Double
 Public g_lastCutDepth   As Double
 Public g_lastRampAngle  As Double
 Public g_lastMethodTool As String
+Public g_lastEdgeLen    As Double
 
 Sub 斜角下刀()
     frmRamp.Show vbModeless
@@ -220,13 +221,19 @@ NextOp: Next i
         ' 创建 ManualToolPath 从 Z=0 开始
         Dim mtp As Object: Set mtp = mdNew.ManualToolPath(sx, sy, 0#)
 
-        ' 斜坡段：沿路径逐步下刀
+        ' 斜坡段：先水平后退近边长度，再逐步下刀
         Dim s As Long, px As Double, py As Double, pelem As Element
-        For s = 1 To rampSteps
+        For s = 1 To totalSteps
             Dim d As Double: d = rampStartDist + POINT_STEP * s
             If d > geoLen Then d = geoLen
             Dim actDist As Double: actDist = d - rampStartDist
-            Dim z As Double: z = -actualDepthAbs * (actDist / sloopDist)
+            Dim z As Double
+            Dim rampDist As Double: rampDist = actDist - backDist
+            If rampDist <= 0 Then
+                z = 0
+            Else
+                z = -actualDepthAbs * (rampDist / sloopDist)
+            End If
             If toolGeo.PointAtDistanceAlongPathL(d, px, py, pelem) Then
                 mtp.Add3DLine px, py, z
             End If
@@ -338,5 +345,6 @@ Private Sub SetGeoStartToSheetSide(ByVal drw As Drawing, _
         startY = my
     End If
 
+    g_lastEdgeLen = edgeLen
     toolGeo.SetStartPoint startX, startY
 End Sub
