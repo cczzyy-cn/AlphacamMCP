@@ -203,6 +203,16 @@ NextOp: Next i
         ' 设几何起点在朝向排版中心侧较长边的中点（使斜坡落在该边）
         SetGeoStartToSheetSide drw, subop, ni, tp, toolGeo
 
+        ' 后退距离 = 近边长度
+        Dim backDist As Double: backDist = Abs(g_lastEdgeLen)
+        If backDist <= 0 Then backDist = sloopDist
+        Dim backSteps As Long: backSteps = CLng(backDist / POINT_STEP)
+        If backSteps < 1 Then backSteps = 1
+        Dim totalSteps As Long: totalSteps = rampSteps + backSteps
+        rampStartDist = geoLen - sloopDist - backDist
+        If rampStartDist < 0 Then rampStartDist = 0
+        ' 清理临时变量
+
         ' 创建 MillData
         Dim mdNew As MillData: Set mdNew = App.CreateMillData
         mdNew.SafeRapidLevel = safeR: mdNew.RapidDownTo = 10
@@ -223,12 +233,12 @@ NextOp: Next i
 
         ' 斜坡段：先水平后退近边长度，再逐步下刀
         Dim s As Long, px As Double, py As Double, pelem As Element
+        Dim d As Double, actDist As Double, z As Double, rampDist As Double
         For s = 1 To totalSteps
-            Dim d As Double: d = rampStartDist + POINT_STEP * s
+            d = rampStartDist + POINT_STEP * s
             If d > geoLen Then d = geoLen
-            Dim actDist As Double: actDist = d - rampStartDist
-            Dim z As Double
-            Dim rampDist As Double: rampDist = actDist - backDist
+            actDist = d - rampStartDist
+            rampDist = actDist - backDist
             If rampDist <= 0 Then
                 z = 0
             Else
