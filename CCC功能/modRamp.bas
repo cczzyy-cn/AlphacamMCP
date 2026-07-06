@@ -203,13 +203,10 @@ NextOp: Next i
         ' 设几何起点在朝向排版中心侧较长边的中点（使斜坡落在该边）
         SetGeoStartToSheetSide drw, subop, ni, tp, toolGeo
 
-        ' 后退距离 = 近边长度
+        ' Z-18路径后退距离 = 近边长度（留连接点）
         Dim backDist As Double: backDist = Abs(g_lastEdgeLen)
         If backDist <= 0 Then backDist = sloopDist
-        Dim backSteps As Long: backSteps = CLng(backDist / POINT_STEP)
-        If backSteps < 1 Then backSteps = 1
-        Dim totalSteps As Long: totalSteps = rampSteps + backSteps
-        rampStartDist = geoLen - sloopDist - backDist
+        rampStartDist = geoLen - sloopDist
         If rampStartDist < 0 Then rampStartDist = 0
         ' 清理临时变量
 
@@ -231,34 +228,32 @@ NextOp: Next i
         ' 创建 ManualToolPath 从 Z=0 开始
         Dim mtp As Object: Set mtp = mdNew.ManualToolPath(sx, sy, 0#)
 
-        ' 斜坡段：先水平后退近边长度，再逐步下刀
+        ' 斜坡段：沿路径逐步下刀
         Dim s As Long, px As Double, py As Double, pelem As Element
-        Dim d As Double, actDist As Double, z As Double, rampDist As Double
-        For s = 1 To totalSteps
+        Dim d As Double, actDist As Double, z As Double
+        For s = 1 To rampSteps
             d = rampStartDist + POINT_STEP * s
             If d > geoLen Then d = geoLen
             actDist = d - rampStartDist
-            rampDist = actDist - backDist
-            If rampDist <= 0 Then
-                z = 0
-            Else
-                z = -actualDepthAbs * (rampDist / sloopDist)
-            End If
+            z = -actualDepthAbs * (actDist / sloopDist)
             If toolGeo.PointAtDistanceAlongPathL(d, px, py, pelem) Then
                 mtp.Add3DLine px, py, z
             End If
         Next
 
-        ' 跳转到几何起点继续走完
+        ' 跳转到几何起点继续走完（留 backDist 长度不切到底）
         Dim startX As Double: startX = toolGeo.GetFirstElem.StartXL
         Dim startY As Double: startY = toolGeo.GetFirstElem.StartYL
         mtp.Add3DLine startX, startY, finalDepth
 
         Dim elems2 As Elements: Set elems2 = toolGeo.Elements
+        Dim cumDist As Double: cumDist = 0
         If Not (elems2 Is Nothing) Then
             For ei = 1 To elems2.Count
                 Set elem = elems2(ei)
                 If Not (elem Is Nothing) Then
+                    cumDist = cumDist + elem.Length
+                    If cumDist >= geoLen - backDist Then Exit For
                     If elem.IsLine Then
                         mtp.Add3DLine elem.EndXL, elem.EndYL, finalDepth
                     ElseIf elem.IsArc Then
