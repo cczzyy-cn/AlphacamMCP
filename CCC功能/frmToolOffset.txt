@@ -85,9 +85,11 @@ Private Sub cmdOK_Click()
     xVal = Val(txtX.Text): yVal = Val(txtY.Text): zVal = Val(txtZ.Text)
     If xVal = 0 And yVal = 0 And zVal = 0 Then MsgBox "偏移量不能全为 0！", vbExclamation: Exit Sub
     Dim toolName As String
+    Dim processName As String
     Dim dashPos As Integer: dashPos = InStrRev(cmbTool.Text, " - ")
     If dashPos > 0 Then
-        ' 提取 " - T# 刀具名" 中的刀具名
+        ' 格式: "粗精加工 - T1 D10端铣刀" → 同时提取加工方式和刀具名
+        processName = Trim(Left(cmbTool.Text, dashPos - 1))
         Dim afterDash As String: afterDash = Mid(cmbTool.Text, dashPos + 3)
         ' 跳过 "T#" 前缀（T + 数字 + 空格）
         Dim skipT As Integer: skipT = InStr(afterDash, " ")
@@ -96,9 +98,10 @@ Private Sub cmdOK_Click()
         Else
             toolName = afterDash
         End If
-        ' 去除首尾空格
         toolName = Trim(toolName)
     Else
+        ' 无加工方式（ToolPath fallback 列表）
+        processName = ""
         toolName = Trim(cmbTool.Text)
     End If
     Dim drw As Drawing: Set drw = App.ActiveDrawing
@@ -119,14 +122,31 @@ Private Sub cmdOK_Click()
                 Dim subop As SubOperation: Set subop = subs(j)
                 Dim t As MillTool: Set t = subop.Tool
                 If Not (t Is Nothing) Then
-                    ' 匹配：刀具名精确匹配 → 包含匹配 → T 号匹配
+                    ' 匹配：先检查加工方式（如有），再匹配刀具
                     Dim matchTool As Boolean: matchTool = False
-                    If t.Name = toolName Then
-                        matchTool = True
-                    ElseIf toolName <> "" And InStr(1, t.Name, toolName, vbTextCompare) > 0 Then
-                        matchTool = True
-                    ElseIf toolName <> "" And InStr(1, CStr(t.Number), toolName, vbTextCompare) > 0 Then
-                        matchTool = True
+                    Dim procMatch As Boolean: procMatch = False
+                    If processName <> "" Then
+                        ' 从 subop.Name 提取加工方式名比较
+                        Dim rawN As String: rawN = subop.Name
+                        Dim spPos2 As Integer: spPos2 = InStr(rawN, "  ")
+                        If spPos2 > 0 Then
+                            procMatch = (Trim(Left(rawN, spPos2 - 1)) = processName)
+                        Else
+                            spPos2 = InStr(rawN, " ")
+                            If spPos2 > 0 Then procMatch = (Trim(Left(rawN, spPos2 - 1)) = processName) _
+                                Else procMatch = (rawN = processName)
+                        End If
+                    Else
+                        procMatch = True  ' 无加工方式限制（fallback ToolPath 列表）
+                    End If
+                    If procMatch Then
+                        If t.Name = toolName Then
+                            matchTool = True
+                        ElseIf toolName <> "" And InStr(1, t.Name, toolName, vbTextCompare) > 0 Then
+                            matchTool = True
+                        ElseIf toolName <> "" And InStr(1, CStr(t.Number), toolName, vbTextCompare) > 0 Then
+                            matchTool = True
+                        End If
                     End If
                     If matchTool Then
                         Dim tps As Paths: Set tps = subop.ToolPaths
@@ -142,7 +162,7 @@ Private Sub cmdOK_Click()
             Next j
         End If
     Next i
-        ' Fallback: direct toolpath when no operations
+        ' Fallback: direct toolpath when no operations（仅匹配刀具，无法检查加工方式）
     If count = 0 Then
         Dim tpIdx2 As Long
         Dim tpCnt2 As Long: tpCnt2 = drw.GetToolPathCount

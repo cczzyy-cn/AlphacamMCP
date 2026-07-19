@@ -15,7 +15,6 @@ Public g_lastMinSize    As Double
 Public g_lastCutDepth   As Double
 Public g_lastRampAngle  As Double
 Public g_lastMethodTool As String
-Public g_lastEdgeLen    As Double
 
 Sub 斜角下刀()
     frmRamp.Show vbModeless
@@ -197,19 +196,11 @@ NextOp: Next i
         If rampSteps < 2 Then rampSteps = 2
         Dim finalDepth As Double: finalDepth = actualDepth
 
-        rampStartDist = geoLen - sloopDist
+        Dim rampStartDist As Double: rampStartDist = geoLen - sloopDist
         If rampStartDist < 0 Then rampStartDist = 0
 
         ' 设几何起点在朝向排版中心侧较长边的中点（使斜坡落在该边）
         SetGeoStartToSheetSide drw, subop, ni, tp, toolGeo
-
-        Dim backDist As Double: backDist = Abs(g_lastEdgeLen)
-        If backDist <= 0 Then backDist = sloopDist
-
-        ' Z-18路径后退距离 = 近边长度（斜坡+全深整体后退）
-        rampStartDist = geoLen - sloopDist
-        If rampStartDist < 0 Then rampStartDist = 0
-        ' 清理临时变量
 
         ' 创建 MillData
         Dim mdNew As MillData: Set mdNew = App.CreateMillData
@@ -231,30 +222,26 @@ NextOp: Next i
 
         ' 斜坡段：沿路径逐步下刀
         Dim s As Long, px As Double, py As Double, pelem As Element
-        Dim d As Double, actDist As Double, z As Double
         For s = 1 To rampSteps
-            d = rampStartDist + POINT_STEP * s
+            Dim d As Double: d = rampStartDist + POINT_STEP * s
             If d > geoLen Then d = geoLen
-            actDist = d - rampStartDist
-            z = -actualDepthAbs * (actDist / sloopDist)
+            Dim actDist As Double: actDist = d - rampStartDist
+            Dim z As Double: z = -actualDepthAbs * (actDist / sloopDist)
             If toolGeo.PointAtDistanceAlongPathL(d, px, py, pelem) Then
                 mtp.Add3DLine px, py, z
             End If
         Next
 
-        ' 跳转到几何起点继续走完（留 backDist 长度不切到底）
+        ' 跳转到几何起点继续走完
         Dim startX As Double: startX = toolGeo.GetFirstElem.StartXL
         Dim startY As Double: startY = toolGeo.GetFirstElem.StartYL
         mtp.Add3DLine startX, startY, finalDepth
 
         Dim elems2 As Elements: Set elems2 = toolGeo.Elements
-        Dim cumDist As Double: cumDist = 0
         If Not (elems2 Is Nothing) Then
             For ei = 1 To elems2.Count
                 Set elem = elems2(ei)
                 If Not (elem Is Nothing) Then
-                    cumDist = cumDist + elem.Length
-                    If cumDist >= geoLen - backDist Then Exit For
                     If elem.IsLine Then
                         mtp.Add3DLine elem.EndXL, elem.EndYL, finalDepth
                     ElseIf elem.IsArc Then
@@ -351,6 +338,5 @@ Private Sub SetGeoStartToSheetSide(ByVal drw As Drawing, _
         startY = my
     End If
 
-    g_lastEdgeLen = edgeLen
     toolGeo.SetStartPoint startX, startY
 End Sub

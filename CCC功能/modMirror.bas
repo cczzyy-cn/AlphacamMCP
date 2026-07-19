@@ -83,9 +83,11 @@ Public Sub DoMirror(ByVal mirrorX As Boolean, _
     Dim mTool As MillTool
     Dim tpIdx As Long, tpCount As Long, mirroredCount As Long
     Dim collectTP() As Path
+    Dim ops As Operations
     
     Set Drw = App.ActiveDrawing
     Set ni = Drw.GetNestInformation
+    Set ops = Drw.Operations
     
     ' --- 基本检查 ---
     If ni.Sheets.count = 0 Then
@@ -188,8 +190,8 @@ Public Sub DoMirror(ByVal mirrorX As Boolean, _
                             T2.Attribute(ATT_IS_REV_SIDE) = 1
                             T2.Attribute(ATT_SHEET_IDENT) = strName
                         End If
-                        psT.Delete
                     End If
+                    psT.Delete
                 Next T
                 
             Else
@@ -272,6 +274,16 @@ loopnext:
         If mirrorID <> "" Then
             MsgBox "未找到包含 """ & mirrorID & """ 的刀具路径。", vbInformation, "反面镜像"
         End If
+        ' 没有匹配路径时删除所有空的反面几何
+        Dim nilGeo As Path: Set nilGeo = Drw.GetFirstGeo
+        Dim nilIdx As Long
+        For nilIdx = Drw.GetGeoCount To 1 Step -1
+            If Not (nilGeo Is Nothing) Then
+                If nilGeo.Attribute(ATT_IS_REV_SIDE) = 1 Then nilGeo.Delete
+            End If
+            Set nilGeo = nilGeo.GetNext
+        Next nilIdx
+        Drw.Redraw
         GoTo afterPhase2
     End If
     
@@ -307,10 +319,70 @@ loopnext:
         End If
     Next tpIdx
     
+    ' ======================================================================
+    ' 建立路径名 → 加工方式映射（在 Renumber 之前执行）
+    ' ======================================================================
+    Dim dictPathMethod As Object
+    Set dictPathMethod = CreateObject("Scripting.Dictionary")
+    Dim opScanIdx As Long
+    Dim opScan As Operation
+    Dim subScanOps As SubOperations
+    Dim subScanOp As SubOperation
+    Dim scanTPs As Paths
+    Dim scanTP As Path
+    Dim scanMI As Long
+    Dim scanMN As String
+    Dim scanSP As Integer
+    
+    For opScanIdx = 1 To ops.Count
+        Set opScan = ops(opScanIdx)
+        Set subScanOps = opScan.SubOperations
+        If Not (subScanOps Is Nothing) Then
+            Dim sIdx As Long
+            For sIdx = 1 To subScanOps.Count
+                Set subScanOp = subScanOps(sIdx)
+                ' 提取加工方式名（与 ScanOperations 一致：先双空格再单空格）
+                scanMN = subScanOp.Name
+                scanSP = InStr(scanMN, "  ")
+                If scanSP > 0 Then
+                    scanMN = Left(scanMN, scanSP - 1)
+                Else
+                    scanSP = InStr(scanMN, " ")
+                    If scanSP > 0 Then scanMN = Left(scanMN, scanSP - 1)
+                End If
+                Set scanTPs = subScanOp.ToolPaths
+                If Not (scanTPs Is Nothing) Then
+                    For scanMI = 1 To scanTPs.Count
+                        Set scanTP = scanTPs(scanMI)
+                        If Not (scanTP Is Nothing) Then
+                            If Not dictPathMethod.Exists(scanTP.Name) Then
+                                dictPathMethod.Add scanTP.Name, scanMN
+                            End If
+                        End If
+                    Next scanMI
+                End If
+            Next sIdx
+        End If
+    Next opScanIdx
+    
     lastop = Drw.Operations.count + 1
     
     ' 按 Sheet 排序
     For Each sh In ni.Sheets
+        ' 检查本 Sheet 是否有需要镜像的路径（无匹配路径的 Sheet 跳过 Renumber）
+        Dim hasMatch As Boolean: hasMatch = False
+        Dim ckIdx As Long
+        For Each tp In sh.Paths
+            For ckIdx = 1 To tpCount
+                If origOpNos(ckIdx) > 0 And origOpNos(ckIdx) = tp.OpNo Then
+                    hasMatch = True
+                    Exit For
+                End If
+            Next ckIdx
+            If hasMatch Then Exit For
+        Next tp
+        If Not hasMatch Then GoTo skipSheet
+        
         maxop = 0: minop = lastop
         For Each tp In sh.Paths
             If maxop < tp.OpNo Then maxop = tp.OpNo
@@ -319,6 +391,7 @@ loopnext:
         For I = minop To maxop
             Drw.Operations.Renumber minop, lastop, acamOpADD_TO_OPERATION
         Next I
+skipSheet:
     Next sh
     
     ' 修正：Renumber 已将所有路径合并到 lastop，lastop 已成为"垃圾收集操作"。
@@ -327,12 +400,14 @@ loopnext:
     
     ' 镜像匹配的刀具路径（保留原路径，后面再删除）
     ' 分组策略：解散原 OP，按加工方式+刀具重新分组
-    ' 加工方式从原始 SubOperation 名称提取（"刀具" 前部分）
+    ' 加工方式从 dictPathMethod 字典查询（在 Renumber 前已建立）
     mirroredCount = 0
     Dim tgtOp As Long
     Dim keyIdx As Long, keyCount As Long
     Dim keys() As String, opNos() As Long
     keyCount = 0
+    Dim dictMirroredSheets As Object
+    Set dictMirroredSheets = CreateObject("Scripting.Dictionary")
     
     For tpIdx = 1 To tpCount
         Set tp = collectTP(tpIdx)
@@ -347,8 +422,19 @@ loopnext:
             If tpIdx <= UBound(sheetNames) Then sheetName = sheetNames(tpIdx)
             If sheetName = "" Then sheetName = "未知"
             
-            ' 分组键：版件 + 刀具号（加工方式由刀具决定）
-            Dim grpKey As String: grpKey = sheetName & "|" & CStr(tNum)
+            ' 记录有镜像路径的原始 Sheet 名
+            If sheetName <> "" And sheetName <> "未知" Then
+                If Not dictMirroredSheets.Exists(sheetName) Then dictMirroredSheets.Add sheetName, True
+            End If
+            
+            ' 从字典查询加工方式名
+            Dim methodName As String: methodName = ""
+            If Not (tp Is Nothing) Then
+                If dictPathMethod.Exists(tp.Name) Then methodName = dictPathMethod(tp.Name)
+            End If
+            
+            ' 分组键：版件 + 加工方式 + 刀具号
+            Dim grpKey As String: grpKey = sheetName & "|" & methodName & "|" & CStr(tNum)
             
             ' 查找分组键
             tgtOp = 0
@@ -411,6 +497,37 @@ loopnext:
         Drw.Refresh
         DoEvents
     End If
+    
+    ' ======================================================================
+    ' Phase 3 — 删除没有刀具路径的空反面 Sheet 几何
+    ' ======================================================================
+    Dim cleanedCount As Long: cleanedCount = 0
+    Dim geoIter As Path
+    Dim geoIdx2 As Long
+    Dim origSheetName As String
+    
+    Set geoIter = Drw.GetFirstGeo
+    For geoIdx2 = Drw.GetGeoCount To 1 Step -1
+        If Not (geoIter Is Nothing) Then
+            If geoIter.Attribute(ATT_IS_REV_SIDE) = 1 And geoIter.Sheet Then
+                ' 提取原始 Sheet 名（去掉末尾 " rev"）
+                origSheetName = geoIter.Attribute(ATT_SHEET_IDENT)
+                If Len(origSheetName) > 4 Then
+                    If Right(origSheetName, 4) = " rev" Then
+                        origSheetName = Left(origSheetName, Len(origSheetName) - 4)
+                    End If
+                End If
+                ' 该原始 Sheet 无镜像路径 → 删除空的反面几何
+                If Not dictMirroredSheets.Exists(origSheetName) Then
+                    geoIter.Delete
+                    cleanedCount = cleanedCount + 1
+                End If
+            End If
+        End If
+        Set geoIter = geoIter.GetNext
+    Next geoIdx2
+    
+    If cleanedCount > 0 Then Drw.Redraw
     
 afterPhase2:
     

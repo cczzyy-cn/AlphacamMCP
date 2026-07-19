@@ -8,7 +8,7 @@ Sub 全排版刀具偏移()
     frmToolOffset.Show vbModeless
 End Sub
 
-Public Sub ApplyToolOffset(ByVal selectedTool As String, ByVal xOff As Double, ByVal yOff As Double, ByVal zOff As Double)
+Public Sub ApplyToolOffset(ByVal selectedTool As String, ByVal xOff As Double, ByVal yOff As Double, ByVal zOff As Double, Optional ByVal processName As String = "")
     On Error GoTo ErrHandler2
     Dim drw As Drawing: Set drw = App.ActiveDrawing
     If drw Is Nothing Then Exit Sub
@@ -32,17 +32,34 @@ Public Sub ApplyToolOffset(ByVal selectedTool As String, ByVal xOff As Double, B
                 Dim subop As SubOperation: Set subop = subs(j)
                 Dim t As MillTool: Set t = subop.Tool
                 If Not (t Is Nothing) Then
-                    ' 匹配逻辑：精确名 → 包含名 → T 号
+                    ' 匹配逻辑：先检查加工方式（如有），再匹配刀具
                     Dim isMatch As Boolean: isMatch = False
-                    If t.Name = selTool Then
-                        isMatch = True
-                    ElseIf InStr(1, t.Name, selTool, vbTextCompare) > 0 Then
-                        isMatch = True
-                    ElseIf Not foundFirst And CStr(t.Number) = selTool Then
-                        isMatch = True
-                    ElseIf Left(selTool, 1) = "T" Then
-                        Dim tNumVal As Long: tNumVal = Val(Mid(selTool, 2))
-                        If tNumVal > 0 And t.Number = tNumVal Then isMatch = True
+                    Dim procMatch As Boolean: procMatch = False
+                    ' 如果传入了加工方式名，先检查 subop 的加工方式是否匹配
+                    If processName <> "" Then
+                        Dim rawName As String: rawName = subop.Name
+                        Dim spPos As Integer: spPos = InStr(rawName, "  ")
+                        If spPos > 0 Then
+                            procMatch = (Trim(Left(rawName, spPos - 1)) = processName)
+                        Else
+                            spPos = InStr(rawName, " ")
+                            If spPos > 0 Then procMatch = (Trim(Left(rawName, spPos - 1)) = processName) _
+                                Else procMatch = (rawName = processName)
+                        End If
+                    Else
+                        procMatch = True  ' 未指定加工方式时，不限制
+                    End If
+                    If procMatch Then
+                        If t.Name = selTool Then
+                            isMatch = True
+                        ElseIf InStr(1, t.Name, selTool, vbTextCompare) > 0 Then
+                            isMatch = True
+                        ElseIf Not foundFirst And CStr(t.Number) = selTool Then
+                            isMatch = True
+                        ElseIf Left(selTool, 1) = "T" Then
+                            Dim tNumVal As Long: tNumVal = Val(Mid(selTool, 2))
+                            If tNumVal > 0 And t.Number = tNumVal Then isMatch = True
+                        End If
                     End If
                     If isMatch Then
                         If Not foundFirst Then foundFirst = True: firstTNum = t.Number
@@ -62,7 +79,7 @@ Public Sub ApplyToolOffset(ByVal selectedTool As String, ByVal xOff As Double, B
             Next j
         End If
     Next i
-        ' Fallback: direct toolpath iteration when no operations
+        ' Fallback: direct toolpath iteration when no operations（仅匹配刀具，无法检查加工方式）
     If count = 0 Then
         Dim tpIdx2 As Long
         Dim tpCnt2 As Long: tpCnt2 = drw.GetToolPathCount
