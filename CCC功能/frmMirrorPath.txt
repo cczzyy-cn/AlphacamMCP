@@ -1,29 +1,29 @@
 ' ==============================================================================
-' frmMirrorPath — 路径自身镜像对话框 (UserForm)
+' frmMirrorPath -- ·����������Ի��� (UserForm)
 ' ==============================================================================
-' 使用方法：
-'   1. 在 VBA 编辑器中插入 UserForm（名称设为 frmMirrorPath）
-'   2. 从工具箱添加以下控件（名称必须完全一致）：
-'      ┌──────────────────┬────────────┬────────────────────────────────┐
-'      │ 控件名            │ 类型       │ 说明                           │
-'      ├──────────────────┼────────────┼────────────────────────────────┤
-'      │ optMirrorX       │ OptionButton│ 绕X轴镜像（上下翻转，默认）   │
-'      │ optMirrorY       │ OptionButton│ 绕Y轴镜像（左右翻转）         │
-'      │ cmdOK            │ CommandButton│ 确定按钮                     │
-'      │ cmdCancel        │ CommandButton│ 取消按钮                     │
-'      └──────────────────┴────────────┴────────────────────────────────┘
-'   3. 双击窗体 → "查看代码" → 粘贴本文件全部内容
+' ʹ�÷�����
+'   1. �� VBA �༭���в��� UserForm��������Ϊ frmMirrorPath��
+'   2. �ӹ������������¿ؼ������Ʊ�����ȫһ�£���
+'      +------------------+---------------+-------------------------------+
+'      | �ؼ���            | ����          | ˵��                          |
+'      +------------------+---------------+-------------------------------+
+'      | optMirrorX       | OptionButton  | ��X�᾵�����·�ת��Ĭ�ϣ�  |
+'      | optMirrorY       | OptionButton  | ��Y�᾵�����ҷ�ת��        |
+'      | cmdOK            | CommandButton | ȷ����ť                      |
+'      | cmdCancel        | CommandButton | ȡ����ť                      |
+'      +------------------+---------------+-------------------------------+
+'   3. ˫������ -> "�鿴����" -> ճ�����ļ�ȫ������
 ' ==============================================================================
 Option Explicit
 
 ' --------------------------------------------------------------------------
-' 模块级常量
+' ģ�鼶����
 ' --------------------------------------------------------------------------
 Private Const REG_APP As String = "CCC_MirrorPath"
 Private Const REG_SECTION As String = "MirrorPath"
 
 ' --------------------------------------------------------------------------
-' Windows API 声明 — 为对话框添加最小化按钮
+' Windows API ���� - Ϊ�Ի���������С����ť
 ' --------------------------------------------------------------------------
 Private Declare PtrSafe Function FindWindow Lib "user32" Alias "FindWindowA" _
     (ByVal lpClassName As String, ByVal lpWindowName As String) As Long
@@ -45,13 +45,13 @@ Private Const SWP_FRAMECHANGED As Long = &H20
 
 
 ' ==============================================================================
-' UserForm 事件
+' UserForm �¼�
 ' ==============================================================================
 
 Private Sub UserForm_Initialize()
-    Me.Caption = "路径自身镜像"
+    Me.Caption = "·����������"
     
-    ' 读取上次选择的镜像轴
+    ' ��ȡ�ϴ�ѡ��ľ�����
     Dim lastAxis As String
     lastAxis = GetSetting(REG_APP, REG_SECTION, "MirrorAxis", "X")
     If lastAxis = "X" Then
@@ -67,16 +67,16 @@ End Sub
 
 
 ' ==============================================================================
-' 确定 — 执行路径镜像
+' ȷ�� - ִ��·������
 ' ==============================================================================
 Private Sub cmdOK_Click()
     Me.Hide
     DoEvents
     
-    ' 调用镜像逻辑
+    ' ���þ����߼�
     DoMirrorPath optMirrorX.Value
     
-    ' 保存设置到注册表
+    ' �������õ�ע���
     If optMirrorX.Value Then
         SaveSetting REG_APP, REG_SECTION, "MirrorAxis", "X"
     Else
@@ -88,7 +88,7 @@ End Sub
 
 
 ' ==============================================================================
-' 取消
+' ȡ��
 ' ==============================================================================
 Private Sub cmdCancel_Click()
     Unload Me
@@ -96,7 +96,7 @@ End Sub
 
 
 ' ==============================================================================
-' AddMinButton — 为窗体添加最小化按钮
+' AddMinButton - Ϊ����������С����ť
 ' ==============================================================================
 Private Sub AddMinButton(frm As Object)
     Dim hWnd As Long
@@ -108,5 +108,5 @@ Private Sub AddMinButton(frm As Object)
     style = style Or WS_MINIMIZEBOX
     SetWindowLong hWnd, GWL_STYLE, style
     SetWindowPos hWnd, 0, 0, 0, 0, 0, _
-        SWP_NOMOVE Or SWP_NOSIZE Or SWP_NOZORDER Or SWP_FRAMECHANGED
+        SWP_NOMOVE Or SWP_NOSIZE Or SWP_NOZORDER OR SWP_FRAMECHANGED
 End Sub
