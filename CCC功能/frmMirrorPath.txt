@@ -51,6 +51,22 @@ Private Const SWP_FRAMECHANGED As Long = &H20
 Private Sub UserForm_Initialize()
     Me.Caption = "路径自身镜像"
     
+    ' 显示已选中路径数
+    Dim tpCount As Long: tpCount = 0
+    Dim pc As Collection: Set pc = modMirrorPath.GetSelectedPaths
+    If Not (pc Is Nothing) Then tpCount = pc.Count
+    
+    Dim info As String
+    If tpCount > 0 Then
+        info = "已选中 " & tpCount & " 条刀具路径"
+    Else
+        info = "未选中路径"
+    End If
+    
+    ' 添加标签显示路径数（用窗体标题替代--VBA UserForm 不支持运行时添加控件）
+    ' 改用 Caption 显示路径数
+    Me.Caption = "路径自身镜像 - " & info
+    
     ' 读取上次选择的镜像轴
     Dim lastAxis As String
     lastAxis = GetSetting(REG_APP, REG_SECTION, "MirrorAxis", "X")
