@@ -5,8 +5,8 @@
 '   - 绕X轴镜像（上下翻转）：以路径 Y 方向中点水平线为轴
 '   - 绕Y轴镜像（左右翻转）：以路径 X 方向中点垂直线为轴
 '
-' 交互流程（参考 modTrim 依边界裁剪）：
-'   1. 点击菜单 -> drw.UserSelectMultiGeos 让用户选择刀具路径
+' 交互流程（参考 Drawing.UserSelectMultiToolPaths 文档）：
+'   1. 点击菜单 -> drw.UserSelectMultiToolPaths 让用户选择刀具路径
 '   2. 用户框选/点选后右键完成（或 ESC）
 '   3. 弹窗 frmMirrorPath 选择镜像轴 X/Y
 '   4. 点击确定 -> 执行镜像
@@ -35,26 +35,24 @@ Sub 路径自身镜像()
         Exit Sub
     End If
     
-    ' --- 交互选择：让用户在图纸中框选/点选刀具路径 ---
-    drw.SetGeosSelected False
-    If Not drw.UserSelectMultiGeos("【路径自身镜像】请选择要镜像的刀具路径（框选或点选）", 0) Then
+    ' --- 交互选择：让用户在图纸中框选/点选刀具路径（UserSelectMultiToolPaths） ---
+    If Not drw.UserSelectMultiToolPaths("【路径自身镜像】请选择要镜像的刀具路径（框选或点选）", 0) Then
         Exit Sub  ' 用户取消选择
     End If
     
-    ' --- 读取选中的路径（仅刀具路径） ---
+    ' --- 读取选中的刀具路径 ---
     Set m_selectedPaths = New Collection
-    Dim g As Path
-    For Each g In drw.Geometries
-        If g.Selected And g.IsToolPath Then
-            m_selectedPaths.Add g
+    Dim tpSel As Path
+    For Each tpSel In drw.ToolPaths
+        If tpSel.Selected Then
+            m_selectedPaths.Add tpSel
+            tpSel.Selected = False  ' 清除选中状态（按文档示例）
         End If
-    Next g
-    drw.SetGeosSelected False  ' 清除选中状态
+    Next tpSel
     
     ' --- 检查是否选中了有效路径 ---
     If m_selectedPaths.Count = 0 Then
-        MsgBox "没有选中任何刀具路径！" & vbCrLf & vbCrLf & _
-               "请确保选择的是刀具路径（而非几何图形）。", vbExclamation, "路径自身镜像"
+        MsgBox "没有选中任何刀具路径！", vbExclamation, "路径自身镜像"
         Exit Sub
     End If
     
