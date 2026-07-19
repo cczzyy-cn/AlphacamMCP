@@ -87,6 +87,7 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     Dim count As Long: count = 0
     Dim tp As Path
     Dim midX As Double, midY As Double
+    Dim pcopy As Path
     
     App.SetUndoCommandName "路径自身镜像"
     App.SetUndoPoint
@@ -94,19 +95,27 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     
     For Each tp In m_selectedPaths
         If Not (tp Is Nothing) Then
-            ' 计算路径自身的中心线
-            midX = (tp.MinXL + tp.MaxXL) / 2
-            midY = (tp.MinYL + tp.MaxYL) / 2
-            
-            ' 执行镜像（以路径自身中心为轴）
-            If mirrorX Then
-                ' 绕X轴（水平线，上下翻转）
-                tp.MirrorL tp.MinXL, midY, tp.MaxXL, midY
-            Else
-                ' 绕Y轴（垂直线，左右翻转）
-                tp.MirrorL midX, tp.MinYL, midX, tp.MaxYL
+            ' --- 使用 CopyTemporary 创建副本（确保坐标系干净） ---
+            Set pcopy = tp.CopyTemporary
+            If Not (pcopy Is Nothing) Then
+                ' 计算副本路径自身的中心线
+                midX = (pcopy.MinXL + pcopy.MaxXL) / 2
+                midY = (pcopy.MinYL + pcopy.MaxYL) / 2
+                
+                ' 在副本上执行镜像（以路径自身中心为轴）
+                If mirrorX Then
+                    ' 绕X轴（水平线，上下翻转）
+                    pcopy.MirrorL pcopy.MinXL, midY, pcopy.MaxXL, midY
+                Else
+                    ' 绕Y轴（垂直线，左右翻转）
+                    pcopy.MirrorL midX, pcopy.MinYL, midX, pcopy.MaxYL
+                End If
+                
+                ' 存储副本到图纸，删除原始路径
+                pcopy.StoreTemporary
+                tp.Delete
+                count = count + 1
             End If
-            count = count + 1
         End If
     Next tp
     
