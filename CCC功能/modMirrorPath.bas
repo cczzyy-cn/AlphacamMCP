@@ -72,12 +72,15 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     Dim dx As Double, dy As Double
     Dim mirrorOK As Boolean
     Dim MARK_ATTR As String: MARK_ATTR = "CCC_MIRROR_PENDING"
+    Dim refX As Double, refY As Double
+    Dim newRefX As Double, newRefY As Double
+    Dim elem1 As Element, elemN As Element
     
     App.SetUndoCommandName "路径自身镜像"
     App.SetUndoPoint
     drw.ScreenUpdating = False
     
-    ' 第1遍：给选中路径打属性标记（不缓存任何引用）
+    ' 第1遍：给选中路径打属性标记
     Set tp = drw.GetFirstToolPath
     Do While Not (tp Is Nothing)
         If tp.Selected Then
@@ -88,36 +91,40 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     Loop
     
     ' 第2遍：遍历图纸找标记路径，处理一条清除一条
-    ' 每次 MirrorL 后从 GetFirstToolPath 重新开始
-    ' （不依赖任何缓存引用，MirrorL 修改路径后重新获取）
     mirrorOK = True
     Do While mirrorOK
         mirrorOK = False
         Set tp = drw.GetFirstToolPath
         Do While Not (tp Is Nothing)
             If tp.Attribute(MARK_ATTR) = "1" Then
-                tp.Attribute(MARK_ATTR) = ""   ' 立即清除标记
+                tp.Attribute(MARK_ATTR) = ""
                 mirrorOK = True
                 
-                ' 镜像前的包围盒中心
-                midX = (tp.MinXL + tp.MaxXL) / 2
-                midY = (tp.MinYL + tp.MaxYL) / 2
+                ' 用几何端点参考点检测位移（比包围盒中心更可靠）
+                Set elem1 = tp.Elements(1)
+                Set elemN = tp.Elements(tp.Elements.Count)
+                refX = (elem1.StartXG + elemN.EndXG) / 2
+                refY = (elem1.StartYG + elemN.EndYG) / 2
                 
                 ' MirrorL 以中心为轴
+                midX = (tp.MinXL + tp.MaxXL) / 2
+                midY = (tp.MinYL + tp.MaxYL) / 2
                 If mirrorX Then
                     tp.MirrorL tp.MinXL, midY, tp.MaxXL, midY
                 Else
                     tp.MirrorL midX, tp.MinYL, midX, tp.MaxYL
                 End If
                 
-                ' 镜像后中心偏移补偿
-                newMidX = (tp.MinXL + tp.MaxXL) / 2
-                newMidY = (tp.MinYL + tp.MaxYL) / 2
-                dx = midX - newMidX: dy = midY - newMidY
+                ' 用新参考点补偿偏移
+                Set elem1 = tp.Elements(1)
+                Set elemN = tp.Elements(tp.Elements.Count)
+                newRefX = (elem1.StartXG + elemN.EndXG) / 2
+                newRefY = (elem1.StartYG + elemN.EndYG) / 2
+                dx = refX - newRefX: dy = refY - newRefY
                 If dx <> 0 Or dy <> 0 Then tp.MoveG dx, dy, 0
                 
                 count = count + 1
-                Exit Do  ' 处理一条后重新从头扫描
+                Exit Do
             End If
             Set tp = tp.GetNext
         Loop
