@@ -68,48 +68,46 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     Dim count As Long: count = 0
     Dim tp As Path
     Dim midX As Double, midY As Double
-    Dim mirrorOK As Boolean
-    Dim MARK_ATTR As String: MARK_ATTR = "CCC_MIRROR_PENDING"
+    Dim i As Long, n As Long, j As Long
+    Dim idxArr() As Long
     
     App.SetUndoCommandName "路径自身镜像"
     App.SetUndoPoint
     drw.ScreenUpdating = False
     
-    ' 第1遍：给选中路径打属性标记
+    ' 第1遍：只记录选中路径的序号（不存引用，不设属性）
+    n = 0
+    i = 0
     Set tp = drw.GetFirstToolPath
     Do While Not (tp Is Nothing)
+        i = i + 1
         If tp.Selected Then
-            tp.Attribute(MARK_ATTR) = "1"
             tp.Selected = False
+            n = n + 1
+            ReDim Preserve idxArr(1 To n)
+            idxArr(n) = i
         End If
         Set tp = tp.GetNext
     Loop
     
-    ' 第2遍：遍历图纸找标记路径，处理一条清除一条
-    mirrorOK = True
-    Do While mirrorOK
-        mirrorOK = False
+    ' 第2遍：按序号重新从图纸获取路径，逐一镜像
+    For j = 1 To n
+        ' 从头遍历到第 idxArr(j) 个路径
         Set tp = drw.GetFirstToolPath
-        Do While Not (tp Is Nothing)
-            If tp.Attribute(MARK_ATTR) = "1" Then
-                tp.Attribute(MARK_ATTR) = ""
-                mirrorOK = True
-                
-                ' MirrorL 以路径自身包围盒中心为轴（原地翻转）
-                midX = (tp.MinXL + tp.MaxXL) / 2
-                midY = (tp.MinYL + tp.MaxYL) / 2
-                If mirrorX Then
-                    tp.MirrorL tp.MinXL, midY, tp.MaxXL, midY
-                Else
-                    tp.MirrorL midX, tp.MinYL, midX, tp.MaxYL
-                End If
-                
-                count = count + 1
-                Exit Do
-            End If
+        For i = 2 To idxArr(j)
             Set tp = tp.GetNext
-        Loop
-    Loop
+        Next i
+        If Not (tp Is Nothing) Then
+            midX = (tp.MinXL + tp.MaxXL) / 2
+            midY = (tp.MinYL + tp.MaxYL) / 2
+            If mirrorX Then
+                tp.MirrorL tp.MinXL, midY, tp.MaxXL, midY
+            Else
+                tp.MirrorL midX, tp.MinYL, midX, tp.MaxYL
+            End If
+            count = count + 1
+        End If
+    Next j
     
     drw.ScreenUpdating = True
     drw.Redraw
