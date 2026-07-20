@@ -86,6 +86,11 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     
     Dim count As Long: count = 0
     Dim tp As Path
+    Dim sumX As Double, sumY As Double
+    Dim ptCount As Long
+    Dim tpElems As Elements
+    Dim elem As Element
+    Dim midX As Double, midY As Double
     
     App.SetUndoCommandName "路径自身镜像"
     App.SetUndoPoint
@@ -93,15 +98,31 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     
     For Each tp In m_selectedPaths
         If Not (tp Is Nothing) Then
-            ' 直接以路径自身局部坐标轴为镜像轴
-            ' Y轴镜像（左右翻转）：垂直线 x=0
-            ' X轴镜像（上下翻转）：水平线 y=0
-            If mirrorX Then
-                tp.MirrorL -10000, 0, 10000, 0
-            Else
-                tp.MirrorL 0, -10000, 0, 10000
+            ' --- 读取所有元素端点的全局坐标，计算全局中心 ---
+            sumX = 0: sumY = 0: ptCount = 0
+            
+            Set tpElems = tp.Elements
+            If Not (tpElems Is Nothing) Then
+                For Each elem In tpElems
+                    If Not (elem Is Nothing) Then
+                        sumX = sumX + elem.StartXG + elem.EndXG
+                        sumY = sumY + elem.StartYG + elem.EndYG
+                        ptCount = ptCount + 2
+                    End If
+                Next elem
             End If
-            count = count + 1
+            If ptCount > 0 Then
+                midX = sumX / ptCount
+                midY = sumY / ptCount
+                
+                ' MirrorL 对刀具路径使用全局坐标，所以镜像轴用全局中心
+                If mirrorX Then
+                    tp.MirrorL -10000, midY, 10000, midY
+                Else
+                    tp.MirrorL midX, -10000, midX, 10000
+                End If
+                count = count + 1
+            End If
         End If
     Next tp
     
