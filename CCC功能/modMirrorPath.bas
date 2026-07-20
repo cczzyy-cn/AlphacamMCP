@@ -70,12 +70,15 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     Dim midX As Double, midY As Double
     Dim i As Long, n As Long, j As Long
     Dim nameArr() As String
+    Dim elem As Element
+    Dim tpElems As Elements
+    Dim sumX As Double, sumY As Double, ptCnt As Long
     
     App.SetUndoCommandName "路径自身镜像"
     App.SetUndoPoint
     drw.ScreenUpdating = False
     
-    ' 第1遍：记录选中路径的 Name（名称唯一，不受 MirrorL 影响）
+    ' 第1遍：记录选中路径的 Name
     n = 0
     Set tp = drw.GetFirstToolPath
     Do While Not (tp Is Nothing)
@@ -96,8 +99,26 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
             Set tp = tp.GetNext
         Loop
         If Not (tp Is Nothing) Then
-            midX = (tp.MinXL + tp.MaxXL) / 2
-            midY = (tp.MinYL + tp.MaxYL) / 2
+            ' 用所有元素端点的平均值作为"自身中线"
+            sumX = 0: sumY = 0: ptCnt = 0
+            Set tpElems = tp.Elements
+            If Not (tpElems Is Nothing) Then
+                For Each elem In tpElems
+                    If Not (elem Is Nothing) Then
+                        sumX = sumX + elem.StartXL + elem.EndXL
+                        sumY = sumY + elem.StartYL + elem.EndYL
+                        ptCnt = ptCnt + 2
+                    End If
+                Next elem
+            End If
+            If ptCnt > 0 Then
+                midX = sumX / ptCnt
+                midY = sumY / ptCnt
+            Else
+                midX = (tp.MinXL + tp.MaxXL) / 2
+                midY = (tp.MinYL + tp.MaxYL) / 2
+            End If
+            
             If mirrorX Then
                 tp.MirrorL tp.MinXL, midY, tp.MaxXL, midY
             Else
