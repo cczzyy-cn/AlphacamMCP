@@ -4,6 +4,7 @@ MCP tool dispatcher — routes tool calls to registered handlers.
 
 from __future__ import annotations
 
+import gc
 import json
 import logging
 from typing import Any
@@ -140,3 +141,6 @@ async def handle_tool(name: str, arguments: dict | None) -> CallToolResult:
     except Exception as e:
         log.exception(f"Unexpected error in tool {name}")
         return CallToolResult(content=_error(str(e)))
+    finally:
+        # 释放 COM 临时引用，避免文件被锁定无法关闭
+        gc.collect()

@@ -135,13 +135,15 @@ class AlphaCAM:
         self._app.Visible = self._visible
 
     def _cleanup(self):
-        """Release the COM object."""
+        """Release the COM object and force garbage collection."""
         if self._app is not None:
             try:
                 self._app.Visible = True
             except Exception:
                 pass
             self._app = None
+        import gc
+        gc.collect()
 
     def restart(self):
         """Disconnect and reconnect."""
