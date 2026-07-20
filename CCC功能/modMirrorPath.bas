@@ -70,51 +70,58 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     Dim midX As Double, midY As Double
     Dim newMidX As Double, newMidY As Double
     Dim dx As Double, dy As Double
-    Dim tpArr() As Path
-    Dim selIdx As Long, arrIdx As Long
+    Dim mirrorOK As Boolean
+    Dim MARK_ATTR As String: MARK_ATTR = "CCC_MIRROR_PENDING"
     
     App.SetUndoCommandName "路径自身镜像"
     App.SetUndoPoint
     drw.ScreenUpdating = False
     
-    ' 第1遍：用数组收集所有选中路径（不依赖 GetNext 遍历）
-    selIdx = 0
-    ReDim tpArr(1 To drw.GetToolPathCount) As Path
+    ' 第1遍：给选中路径打属性标记（不缓存任何引用）
     Set tp = drw.GetFirstToolPath
     Do While Not (tp Is Nothing)
         If tp.Selected Then
+            tp.Attribute(MARK_ATTR) = "1"
             tp.Selected = False
-            selIdx = selIdx + 1
-            Set tpArr(selIdx) = tp
         End If
         Set tp = tp.GetNext
     Loop
     
-    ' 第2遍：遍历数组执行镜像（数组引用不因 MirrorL 而失效）
-    For arrIdx = 1 To selIdx
-        Set tp = tpArr(arrIdx)
-        If Not (tp Is Nothing) Then
-            
-            ' 镜像前的包围盒中心
-            midX = (tp.MinXL + tp.MaxXL) / 2
-            midY = (tp.MinYL + tp.MaxYL) / 2
-            
-            ' MirrorL 以中心为轴
-            If mirrorX Then
-                tp.MirrorL tp.MinXL, midY, tp.MaxXL, midY
-            Else
-                tp.MirrorL midX, tp.MinYL, midX, tp.MaxYL
+    ' 第2遍：遍历图纸找标记路径，处理一条清除一条
+    ' 每次 MirrorL 后从 GetFirstToolPath 重新开始
+    ' （不依赖任何缓存引用，MirrorL 修改路径后重新获取）
+    Dim mirrorOK As Boolean: mirrorOK = True
+    Do While mirrorOK
+        mirrorOK = False
+        Set tp = drw.GetFirstToolPath
+        Do While Not (tp Is Nothing)
+            If tp.Attribute(MARK_ATTR) = "1" Then
+                tp.Attribute(MARK_ATTR) = ""   ' 立即清除标记
+                mirrorOK = True
+                
+                ' 镜像前的包围盒中心
+                midX = (tp.MinXL + tp.MaxXL) / 2
+                midY = (tp.MinYL + tp.MaxYL) / 2
+                
+                ' MirrorL 以中心为轴
+                If mirrorX Then
+                    tp.MirrorL tp.MinXL, midY, tp.MaxXL, midY
+                Else
+                    tp.MirrorL midX, tp.MinYL, midX, tp.MaxYL
+                End If
+                
+                ' 镜像后中心偏移补偿
+                newMidX = (tp.MinXL + tp.MaxXL) / 2
+                newMidY = (tp.MinYL + tp.MaxYL) / 2
+                dx = midX - newMidX: dy = midY - newMidY
+                If dx <> 0 Or dy <> 0 Then tp.MoveG dx, dy, 0
+                
+                count = count + 1
+                Exit Do  ' 处理一条后重新从头扫描
             End If
-            
-            ' 镜像后中心偏移补偿
-            newMidX = (tp.MinXL + tp.MaxXL) / 2
-            newMidY = (tp.MinYL + tp.MaxYL) / 2
-            dx = midX - newMidX: dy = midY - newMidY
-            If dx <> 0 Or dy <> 0 Then tp.MoveG dx, dy, 0
-            
-            count = count + 1
-        End If
-    Next arrIdx
+            Set tp = tp.GetNext
+        Loop
+    Loop
     
     drw.ScreenUpdating = True
     drw.Redraw
