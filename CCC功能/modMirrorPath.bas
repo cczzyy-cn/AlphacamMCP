@@ -87,11 +87,8 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     Dim count As Long: count = 0
     Dim tp As Path
     Dim midX As Double, midY As Double
-    Dim pcopy As Path
     Dim elem As Element
     Dim tpElems As Elements
-    Dim xMin As Double, xMax As Double, yMin As Double, yMax As Double
-    Dim eCount As Long
     
     App.SetUndoCommandName "路径自身镜像"
     App.SetUndoPoint
@@ -99,63 +96,39 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     
     For Each tp In m_selectedPaths
         If Not (tp Is Nothing) Then
-            ' --- 遍历所有元素端点，找出 4 个极值点 ---
-            xMin = 1E+20: xMax = -1E+20
-            yMin = 1E+20: yMax = -1E+20
-            eCount = 0
+            ' --- 读取所有元素端点，计算几何中心（平均值） ---
+            Dim sumX As Double: sumX = 0
+            Dim sumY As Double: sumY = 0
+            Dim ptCount As Long: ptCount = 0
             
-            ' 获取当前路径的元素集合
             Set tpElems = tp.Elements
             If tpElems Is Nothing Then GoTo nextTP
-            
             For Each elem In tpElems
                 If Not (elem Is Nothing) Then
-                    ' 起点
-                    If elem.StartXL < xMin Then xMin = elem.StartXL
-                    If elem.StartXL > xMax Then xMax = elem.StartXL
-                    If elem.StartYL < yMin Then yMin = elem.StartYL
-                    If elem.StartYL > yMax Then yMax = elem.StartYL
-                    ' 终点
-                    If elem.EndXL < xMin Then xMin = elem.EndXL
-                    If elem.EndXL > xMax Then xMax = elem.EndXL
-                    If elem.EndYL < yMin Then yMin = elem.EndYL
-                    If elem.EndYL > yMax Then yMax = elem.EndYL
-                    eCount = eCount + 1
+                    sumX = sumX + elem.StartXL + elem.EndXL
+                    sumY = sumY + elem.StartYL + elem.EndYL
+                    ptCount = ptCount + 2
                 End If
             Next elem
+            If ptCount = 0 Then GoTo nextTP
             
-            If eCount = 0 Then GoTo nextTP
+            midX = sumX / ptCount
+            midY = sumY / ptCount
             
-            ' 计算路径自身的中心
-            midX = (xMin + xMax) / 2
-            midY = (yMin + yMax) / 2
+            ' --- 直接在原路径上执行 MoveL+MirrorL+MoveL ---
+            ' 用中间变量传递负值（VBA 语法限制）
+            Dim nx As Double: nx = -midX
+            Dim ny As Double: ny = -midY
+            tp.MoveL nx, ny
             
-            ' --- 先减少屏幕刷新防止闪烁，创建副本 ---
-            Set pcopy = tp.CopyTemporary
-            If Not (pcopy Is Nothing) Then
-                ' 策略：MoveL 将几何中心移到局部原点 → MirrorL 过原点 → MoveL 移回
-                ' 这避免了 MirrorL 坐标系与元素坐标系的歧义
-                
-                ' 1. 将路径几何中心移到局部原点
-                Call pcopy.MoveL(-midX, -midY)
-                
-                ' 2. 在局部原点执行镜像
-                If mirrorX Then
-                    ' 绕X轴（水平线 y=0，上下翻转）
-                    pcopy.MirrorL -10000, 0, 10000, 0
-                Else
-                    ' 绕Y轴（垂直线 x=0，左右翻转）
-                    pcopy.MirrorL 0, -10000, 0, 10000
-                End If
-                
-                ' 3. 移回原位
-                pcopy.MoveL midX, midY
-                
-                ' 存储副本到图纸，删除原始路径
-                pcopy.StoreTemporary
-                tp.Delete
-                count = count + 1
+            If mirrorX Then
+                tp.MirrorL -10000, 0, 10000, 0
+            Else
+                tp.MirrorL 0, -10000, 0, 10000
             End If
+            
+            tp.MoveL midX, midY
+            count = count + 1
         End If
 nextTP:
     Next tp
