@@ -70,9 +70,6 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     Dim midX As Double, midY As Double
     Dim i As Long, n As Long, j As Long
     Dim nameArr() As String
-    Dim elem As Element
-    Dim tpElems As Elements
-    Dim sumX As Double, sumY As Double, ptCnt As Long
     
     App.SetUndoCommandName "Â·¾¶×ÔÉí¾µÏñ"
     App.SetUndoPoint
