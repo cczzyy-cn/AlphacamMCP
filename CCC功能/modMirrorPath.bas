@@ -88,6 +88,10 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     Dim tp As Path
     Dim midX As Double, midY As Double
     Dim pcopy As Path
+    Dim elem As Element
+    Dim tpElems As Elements
+    Dim xMin As Double, xMax As Double, yMin As Double, yMax As Double
+    Dim eCount As Long
     
     App.SetUndoCommandName "路径自身镜像"
     App.SetUndoPoint
@@ -95,20 +99,47 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     
     For Each tp In m_selectedPaths
         If Not (tp Is Nothing) Then
-            ' --- 使用 CopyTemporary 创建副本（确保坐标系干净） ---
+            ' --- 遍历所有元素端点，找出 4 个极值点 ---
+            xMin = 1E+20: xMax = -1E+20
+            yMin = 1E+20: yMax = -1E+20
+            eCount = 0
+            
+            ' 获取当前路径的元素集合
+            Set tpElems = tp.Elements
+            If tpElems Is Nothing Then GoTo nextTP
+            
+            For Each elem In tpElems
+                If Not (elem Is Nothing) Then
+                    ' 起点
+                    If elem.StartXL < xMin Then xMin = elem.StartXL
+                    If elem.StartXL > xMax Then xMax = elem.StartXL
+                    If elem.StartYL < yMin Then yMin = elem.StartYL
+                    If elem.StartYL > yMax Then yMax = elem.StartYL
+                    ' 终点
+                    If elem.EndXL < xMin Then xMin = elem.EndXL
+                    If elem.EndXL > xMax Then xMax = elem.EndXL
+                    If elem.EndYL < yMin Then yMin = elem.EndYL
+                    If elem.EndYL > yMax Then yMax = elem.EndYL
+                    eCount = eCount + 1
+                End If
+            Next elem
+            
+            If eCount = 0 Then GoTo nextTP
+            
+            ' 计算路径自身的中心
+            midX = (xMin + xMax) / 2
+            midY = (yMin + yMax) / 2
+            
+            ' --- 使用 CopyTemporary 创建副本 ---
             Set pcopy = tp.CopyTemporary
             If Not (pcopy Is Nothing) Then
-                ' 计算副本路径自身的中心线
-                midX = (pcopy.MinXL + pcopy.MaxXL) / 2
-                midY = (pcopy.MinYL + pcopy.MaxYL) / 2
-                
                 ' 在副本上执行镜像（以路径自身中心为轴）
                 If mirrorX Then
                     ' 绕X轴（水平线，上下翻转）
-                    pcopy.MirrorL pcopy.MinXL, midY, pcopy.MaxXL, midY
+                    pcopy.MirrorL xMin, midY, xMax, midY
                 Else
                     ' 绕Y轴（垂直线，左右翻转）
-                    pcopy.MirrorL midX, pcopy.MinYL, midX, pcopy.MaxYL
+                    pcopy.MirrorL midX, yMin, midX, yMax
                 End If
                 
                 ' 存储副本到图纸，删除原始路径
@@ -117,6 +148,7 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
                 count = count + 1
             End If
         End If
+nextTP:
     Next tp
     
     drw.ScreenUpdating = True
