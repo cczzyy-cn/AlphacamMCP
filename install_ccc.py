@@ -7,7 +7,7 @@ ccc_dir = os.path.join(base, "CCC功能")
 # Standard modules (.bas)
 modules = ["Events", "modTrim", "modOffset", "modSort", "modMirror", "modRamp", "modMirrorPath"]
 # Form modules (.txt — code only, controls must be set up separately)
-forms = ["frmRamp", "frmMirrorPath"]
+forms = ["frmRamp"]
 
 app = win32com.client.Dispatch("aroutaps.Application")
 vbe = app.VBE
@@ -54,10 +54,7 @@ for name in forms:
             print(f"      - TextBox:  txtMinSize (默认250)、txtCutDepth (默认18)、txtRampAngle (默认30)")
             print(f"      - CommandButton: cmdOK (确定)、cmdCancel (取消)")
         elif name == "frmMirrorPath":
-            print(f"  ⚠ 请在 AlphaCAM VBA 编辑器中手动添加以下控件到 {name} 窗体：")
-            print(f"      - OptionButton: optMirrorX (绕X轴镜像，默认)")
-            print(f"      - OptionButton: optMirrorY (绕Y轴镜像)")
-            print(f"      - CommandButton: cmdOK (确定)、cmdCancel (取消)")
+            print(f"  Warning: frmMirrorPath is no longer used. Install modMirrorPath.bas only.")
     except Exception as e:
         print(f"  ⚠ 无法创建窗体 {name}：{e}")
         print(f"    请手动导入：VBA编辑器 → 插入 → 用户窗体 → 导入文件 {name}.txt")

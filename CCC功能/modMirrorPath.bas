@@ -5,16 +5,16 @@
 '   - 绕X轴镜像（上下翻转）：以路径 Y 方向中点水平线为轴
 '   - 绕Y轴镜像（左右翻转）：以路径 X 方向中点垂直线为轴
 '
-' 交互流程（参考 Drawing.UserSelectMultiToolPaths 文档）：
+' 交互流程：
 '   1. 点击菜单 -> drw.UserSelectMultiToolPaths 让用户选择刀具路径
 '   2. 用户框选/点选后右键完成（或 ESC）
-'   3. 弹窗 frmMirrorPath 选择镜像轴 X/Y
-'   4. 点击确定 -> 执行镜像
+'   3. MsgBox 选择镜像轴 X/Y
+'   4. 执行镜像
 ' ==============================================================================
 Option Explicit
 Option Private Module
 
-' 模块级变量：存储用户交互选择的路径（供 frmMirrorPath.cmdOK_Click 读取）
+' 模块级变量：存储用户交互选择的路径
 Private m_selectedPaths As Collection
 
 
@@ -56,23 +56,22 @@ Sub 路径自身镜像()
         Exit Sub
     End If
     
-    ' --- 弹出对话框选择镜像轴（模态，选择完成后自动关闭） ---
-    frmMirrorPath.Show
+    ' --- MsgBox 选择镜像轴（无需 UserForm，零安装步骤） ---
+    If MsgBox("请选择镜像轴：" & vbCrLf & vbCrLf & _
+              "是(Y) = 绕X轴（上下翻转）" & vbCrLf & _
+              "否(N) = 绕Y轴（左右翻转）", _
+              vbYesNo + vbQuestion, "路径自身镜像") = vbYes Then
+        DoMirrorPath True   ' 绕X轴
+    Else
+        DoMirrorPath False  ' 绕Y轴
+    End If
 End Sub
-
-
-' ==============================================================================
-' 返回当前选中的路径集合（供 frmMirrorPath 对话框读取）
-' ==============================================================================
-Public Function GetSelectedPaths() As Collection
-    Set GetSelectedPaths = m_selectedPaths
-End Function
 
 
 ' ==============================================================================
 ' Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
 ' ==============================================================================
-' 执行路径自身镜像。被 frmMirrorPath.cmdOK_Click 调用。
+' 执行路径自身镜像。
 ' mirrorX: True=绕X轴（水平线，上下翻转），False=绕Y轴（垂直线，左右翻转）
 ' ==============================================================================
 Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
