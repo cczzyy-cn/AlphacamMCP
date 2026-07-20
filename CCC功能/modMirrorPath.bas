@@ -78,7 +78,7 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     drw.ScreenUpdating = False
     
     ' 第1遍：用数组收集所有选中路径（不依赖 GetNext 遍历）
-    Dim selIdx As Long: selIdx = 0
+    selIdx = 0
     ReDim tpArr(1 To drw.GetToolPathCount) As Path
     Set tp = drw.GetFirstToolPath
     Do While Not (tp Is Nothing)
@@ -91,7 +91,6 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     Loop
     
     ' 第2遍：遍历数组执行镜像（数组引用不因 MirrorL 而失效）
-    Dim arrIdx As Long
     For arrIdx = 1 To selIdx
         Set tp = tpArr(arrIdx)
         If Not (tp Is Nothing) Then
