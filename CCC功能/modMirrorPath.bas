@@ -137,7 +137,7 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
                 ' 这避免了 MirrorL 坐标系与元素坐标系的歧义
                 
                 ' 1. 将路径几何中心移到局部原点
-                Call pcopy.MoveL(-midX, -midY, 0)
+                Call pcopy.MoveL(-midX, -midY)
                 
                 ' 2. 在局部原点执行镜像
                 If mirrorX Then
@@ -149,7 +149,7 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
                 End If
                 
                 ' 3. 移回原位
-                pcopy.MoveL midX, midY, 0
+                pcopy.MoveL midX, midY
                 
                 ' 存储副本到图纸，删除原始路径
                 pcopy.StoreTemporary
