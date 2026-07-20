@@ -90,7 +90,7 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     ' 第2遍：遍历图纸找标记路径，处理一条清除一条
     ' 每次 MirrorL 后从 GetFirstToolPath 重新开始
     ' （不依赖任何缓存引用，MirrorL 修改路径后重新获取）
-    Dim mirrorOK As Boolean: mirrorOK = True
+    mirrorOK = True
     Do While mirrorOK
         mirrorOK = False
         Set tp = drw.GetFirstToolPath
