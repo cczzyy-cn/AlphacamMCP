@@ -99,25 +99,9 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
             Set tp = tp.GetNext
         Loop
         If Not (tp Is Nothing) Then
-            ' 用所有元素端点的平均值作为"自身中线"
-            sumX = 0: sumY = 0: ptCnt = 0
-            Set tpElems = tp.Elements
-            If Not (tpElems Is Nothing) Then
-                For Each elem In tpElems
-                    If Not (elem Is Nothing) Then
-                        sumX = sumX + elem.StartXL + elem.EndXL
-                        sumY = sumY + elem.StartYL + elem.EndYL
-                        ptCnt = ptCnt + 2
-                    End If
-                Next elem
-            End If
-            If ptCnt > 0 Then
-                midX = sumX / ptCnt
-                midY = sumY / ptCnt
-            Else
-                midX = (tp.MinXL + tp.MaxXL) / 2
-                midY = (tp.MinYL + tp.MaxYL) / 2
-            End If
+            ' 用包围盒中心作为镜像轴（唯一保证路径原地翻转的计算方式）
+            midX = (tp.MinXL + tp.MaxXL) / 2
+            midY = (tp.MinYL + tp.MaxYL) / 2
             
             If mirrorX Then
                 tp.MirrorL tp.MinXL, midY, tp.MaxXL, midY
