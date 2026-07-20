@@ -86,11 +86,10 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     
     Dim count As Long: count = 0
     Dim tp As Path
-    Dim sumX As Double, sumY As Double
-    Dim ptCount As Long
     Dim tpElems As Elements
     Dim elem As Element
     Dim midX As Double, midY As Double
+    Dim xMinG As Double, xMaxG As Double, yMinG As Double, yMaxG As Double
     
     App.SetUndoCommandName "路径自身镜像"
     App.SetUndoPoint
@@ -98,22 +97,28 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     
     For Each tp In m_selectedPaths
         If Not (tp Is Nothing) Then
-            ' --- 读取所有元素端点的全局坐标，计算全局中心 ---
-            sumX = 0: sumY = 0: ptCount = 0
+            ' --- 读取所有元素端点的全局坐标，找出全局极值 ---
+            xMinG = 1E+20: xMaxG = -1E+20
+            yMinG = 1E+20: yMaxG = -1E+20
             
             Set tpElems = tp.Elements
             If Not (tpElems Is Nothing) Then
                 For Each elem In tpElems
                     If Not (elem Is Nothing) Then
-                        sumX = sumX + elem.StartXG + elem.EndXG
-                        sumY = sumY + elem.StartYG + elem.EndYG
-                        ptCount = ptCount + 2
+                        If elem.StartXG < xMinG Then xMinG = elem.StartXG
+                        If elem.StartXG > xMaxG Then xMaxG = elem.StartXG
+                        If elem.EndXG < xMinG Then xMinG = elem.EndXG
+                        If elem.EndXG > xMaxG Then xMaxG = elem.EndXG
+                        If elem.StartYG < yMinG Then yMinG = elem.StartYG
+                        If elem.StartYG > yMaxG Then yMaxG = elem.StartYG
+                        If elem.EndYG < yMinG Then yMinG = elem.EndYG
+                        If elem.EndYG > yMaxG Then yMaxG = elem.EndYG
                     End If
                 Next elem
             End If
-            If ptCount > 0 Then
-                midX = sumX / ptCount
-                midY = sumY / ptCount
+            If xMaxG > xMinG And yMaxG > yMinG Then
+                midX = (xMinG + xMaxG) / 2
+                midY = (yMinG + yMaxG) / 2
                 
                 ' MirrorL 对刀具路径使用全局坐标，所以镜像轴用全局中心
                 If mirrorX Then
