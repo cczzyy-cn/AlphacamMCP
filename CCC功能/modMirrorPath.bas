@@ -86,9 +86,6 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     
     Dim count As Long: count = 0
     Dim tp As Path
-    Dim midX As Double, midY As Double
-    Dim elem As Element
-    Dim tpElems As Elements
     
     App.SetUndoCommandName "路径自身镜像"
     App.SetUndoPoint
@@ -96,41 +93,16 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     
     For Each tp In m_selectedPaths
         If Not (tp Is Nothing) Then
-            ' --- 读取所有元素端点，计算几何中心（平均值） ---
-            Dim sumX As Double: sumX = 0
-            Dim sumY As Double: sumY = 0
-            Dim ptCount As Long: ptCount = 0
-            
-            Set tpElems = tp.Elements
-            If tpElems Is Nothing Then GoTo nextTP
-            For Each elem In tpElems
-                If Not (elem Is Nothing) Then
-                    sumX = sumX + elem.StartXL + elem.EndXL
-                    sumY = sumY + elem.StartYL + elem.EndYL
-                    ptCount = ptCount + 2
-                End If
-            Next elem
-            If ptCount = 0 Then GoTo nextTP
-            
-            midX = sumX / ptCount
-            midY = sumY / ptCount
-            
-            ' --- 直接在原路径上执行 MoveL+MirrorL+MoveL ---
-            ' 用中间变量传递负值（VBA 语法限制）
-            Dim nx As Double: nx = -midX
-            Dim ny As Double: ny = -midY
-            tp.MoveL nx, ny
-            
+            ' 直接以路径自身局部坐标轴为镜像轴
+            ' Y轴镜像（左右翻转）：垂直线 x=0
+            ' X轴镜像（上下翻转）：水平线 y=0
             If mirrorX Then
                 tp.MirrorL -10000, 0, 10000, 0
             Else
                 tp.MirrorL 0, -10000, 0, 10000
             End If
-            
-            tp.MoveL midX, midY
             count = count + 1
         End If
-nextTP:
     Next tp
     
     drw.ScreenUpdating = True
