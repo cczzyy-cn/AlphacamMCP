@@ -147,6 +147,11 @@ Sub 测试选中路径信息()
     Dim drw As Drawing: Set drw = App.ActiveDrawing
     If drw Is Nothing Then Exit Sub
     
+    ' 先让用户选择路径
+    If Not drw.UserSelectMultiToolPaths("【测试】请选择要查看的刀具路径", 0) Then
+        Exit Sub
+    End If
+    
     Dim tp As Path: Set tp = drw.GetFirstToolPath
     Dim msg As String
     Dim idx As Long: idx = 0
@@ -161,6 +166,7 @@ Sub 测试选中路径信息()
             msg = msg & "  centerX=" & ((tp.MinXL + tp.MaxXL) / 2) & vbCrLf
             msg = msg & "  centerY=" & ((tp.MinYL + tp.MaxYL) / 2) & vbCrLf
             msg = msg & vbCrLf
+            tp.Selected = False
         End If
         Set tp = tp.GetNext
     Loop
