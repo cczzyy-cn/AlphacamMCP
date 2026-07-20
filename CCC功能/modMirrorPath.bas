@@ -70,18 +70,31 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     Dim midX As Double, midY As Double
     Dim newMidX As Double, newMidY As Double
     Dim dx As Double, dy As Double
-    Dim found As Boolean: found = False
+    Dim tpArr() As Path
+    Dim selIdx As Long, arrIdx As Long
     
     App.SetUndoCommandName "路径自身镜像"
     App.SetUndoPoint
     drw.ScreenUpdating = False
     
-    ' 用 GetFirstToolPath/GetNext 遍历图纸，每次获取的都是实时引用
+    ' 第1遍：用数组收集所有选中路径（不依赖 GetNext 遍历）
+    Dim selIdx As Long: selIdx = 0
+    ReDim tpArr(1 To drw.GetToolPathCount) As Path
     Set tp = drw.GetFirstToolPath
     Do While Not (tp Is Nothing)
         If tp.Selected Then
-            tp.Selected = False  ' 立即清除选中，避免重复处理
-            found = True
+            tp.Selected = False
+            selIdx = selIdx + 1
+            Set tpArr(selIdx) = tp
+        End If
+        Set tp = tp.GetNext
+    Loop
+    
+    ' 第2遍：遍历数组执行镜像（数组引用不因 MirrorL 而失效）
+    Dim arrIdx As Long
+    For arrIdx = 1 To selIdx
+        Set tp = tpArr(arrIdx)
+        If Not (tp Is Nothing) Then
             
             ' 镜像前的包围盒中心
             midX = (tp.MinXL + tp.MaxXL) / 2
@@ -102,8 +115,7 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
             
             count = count + 1
         End If
-        Set tp = tp.GetNext
-    Loop
+    Next arrIdx
     
     drw.ScreenUpdating = True
     drw.Redraw
