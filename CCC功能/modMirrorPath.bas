@@ -14,9 +14,6 @@
 Option Explicit
 Option Private Module
 
-' 模块级变量：存储用户交互选择的路径
-Private m_selectedPaths As Collection
-
 
 ' ==============================================================================
 ' Sub 路径自身镜像()
@@ -35,28 +32,15 @@ Sub 路径自身镜像()
         Exit Sub
     End If
     
-    ' --- 交互选择：让用户在图纸中框选/点选刀具路径（UserSelectMultiToolPaths） ---
+    ' --- 交互选择：让用户在图纸中框选/点选刀具路径 ---
     If Not drw.UserSelectMultiToolPaths("【路径自身镜像】请选择要镜像的刀具路径（框选或点选）", 0) Then
         Exit Sub  ' 用户取消选择
     End If
     
-    ' --- 读取选中的刀具路径 ---
-    Set m_selectedPaths = New Collection
-    Dim tpSel As Path
-    For Each tpSel In drw.ToolPaths
-        If tpSel.Selected Then
-            m_selectedPaths.Add tpSel
-            tpSel.Selected = False  ' 清除选中状态（按文档示例）
-        End If
-    Next tpSel
+    ' --- 不清除选中状态，DoMirrorPath 直接从图纸中读取 Selected ---
+    '   （避免用集合缓存路径引用，MirrorL 后引用可能失效）
     
-    ' --- 检查是否选中了有效路径 ---
-    If m_selectedPaths.Count = 0 Then
-        MsgBox "没有选中任何刀具路径！", vbExclamation, "路径自身镜像"
-        Exit Sub
-    End If
-    
-    ' --- MsgBox 选择镜像轴（无需 UserForm，零安装步骤） ---
+    ' --- MsgBox 选择镜像轴 ---
     If MsgBox("请选择镜像轴：" & vbCrLf & vbCrLf & _
               "是(Y) = 绕X轴（上下翻转）" & vbCrLf & _
               "否(N) = 绕Y轴（左右翻转）", _
@@ -72,6 +56,7 @@ End Sub
 ' Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
 ' ==============================================================================
 ' 执行路径自身镜像。
+' 从图纸中实时读取 Selected 状态获取要镜像的路径（不用集合缓存引用）。
 ' mirrorX: True=绕X轴（水平线，上下翻转），False=绕Y轴（垂直线，左右翻转）
 ' ==============================================================================
 Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
@@ -80,57 +65,60 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     Dim drw As Drawing: Set drw = App.ActiveDrawing
     If drw Is Nothing Then Exit Sub
     
-    If m_selectedPaths Is Nothing Then Exit Sub
-    If m_selectedPaths.Count = 0 Then Exit Sub
-    
     Dim count As Long: count = 0
     Dim tp As Path
     Dim midX As Double, midY As Double
     Dim newMidX As Double, newMidY As Double
     Dim dx As Double, dy As Double
+    Dim found As Boolean: found = False
     
     App.SetUndoCommandName "路径自身镜像"
     App.SetUndoPoint
     drw.ScreenUpdating = False
     
-    For Each tp In m_selectedPaths
-        If Not (tp Is Nothing) Then
+    ' 用 GetFirstToolPath/GetNext 遍历图纸，每次获取的都是实时引用
+    Set tp = drw.GetFirstToolPath
+    Do While Not (tp Is Nothing)
+        If tp.Selected Then
+            tp.Selected = False  ' 立即清除选中，避免重复处理
+            found = True
+            
             ' 镜像前的包围盒中心
             midX = (tp.MinXL + tp.MaxXL) / 2
             midY = (tp.MinYL + tp.MaxYL) / 2
             
-            ' MirrorL 以中心为轴（原地翻转）
+            ' MirrorL 以中心为轴
             If mirrorX Then
                 tp.MirrorL tp.MinXL, midY, tp.MaxXL, midY
             Else
                 tp.MirrorL midX, tp.MinYL, midX, tp.MaxYL
             End If
             
-            ' 镜像后包围盒中心可能变化（不对称路径），移到原位
+            ' 镜像后中心偏移补偿
             newMidX = (tp.MinXL + tp.MaxXL) / 2
             newMidY = (tp.MinYL + tp.MaxYL) / 2
-            dx = midX - newMidX
-            dy = midY - newMidY
+            dx = midX - newMidX: dy = midY - newMidY
             If dx <> 0 Or dy <> 0 Then tp.MoveG dx, dy, 0
             
             count = count + 1
         End If
-    Next tp
+        Set tp = tp.GetNext
+    Loop
     
     drw.ScreenUpdating = True
     drw.Redraw
     
-    MsgBox "镜像完成！" & vbCrLf & vbCrLf & _
-           "已镜像: " & count & " 条刀具路径" & vbCrLf & _
-           "镜像轴: " & IIf(mirrorX, "绕X轴（上下翻转）", "绕Y轴（左右翻转）"), _
-           vbInformation, "路径自身镜像"
+    If count > 0 Then
+        MsgBox "镜像完成！" & vbCrLf & "已镜像: " & count & " 条刀具路径" & vbCrLf & _
+               "镜像轴: " & IIf(mirrorX, "绕X轴（上下翻转）", "绕Y轴（左右翻转）"), _
+               vbInformation, "路径自身镜像"
+    Else
+        MsgBox "没有选中任何刀具路径！", vbExclamation, "路径自身镜像"
+    End If
     
-    ' 清空模块级变量
-    Set m_selectedPaths = Nothing
     Exit Sub
     
 ErrHandler:
     drw.ScreenUpdating = True
-    Set m_selectedPaths = Nothing
     MsgBox "镜像出错: " & Err.Description, vbCritical, "路径自身镜像"
 End Sub
