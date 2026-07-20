@@ -68,13 +68,8 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     Dim count As Long: count = 0
     Dim tp As Path
     Dim midX As Double, midY As Double
-    Dim newMidX As Double, newMidY As Double
-    Dim dx As Double, dy As Double
     Dim mirrorOK As Boolean
     Dim MARK_ATTR As String: MARK_ATTR = "CCC_MIRROR_PENDING"
-    Dim refX As Double, refY As Double
-    Dim newRefX As Double, newRefY As Double
-    Dim elem1 As Element, elemN As Element
     
     App.SetUndoCommandName "路径自身镜像"
     App.SetUndoPoint
@@ -100,13 +95,7 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
                 tp.Attribute(MARK_ATTR) = ""
                 mirrorOK = True
                 
-                ' 用几何端点参考点检测位移（比包围盒中心更可靠）
-                Set elem1 = tp.Elements(1)
-                Set elemN = tp.Elements(tp.Elements.Count)
-                refX = (elem1.StartXG + elemN.EndXG) / 2
-                refY = (elem1.StartYG + elemN.EndYG) / 2
-                
-                ' MirrorL 以中心为轴
+                ' MirrorL 以路径自身包围盒中心为轴（原地翻转）
                 midX = (tp.MinXL + tp.MaxXL) / 2
                 midY = (tp.MinYL + tp.MaxYL) / 2
                 If mirrorX Then
@@ -114,14 +103,6 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
                 Else
                     tp.MirrorL midX, tp.MinYL, midX, tp.MaxYL
                 End If
-                
-                ' 用新参考点补偿偏移
-                Set elem1 = tp.Elements(1)
-                Set elemN = tp.Elements(tp.Elements.Count)
-                newRefX = (elem1.StartXG + elemN.EndXG) / 2
-                newRefY = (elem1.StartYG + elemN.EndYG) / 2
-                dx = refX - newRefX: dy = refY - newRefY
-                If dx <> 0 Or dy <> 0 Then tp.MoveG dx, dy, 0
                 
                 count = count + 1
                 Exit Do
