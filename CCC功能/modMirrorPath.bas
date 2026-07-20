@@ -130,17 +130,26 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
             midX = (xMin + xMax) / 2
             midY = (yMin + yMax) / 2
             
-            ' --- 使用 CopyTemporary 创建副本 ---
+            ' --- 先减少屏幕刷新防止闪烁，创建副本 ---
             Set pcopy = tp.CopyTemporary
             If Not (pcopy Is Nothing) Then
-                ' 在副本上执行镜像（以路径自身中心为轴）
+                ' 策略：MoveL 将几何中心移到局部原点 → MirrorL 过原点 → MoveL 移回
+                ' 这避免了 MirrorL 坐标系与元素坐标系的歧义
+                
+                ' 1. 将路径几何中心移到局部原点
+                pcopy.MoveL -midX, -midY, 0
+                
+                ' 2. 在局部原点执行镜像
                 If mirrorX Then
-                    ' 绕X轴（水平线，上下翻转）
-                    pcopy.MirrorL xMin, midY, xMax, midY
+                    ' 绕X轴（水平线 y=0，上下翻转）
+                    pcopy.MirrorL -10000, 0, 10000, 0
                 Else
-                    ' 绕Y轴（垂直线，左右翻转）
-                    pcopy.MirrorL midX, yMin, midX, yMax
+                    ' 绕Y轴（垂直线 x=0，左右翻转）
+                    pcopy.MirrorL 0, -10000, 0, 10000
                 End If
+                
+                ' 3. 移回原位
+                pcopy.MoveL midX, midY, 0
                 
                 ' 存储副本到图纸，删除原始路径
                 pcopy.StoreTemporary
