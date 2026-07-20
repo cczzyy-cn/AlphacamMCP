@@ -69,34 +69,32 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     Dim tp As Path
     Dim midX As Double, midY As Double
     Dim i As Long, n As Long, j As Long
-    Dim idxArr() As Long
+    Dim nameArr() As String
     
     App.SetUndoCommandName "路径自身镜像"
     App.SetUndoPoint
     drw.ScreenUpdating = False
     
-    ' 第1遍：只记录选中路径的序号（不存引用，不设属性）
+    ' 第1遍：记录选中路径的 Name（名称唯一，不受 MirrorL 影响）
     n = 0
-    i = 0
     Set tp = drw.GetFirstToolPath
     Do While Not (tp Is Nothing)
-        i = i + 1
         If tp.Selected Then
             tp.Selected = False
             n = n + 1
-            ReDim Preserve idxArr(1 To n)
-            idxArr(n) = i
+            ReDim Preserve nameArr(1 To n)
+            nameArr(n) = tp.Name
         End If
         Set tp = tp.GetNext
     Loop
     
-    ' 第2遍：按序号重新从图纸获取路径，逐一镜像
+    ' 第2遍：按 Name 查找路径，逐一镜像
     For j = 1 To n
-        ' 从头遍历到第 idxArr(j) 个路径
         Set tp = drw.GetFirstToolPath
-        For i = 2 To idxArr(j)
+        Do While Not (tp Is Nothing)
+            If tp.Name = nameArr(j) Then Exit Do
             Set tp = tp.GetNext
-        Next i
+        Loop
         If Not (tp Is Nothing) Then
             midX = (tp.MinXL + tp.MaxXL) / 2
             midY = (tp.MinYL + tp.MaxYL) / 2
