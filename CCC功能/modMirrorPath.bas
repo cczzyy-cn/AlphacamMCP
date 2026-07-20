@@ -87,8 +87,6 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     Dim count As Long: count = 0
     Dim tp As Path
     Dim midX As Double, midY As Double
-    Dim nx As Double, ny As Double
-    Dim pcopy As Path
     
     App.SetUndoCommandName "路径自身镜像"
     App.SetUndoPoint
@@ -96,28 +94,16 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     
     For Each tp In m_selectedPaths
         If Not (tp Is Nothing) Then
-            ' 用路径自身包围盒计算局部中心
+            ' 直接用路径自身包围盒计算中心，MirrorL 原地翻转
             midX = (tp.MinXL + tp.MaxXL) / 2
             midY = (tp.MinYL + tp.MaxYL) / 2
             
-            ' CopyTemporary 创建独立副本，镜像后替换原路径
-            ' 避免多选时 MirrorL 互相影响
-            Set pcopy = tp.CopyTemporary
-            If Not (pcopy Is Nothing) Then
-                nx = -midX: ny = -midY
-                pcopy.MoveL nx, ny
-                
-                If mirrorX Then
-                    pcopy.MirrorL -10000, 0, 10000, 0
-                Else
-                    pcopy.MirrorL 0, -10000, 0, 10000
-                End If
-                
-                pcopy.MoveL midX, midY
-                pcopy.StoreTemporary
-                tp.Delete
-                count = count + 1
+            If mirrorX Then
+                tp.MirrorL tp.MinXL, midY, tp.MaxXL, midY
+            Else
+                tp.MirrorL midX, tp.MinYL, midX, tp.MaxYL
             End If
+            count = count + 1
         End If
     Next tp
     
