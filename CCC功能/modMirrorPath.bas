@@ -70,12 +70,13 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
     Dim midX As Double, midY As Double
     Dim i As Long, n As Long, j As Long
     Dim nameArr() As String
+    Dim minXArr() As Double, maxXArr() As Double
     
     App.SetUndoCommandName "路径自身镜像"
     App.SetUndoPoint
     drw.ScreenUpdating = False
     
-    ' 第1遍：记录选中路径的 Name
+    ' 第1遍：记录选中路径的 Name + 包围盒（用于交叉验证）
     n = 0
     Set tp = drw.GetFirstToolPath
     Do While Not (tp Is Nothing)
@@ -83,20 +84,28 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
             tp.Selected = False
             n = n + 1
             ReDim Preserve nameArr(1 To n)
+            ReDim Preserve minXArr(1 To n)
+            ReDim Preserve maxXArr(1 To n)
             nameArr(n) = tp.Name
+            minXArr(n) = tp.MinXL
+            maxXArr(n) = tp.MaxXL
         End If
         Set tp = tp.GetNext
     Loop
     
-    ' 第2遍：按 Name 查找路径，逐一镜像
+    ' 第2遍：按 Name 查找路径，验证包围盒，逐一镜像
     For j = 1 To n
         Set tp = drw.GetFirstToolPath
         Do While Not (tp Is Nothing)
-            If tp.Name = nameArr(j) Then Exit Do
+            If tp.Name = nameArr(j) Then
+                ' 验证包围盒是否匹配（排除 Name 重复或路径错乱）
+                If Abs(tp.MinXL - minXArr(j)) < 0.01 And Abs(tp.MaxXL - maxXArr(j)) < 0.01 Then
+                    Exit Do
+                End If
+            End If
             Set tp = tp.GetNext
         Loop
         If Not (tp Is Nothing) Then
-            ' 用包围盒中心作为镜像轴（唯一保证路径原地翻转的计算方式）
             midX = (tp.MinXL + tp.MaxXL) / 2
             midY = (tp.MinYL + tp.MaxYL) / 2
             
