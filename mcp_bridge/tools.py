@@ -397,6 +397,34 @@ async def handle_run_machining(acam, process_type=1, cut_feed=1000, down_feed=50
 async def handle_run_vba_macro(acam, macro_name, params=None, **kw):
     return acam.run_vba_macro(macro_name, params or [])
 
+@mcp_tool("list_vba_modules",
+    "List all VBA modules in the active project with their names and types.",
+)
+async def handle_list_vba_modules(acam, **kw):
+    return acam.list_vba_modules()
+
+@mcp_tool("get_vba_code",
+    "Get the full source code of a VBA module by name.",
+    module_name={"type": "string", "description": "VBA module name (e.g. 'modMirrorPath', 'Events')"},
+)
+async def handle_get_vba_code(acam, module_name, **kw):
+    return acam.get_vba_code(module_name)
+
+@mcp_tool("install_vba_module",
+    "Install a VBA module from source code. Replaces existing module with the same name.",
+    module_name={"type": "string", "description": "Module name"},
+    code={"type": "string", "description": "Full VBA source code"},
+)
+async def handle_install_vba_module(acam, module_name, code, **kw):
+    return acam.install_vba_module(module_name, code)
+
+@mcp_tool("run_vba_line",
+    "Execute a single line of VBA code immediately. Creates and runs a temp module.",
+    code_line={"type": "string", "description": "A single VBA statement or expression"},
+)
+async def handle_run_vba_line(acam, code_line, **kw):
+    return acam.run_vba_line(code_line)
+
 @mcp_tool("load_addin",
     "Load an add-in DLL or VBA project file.",
     file_name={"type": "string", "description": "Full path to the add-in file (.dll, .amb, etc.)"},
@@ -577,6 +605,65 @@ async def handle_order_manual(acam, path_indices, **kw):
 )
 async def handle_run_workflow(acam, steps, **kw):
     return acam.run_workflow(steps)
+
+# ----- Path Info & Transform (3) -----------------------------------------
+
+@mcp_tool("get_path_info",
+    "Read detailed info about a path (geometry or toolpath): bounding box, element count, first elements.",
+    path_index={"type": "integer", "description": "1-based index (0 = use selected)"},
+)
+async def handle_get_path_info(acam, path_index=0, **kw):
+    return acam.get_path_info(path_index)
+
+@mcp_tool("move_path",
+    "Move a path by (dx, dy) in local or global coordinates.",
+    dx={"type": "number", "description": "X offset"},
+    dy={"type": "number", "description": "Y offset"},
+    path_index={"type": "integer", "description": "1-based index (0 = use selected)"},
+    local={"type": "boolean", "description": "True=MoveL (local), False=MoveG (global)"},
+)
+async def handle_move_path(acam, dx, dy, path_index=0, local=True, **kw):
+    return acam.move_path(dx, dy, path_index, local)
+
+@mcp_tool("rotate_path",
+    "Rotate a path by angle (degrees) around a center point.",
+    angle={"type": "number", "description": "Rotation angle in degrees"},
+    cx={"type": "number", "description": "Center X"},
+    cy={"type": "number", "description": "Center Y"},
+    path_index={"type": "integer", "description": "1-based index (0 = use selected)"},
+)
+async def handle_rotate_path(acam, angle, cx, cy, path_index=0, **kw):
+    return acam.rotate_path(angle, cx, cy, path_index)
+
+# ----- Geometry Create (extras) -------------------------------------------
+
+@mcp_tool("create_circle_3pts",
+    "Create a circle defined by three points.",
+    x1={"type": "number", "description": "First point X"}, y1={"type": "number", "description": "First point Y"},
+    x2={"type": "number", "description": "Second point X"}, y2={"type": "number", "description": "Second point Y"},
+    x3={"type": "number", "description": "Third point X"}, y3={"type": "number", "description": "Third point Y"},
+)
+async def handle_create_circle_3pts(acam, x1, y1, x2, y2, x3, y3, **kw):
+    return acam.create_circle_3pts(x1, y1, x2, y2, x3, y3)
+
+@mcp_tool("list_layers",
+    "List all layers in the active drawing with their colors and visibility.",
+)
+async def handle_list_layers(acam, **kw):
+    return acam.list_layers()
+
+@mcp_tool("close_drawing",
+    "Close the active drawing without saving.",
+)
+async def handle_close_drawing(acam, **kw):
+    return acam.close_drawing()
+
+@mcp_tool("shell_command",
+    "Execute a system command/script and return output. Timeout after 30 seconds.",
+    command={"type": "string", "description": "Command line to execute"},
+)
+async def handle_shell_command(acam, command, **kw):
+    return acam.shell_and_wait(command)
 
 # ----- View Control (3) ---------------------------------------------------
 

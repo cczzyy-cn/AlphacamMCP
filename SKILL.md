@@ -5,7 +5,7 @@ description: 通过 MCP 协议直接实时操作 AlphaCAM 2016 R1 的桥接器�
 
 # AlphaCAM MCP 桥接器 — AI 实时操作 AlphaCAM
 
-通过 `alphacam-bridge` 插件提供 **56 个 MCP 工具**，用于直接控制 AlphaCAM 2016 R1。
+通过 `alphacam-bridge` 插件提供 **63 个 MCP 工具**，用于直接控制 AlphaCAM 2016 R1。
 
 ## 可用工具
 

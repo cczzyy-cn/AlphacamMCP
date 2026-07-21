@@ -62,13 +62,32 @@ pip install -r requirements.txt
 }
 ```
 
-## MCP 工具清单（52 个）
+## MCP 工具清单（63 个）
 
 ### 状态与信息（2）
 | 工具 | 说明 |
 |---|---|
 | `get_status` | 检查 AlphaCAM 连接状态、版本、路径 |
 | `get_drawing_info` | 获取当前图纸详情（几何数、路径数、图层、操作数） |
+
+### VBA 与插件（8）
+| 工具 | 说明 |
+|---|---|
+| `run_vba_macro` | 运行 VBA 宏（支持传参） |
+| `run_vba_line` | 直接执行一行 VBA 代码（自动创建临时模块） |
+| `list_vba_modules` | 列出 VBA 项目中所有模块名称和类型 |
+| `get_vba_code` | 读取指定 VBA 模块的完整源代码 |
+| `install_vba_module` | 安装 VBA 模块（从源码，覆盖同名模块） |
+| `load_addin` | 加载插件 DLL / VBA 项目 |
+| `enable_addin` | 启用/禁用插件 |
+| `list_addins` | 列出已加载的全部插件 |
+
+### 路径信息与变换（3）
+| 工具 | 说明 |
+|---|---|
+| `get_path_info` | 读取路径详细信息（包围盒、元素数、前10个元素的端点坐标） |
+| `move_path` | 移动路径（局部 MoveL 或全局 MoveG） |
+| `rotate_path` | 旋转路径（指定角度和中心点） |
 
 ### 文件操作（7）
 | 工具 | 说明 |
@@ -81,11 +100,12 @@ pip install -r requirements.txt
 | `save_drawing` | 保存图纸（可另存为） |
 | `output_nc` | 输出 NC 代码到文件 |
 
-### 几何创建（6）
+### 几何创建（7）
 | 工具 | 说明 |
 |---|---|
 | `create_rectangle` | 创建矩形（指定两角点） |
 | `create_circle` | 创建圆（指定直径和圆心） |
+| `create_circle_3pts` | 创建圆（指定三点） |
 | `create_line` | 创建直线（指定两端点） |
 | `create_polygon` | 创建正多边形（指定边数/半径） |
 | `create_ellipse` | 创建椭圆（指定长/短轴） |
@@ -168,13 +188,6 @@ pip install -r requirements.txt
 | `order_operations_all` | 按排版 Sheet 顺序自动排序所有刀具路径 |
 | `order_manual` | 手动指定顺序重排几何/刀具路径 |
 
-### VBA 与插件（4）
-| 工具 | 说明 |
-|---|---|
-| `run_vba_macro` | 运行 VBA 宏（支持传参） |
-| `load_addin` | 加载插件 DLL / VBA 项目 |
-| `enable_addin` | 启用/禁用插件 |
-| `list_addins` | 列出已加载的全部插件 |
 
 ### 后处理器（1）
 | 工具 | 说明 |
@@ -195,12 +208,15 @@ pip install -r requirements.txt
 |---|---|
 | `chm_to_html` | 将 `.chm` 编译帮助文件转换为 HTML 文件 |
 
-### 实用工具（3）
+### 实用工具（6）
 | 工具 | 说明 |
 |---|---|
 | `set_undo_point` | 设置撤销点 |
 | `zoom_all` | 缩放全图 |
 | `run_workflow` | 批量执行多步骤工作流 |
+| `list_layers` | 列出所有图层（颜色、可见性） |
+| `close_drawing` | 关闭当前图纸（不保存） |
+| `shell_command` | 执行系统命令或脚本 |
 
 ## VBA 插件功能
 

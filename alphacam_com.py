@@ -723,6 +723,88 @@ class AlphaCAM:
         except Exception as exc:
             raise AlphaCAMError(f"VBA macro failed: {exc}") from exc
 
+    # ---- VBA module management -----------------------------------------
+
+    def list_vba_modules(self) -> list[dict]:
+        """List all VBA modules (standard modules, forms, classes) in the active project."""
+        modules = []
+        try:
+            vbe = self._app.VBE
+            proj = vbe.ActiveVBProject
+            for comp in proj.VBComponents:
+                modules.append({
+                    "name": comp.Name,
+                    "type": str(comp.Type),
+                })
+        except Exception as exc:
+            raise AlphaCAMError(f"Failed to list VBA modules: {exc}") from exc
+        return modules
+
+    def get_vba_code(self, module_name: str) -> dict:
+        """Get the source code of a VBA module by name."""
+        try:
+            vbe = self._app.VBE
+            proj = vbe.ActiveVBProject
+            found = None
+            for comp in proj.VBComponents:
+                if comp.Name == module_name:
+                    found = comp
+                    break
+            if found is None:
+                raise AlphaCAMError(f"VBA module '{module_name}' not found")
+            code = found.CodeModule.Lines(1, found.CodeModule.CountOfLines)
+            return {"name": module_name, "code": code, "lines": found.CodeModule.CountOfLines}
+        except AlphaCAMError:
+            raise
+        except Exception as exc:
+            raise AlphaCAMError(f"Failed to get VBA code: {exc}") from exc
+
+    def install_vba_module(self, module_name: str, code: str) -> dict:
+        """Install a VBA module by name with the given source code."""
+        try:
+            vbe = self._app.VBE
+            proj = vbe.ActiveVBProject
+            # Remove existing module with same name
+            for comp in list(proj.VBComponents):
+                if comp.Name == module_name:
+                    proj.VBComponents.Remove(comp)
+                    break
+            # Add new module
+            module = proj.VBComponents.Add(1)  # 1 = standard module
+            module.Name = module_name
+            module.CodeModule.AddFromString(code)
+            return {"name": module_name, "status": "installed", "chars": len(code)}
+        except Exception as exc:
+            raise AlphaCAMError(f"Failed to install VBA module: {exc}") from exc
+
+    def run_vba_line(self, code_line: str) -> dict:
+        """Execute a single line of VBA code immediately.
+        Creates a temp module, adds the code, runs it, then removes the module.
+        """
+        import uuid
+        temp_name = f"_MCP_TEMP_{uuid.uuid4().hex[:8]}"
+        try:
+            vbe = self._app.VBE
+            proj = vbe.ActiveVBProject
+            module = proj.VBComponents.Add(1)
+            module.Name = temp_name
+            full_code = f"Public Sub _MCP_Run()\n{code_line}\nEnd Sub"
+            module.CodeModule.AddFromString(full_code)
+            self._app.Run(f"{temp_name}._MCP_Run")
+            # Cleanup
+            proj.VBComponents.Remove(module)
+            return {"status": "ok", "code": code_line}
+        except Exception as exc:
+            # Cleanup on error
+            try:
+                for comp in list(proj.VBComponents):
+                    if comp.Name == temp_name:
+                        proj.VBComponents.Remove(comp)
+                        break
+            except Exception:
+                pass
+            raise AlphaCAMError(f"VBA line execution failed: {exc}") from exc
+
     def load_addin(self, file_name: str) -> dict:
         """Load an add-in DLL or VBA project file."""
         try:
@@ -968,6 +1050,83 @@ class AlphaCAM:
             raise
         except Exception as exc:
             raise AlphaCAMError(f"OrderManual failed: {exc}") from exc
+
+    # ---- Path info / transform ------------------------------------------
+
+    def _find_path_or_raise(self, path_index: int = 0) -> Any:
+        """Find a path by index or selected. Returns the Path COM object."""
+        drw = self.active_drawing
+        if drw is None:
+            raise AlphaCAMError("No active drawing")
+        p = self._find_geo_by_index_or_selected(path_index)
+        if p is None:
+            raise AlphaCAMError("No path found")
+        return p
+
+    def get_path_info(self, path_index: int = 0) -> dict:
+        """Get detailed info about a path (geometry or toolpath)."""
+        p = self._find_path_or_raise(path_index)
+        try:
+            elems_info = []
+            try:
+                elems = p.Elements
+                if elems is not None:
+                    for i in range(1, min(elems.Count + 1, 10)):  # first 10
+                        e = elems(i)
+                        info = {
+                            "index": i,
+                            "start_x": round(e.StartXG, 4),
+                            "start_y": round(e.StartYG, 4),
+                            "end_x": round(e.EndXG, 4),
+                            "end_y": round(e.EndYG, 4),
+                        }
+                        try:
+                            info["is_line"] = bool(e.IsLine)
+                            info["is_arc"] = bool(e.IsArc)
+                            info["is_rapid"] = bool(e.IsRapid)
+                        except Exception:
+                            pass
+                        elems_info.append(info)
+                total_elems = elems.Count if elems else 0
+            except Exception:
+                elems_info = []
+                total_elems = 0
+            return {
+                "name": str(p.Name) if hasattr(p, 'Name') else "",
+                "min_x": round(p.MinXL, 4) if hasattr(p, 'MinXL') else 0,
+                "max_x": round(p.MaxXL, 4) if hasattr(p, 'MaxXL') else 0,
+                "min_y": round(p.MinYL, 4) if hasattr(p, 'MinYL') else 0,
+                "max_y": round(p.MaxYL, 4) if hasattr(p, 'MaxYL') else 0,
+                "length": round(p.Length, 4) if hasattr(p, 'Length') else 0,
+                "selected": bool(p.Selected) if hasattr(p, 'Selected') else False,
+                "is_toolpath": bool(p.IsToolPath) if hasattr(p, 'IsToolPath') else False,
+                "is_sheet": bool(p.Sheet) if hasattr(p, 'Sheet') else False,
+                "elements": elems_info,
+                "element_count": total_elems,
+            }
+        except Exception as exc:
+            raise AlphaCAMError(f"Failed to get path info: {exc}") from exc
+
+    def move_path(self, dx: float, dy: float, path_index: int = 0, local: bool = True) -> dict:
+        """Move a path by (dx, dy). local=True → MoveL, local=False → MoveG."""
+        p = self._find_path_or_raise(path_index)
+        try:
+            if local:
+                p.MoveL(dx, dy)
+            else:
+                p.MoveG(dx, dy, 0)
+            return {"status": "moved", "dx": dx, "dy": dy, "mode": "local" if local else "global"}
+        except Exception as exc:
+            raise AlphaCAMError(f"Move failed: {exc}") from exc
+
+    def rotate_path(self, angle: float, cx: float, cy: float, path_index: int = 0) -> dict:
+        """Rotate a path by angle (degrees) around center (cx, cy)."""
+        p = self._find_path_or_raise(path_index)
+        try:
+            p.RotateL(angle, cx, cy)
+            return {"status": "rotated", "angle": angle, "center_x": cx, "center_y": cy}
+        except Exception as exc:
+            raise AlphaCAMError(f"Rotate failed: {exc}") from exc
 
     def mirror_path(self, x1: float, y1: float, x2: float, y2: float, path_index: int = 0) -> dict:
         drw = self.active_drawing
