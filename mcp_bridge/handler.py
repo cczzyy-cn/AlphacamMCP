@@ -76,7 +76,8 @@ async def handle_tool(name: str, arguments: dict | None) -> CallToolResult:
     # ---- Documentation tools (no COM needed) ----
     if name == "list_docs":
         try:
-            result = doc_tools.handle_list_docs()
+            expand = arguments.get("expand", False)
+            result = doc_tools.handle_list_docs(expand=expand)
             return CallToolResult(content=_json(result))
         except Exception as e:
             log.exception("list_docs failed")
@@ -84,7 +85,10 @@ async def handle_tool(name: str, arguments: dict | None) -> CallToolResult:
 
     if name == "read_doc":
         try:
-            result = doc_tools.handle_read_doc(arguments.get("name", ""))
+            result = doc_tools.handle_read_doc(
+                arguments.get("name", ""),
+                max_len=arguments.get("max_len", 8000),
+            )
             return CallToolResult(content=_json(result))
         except FileNotFoundError as e:
             return CallToolResult(content=_error(str(e)))
@@ -94,7 +98,10 @@ async def handle_tool(name: str, arguments: dict | None) -> CallToolResult:
 
     if name == "search_docs":
         try:
-            result = doc_tools.handle_search_docs(arguments.get("query", ""))
+            result = doc_tools.handle_search_docs(
+                arguments.get("query", ""),
+                search_content=arguments.get("search_content", False),
+            )
             return CallToolResult(content=_json(result))
         except Exception as e:
             log.exception("search_docs failed")

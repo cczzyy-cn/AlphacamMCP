@@ -92,27 +92,34 @@ def get_tool_func(name: str) -> Callable | None:
 _DOC_TOOLS = [
     Tool(
         name="list_docs",
-        description="List AlphaCAM API documentation categories and their file counts. Returns an overview of all available doc sections (General, Enums, Events, Objects, Post, Examples) with document counts.",
-        inputSchema={"type": "object", "properties": {}},
+        description="List AlphaCAM API documentation categories and their file counts. Use expand=True to list all individual files.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "expand": {"type": "boolean", "description": "If true, list all HTML files in each category"},
+            },
+        },
     ),
     Tool(
         name="read_doc",
-        description="Read an AlphaCAM API documentation page by name. Provide a filename (e.g. 'Path_TrimWithCuttingGeos', 'Drawing_CreateRectangle', 'Application_OpenDrawing') or a partial path. The full HTML content is returned as plain text. Browse docs with list_docs first.",
+        description="Read an AlphaCAM API documentation page by name. Set max_len=0 for full content without truncation.",
         inputSchema={
             "type": "object",
             "properties": {
                 "name": {"type": "string", "description": "Doc filename or identifier, e.g. 'Path_TrimWithCuttingGeos', 'DrawingObject', 'InitAlphacamAddIn'"},
+                "max_len": {"type": "integer", "description": "Max content length (0 = no truncation, default 8000)"},
             },
             "required": ["name"],
         },
     ),
     Tool(
         name="search_docs",
-        description="Search AlphaCAM API documentation pages by keyword. Finds all pages whose filename or content matches the query. Returns matching file names with one-line summaries. Use read_doc to read a specific page.",
+        description="Search AlphaCAM API documentation pages by keyword. Set search_content=True to also search inside page text.",
         inputSchema={
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Search keyword, e.g. 'trim', 'offset', 'circle', 'drawing', 'tool'"},
+                "search_content": {"type": "boolean", "description": "If true, also search page body text (slower)"},
             },
             "required": ["query"],
         },

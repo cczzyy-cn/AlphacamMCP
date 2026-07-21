@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 import re
 import logging
+from typing import Any
 
 from .config import detect_alphacam_dir, CHM_DOCS
 
@@ -56,16 +57,26 @@ def _is_doc_file(name: str) -> bool:
 # Categories / listing
 # ---------------------------------------------------------------------------
 
-def _get_doc_categories() -> dict[str, int]:
-    """Return doc source directories with file counts."""
-    result: dict[str, int] = {}
+def _get_doc_categories(expand: bool = False) -> dict[str, Any]:
+    """Return doc source directories with file counts (and optionally file lists)."""
+    result: dict[str, Any] = {}
     for root in _get_doc_roots():
+        files_list = []
         count = 0
-        for _r, _dirs, files in os.walk(root):
-            count += sum(1 for f in files if _is_doc_file(f))
+        for r, _dirs, files in os.walk(root):
+            for f in files:
+                if _is_doc_file(f):
+                    count += 1
+                    if expand:
+                        rel_path = os.path.relpath(os.path.join(r, f), root)
+                        title = _get_doc_title(os.path.join(r, f))
+                        files_list.append({"file": f, "path": rel_path, "title": title})
         if count > 0:
             label = os.path.basename(root)
-            result[label] = count
+            entry: dict = {"file_count": count}
+            if expand:
+                entry["files"] = files_list
+            result[label] = entry
     return result
 
 
@@ -128,8 +139,9 @@ def _get_doc_title(filepath: str) -> str:
     return os.path.basename(filepath).replace(".htm", "").replace("_", " ")
 
 
-def _search_docs(query: str, max_results: int = 20) -> list[dict]:
-    """Search doc page filenames and titles for a query string across all doc roots."""
+def _search_docs(query: str, max_results: int = 20,
+                 search_content: bool = False) -> list[dict]:
+    """Search doc pages by filename, title, and optionally content."""
     q = query.lower()
     results = []
     for root in _get_doc_roots():
@@ -145,6 +157,16 @@ def _search_docs(query: str, max_results: int = 20) -> list[dict]:
                 title = _get_doc_title(filepath)
                 if q in title.lower():
                     score += 1
+                if score == 0 and search_content:
+                    # 搜索正文内容
+                    try:
+                        with open(filepath, "r", encoding="utf-8",
+                                  errors="replace") as fh:
+                            content = fh.read(8192)
+                        if q in content.lower():
+                            score += 1
+                    except Exception:
+                        pass
                 if score > 0:
                     results.append({
                         "file": f,
@@ -161,24 +183,28 @@ def _search_docs(query: str, max_results: int = 20) -> list[dict]:
 # Handlers (synchronous, called from dispatcher)
 # ---------------------------------------------------------------------------
 
-def handle_list_docs() -> dict:
+def handle_list_docs(expand: bool = False) -> dict:
     """Handle the list_docs tool."""
     roots = _get_doc_roots()
-    categories = _get_doc_categories()
+    categories = _get_doc_categories(expand=expand)
+    total = 0
+    for c in categories.values():
+        total += c["file_count"] if isinstance(c, dict) else c
     acam_dir = detect_alphacam_dir()
     return {
         "alphacam_install_dir": acam_dir or "(not detected)",
         "doc_search_roots": roots,
         "doc_categories": categories,
-        "total_html_files": sum(categories.values()),
+        "total_html_files": total,
         "chm_docs": {k: v["desc"] for k, v in CHM_DOCS.items()},
         "tip": "Use read_doc(name='Path_TrimWithCuttingGeos') to read a specific API page. "
-                "Use search_docs(query='offset') to find matching pages.",
+                "Use search_docs(query='offset') to find matching pages. "
+                "Use list_docs(expand=True) to list all files.",
     }
 
 
-def handle_read_doc(name: str) -> dict:
-    """Handle the read_doc tool."""
+def handle_read_doc(name: str, max_len: int = 8000) -> dict:
+    """Handle the read_doc tool. max_len=0 means no truncation."""
     filepath = _find_doc_file(name)
     if not filepath:
         raise FileNotFoundError(
@@ -199,20 +225,22 @@ def handle_read_doc(name: str) -> dict:
         except Exception:
             pass
     title = _get_doc_title(filepath)
-    MAX_LEN = 8000
-    if len(text) > MAX_LEN:
-        text = text[:MAX_LEN] + f"\n\n... [truncated, full length: {len(text)} chars]"
+    full_length = len(text)
+    if max_len > 0 and len(text) > max_len:
+        text = text[:max_len] + f"\n\n... [truncated, full length: {full_length} chars. Set max_len=0 for full content]"
     return {
         "title": title,
         "file": os.path.basename(filepath),
         "path": rel_path,
         "content": text,
+        "full_length": full_length,
+        "truncated": max_len > 0 and full_length > max_len,
     }
 
 
-def handle_search_docs(query: str) -> dict:
+def handle_search_docs(query: str, search_content: bool = False) -> dict:
     """Handle the search_docs tool."""
-    results = _search_docs(query)
+    results = _search_docs(query, search_content=search_content)
     if not results:
         return {
             "query": query,
