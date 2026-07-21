@@ -5,7 +5,7 @@ base = os.path.dirname(os.path.abspath(__file__))
 ccc_dir = os.path.join(base, "CCC功能")
 
 # Standard modules (.bas)
-modules = ["Events", "modTrim", "modOffset", "modSort", "modMirror", "modRamp", "modMirrorPath"]
+modules = ["Events", "modTrim", "modOffset", "modSort", "modMirror", "modRamp", "modMirrorPath", "modTest"]
 # Form modules (.txt — code only, controls must be set up separately)
 forms = ["frmRamp"]
 

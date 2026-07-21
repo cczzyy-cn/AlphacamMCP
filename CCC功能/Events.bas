@@ -17,7 +17,7 @@ Function InitAlphacamAddIn(AcamVersion As Long) As Integer
         .AddMenuItem3 "反面镜&像", "m_反面镜像", acamMenuNEW, "CCC功能", vbNullString
         .AddMenuItem3 "斜角下&刀", "m_斜角下刀", acamMenuNEW, "CCC功能", vbNullString
         .AddMenuItem3 "路径自身镜&像", "m_路径自身镜像", acamMenuNEW, "CCC功能", vbNullString
-        .AddMenuItem3 "测试路径信息", "m_测试选中路径信息", acamMenuNEW, "CCC功能", vbNullString
+        .AddMenuItem3 "【测试】", "m_测试", acamMenuNEW, "CCC功能", vbNullString
     End With
     InitAlphacamAddIn = 0
 End Function
@@ -28,4 +28,4 @@ Function m_排版刀具排序(): 排版刀具排序: End Function
 Function m_反面镜像(): 反面镜像: End Function
 Function m_斜角下刀(): 斜角下刀: End Function
 Function m_路径自身镜像(): 路径自身镜像: End Function
-Function m_测试选中路径信息(): 测试选中路径信息: End Function
+Function m_测试(): 测试: End Function
