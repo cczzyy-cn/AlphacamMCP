@@ -9,7 +9,7 @@ import re
 import logging
 from typing import Any
 
-from .config import detect_alphacam_dir, CHM_DOCS
+from .config import detect_alphacam_dir
 
 log = logging.getLogger("alphacam-bridge.docs")
 

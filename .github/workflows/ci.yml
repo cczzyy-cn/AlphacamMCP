@@ -33,4 +33,4 @@ jobs:
       - name: Lint with Ruff
         run: |
           pip install ruff
-          ruff check server.py alphacam_com.py mcp_bridge/
+          ruff check --fix server.py alphacam_com.py mcp_bridge/
