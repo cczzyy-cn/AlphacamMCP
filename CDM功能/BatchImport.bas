@@ -7,7 +7,6 @@ Option Explicit
 ' 功能: 从 CSV 文件批量导入门板数据到 CDM 数据库，自动创建订单和明细
 ' 依赖: CDM.arb 已加载（提供 gdb_CDM、gbln_ConnectToDB、gs_FixSQL）
 ' 用法: CDM.BatchImport.Run "C:\path\to\file.csv", "订单名称"
-'       CDM.BatchImport.RunFromFolder "C:\Users\C\Desktop\2026优化表"
 ' ============================================================================
 
 ' CSV 列索引（基于实际文件头）
@@ -60,48 +59,7 @@ Public Sub Run(Optional sCSVPath As String = "", _
 End Sub
 
 
-' ============================================================================
-' 从指定文件夹批量导入所有 CSV
-' ============================================================================
-Public Sub RunFromFolder(Optional sFolder As String = "")
-    '
-    Dim FSO As New Scripting.FileSystemObject
-    Dim sFolderPath As String
-    Dim f As File
-    Dim iCount As Long
-    
-    If sFolder = "" Then
-        sFolderPath = "C:\Users\C\Desktop\2026优化表"
-    Else
-        sFolderPath = sFolder
-    End If
-    
-    If Not FSO.FolderExists(sFolderPath) Then
-        MsgBox "文件夹不存在: " & sFolderPath, vbExclamation, "BatchImport"
-        GoTo CleanUp
-    End If
-    
-    iCount = 0
-    For Each f In FSO.GetFolder(sFolderPath).Files
-        If LCase(FSO.GetExtensionName(f.Name)) = "csv" Then
-            Dim sJobName As String
-            sJobName = FSO.GetBaseName(f.Name)
-            Call ImportCSV f.Path, sJobName
-            iCount = iCount + 1
-        End If
-    Next
-    
-    MsgBox "批量导入完成！共处理 " & iCount & " 个 CSV 文件。", vbInformation, "BatchImport"
-    
-CleanUp:
-    Set FSO = Nothing
-End Sub
-
-
-' ============================================================================
-' 核心：导入单个 CSV 到 CDM 数据库
-' ============================================================================
-Private Sub ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String)
+(ByVal sCSVPath As String, ByVal sJobName As String)
     '
     Dim FSO As New Scripting.FileSystemObject
     Dim ts As TextStream
