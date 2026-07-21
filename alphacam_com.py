@@ -5,13 +5,20 @@ This layer handles:
   - Connecting to a running AlphaCAM instance or launching a new one
   - All major COM objects: Application, Drawing, MillData, MillTool, Path, etc.
   - Error handling, type conversion, safe cleanup
+  - Automatic reconnect with exponential backoff when the connection is lost
+  - Connection state tracking with observer callbacks
 """
 
 from __future__ import annotations
 
 import atexit
+import enum
+import logging
 import os
-from typing import Any, Optional
+import time
+from typing import Any, Callable, Optional
+
+logger = logging.getLogger("alphacam-bridge.com")
 
 # ---------------------------------------------------------------------------
 # Lazy imports — these only work on Windows with pywin32 installed
@@ -95,60 +102,249 @@ class AlphaCAMNotRunning(AlphaCAMError):
 
 
 # ---------------------------------------------------------------------------
+# Connection state
+# ---------------------------------------------------------------------------
+class ConnectionState(enum.Enum):
+    """Tracks the lifecycle of the COM connection to AlphaCAM."""
+    DISCONNECTED = "disconnected"
+    CONNECTING = "connecting"
+    CONNECTED = "connected"
+    RECONNECTING = "reconnecting"
+    FAILED = "failed"
+
+
+# ---------------------------------------------------------------------------
 # Main wrapper
 # ---------------------------------------------------------------------------
 class AlphaCAM:
-    """Wraps the AlphaCAM Application COM object."""
+    """Wraps the AlphaCAM Application COM object.
+
+    Features:
+    - Automatic reconnect with exponential backoff when AlphaCAM is restarted
+    - Connection state tracking via observer callbacks
+    - Heartbeat detection before each COM operation
+    - Graceful degradation with clear error messages
+    """
 
     def __init__(self, prog_id: str = "aroutaps.Application",
-                 visible: bool = True):
+                 visible: bool = True,
+                 max_reconnect_attempts: int = 5,
+                 reconnect_base_delay: float = 1.0):
         _ensure_com()
         self._prog_id = prog_id
         self._app: Any = None
         self._visible = visible
+        self._state = ConnectionState.DISCONNECTED
+        self._state_callbacks: list[Callable[[ConnectionState, ConnectionState], None]] = []
+        self._max_reconnect_attempts = max_reconnect_attempts
+        self._reconnect_base_delay = reconnect_base_delay
+        # ── 原始窗口状态快照（_connect 中填充）─────────────────────────
+        # 用于确保我们不意外改变用户的主窗口布局。
+        self._orig_visible: bool = True
+        self._orig_window_state: Any = None
+        # ──────────────────────────────────────────────────────────────
         self._connect()
         atexit.register(self._cleanup)
 
-    # ---- connect / disconnect --------------------------------------------
+    # ---- connect / disconnect / reconnect ---------------------------------
+    #
+    # ═══════════════════════════════════════════════════════════════════════
+    #  操作规范 — 窗口管理
+    #
+    #  1. 绝对不允许改变 AlphaCAM 主窗口的大小（Width/Height）和位置
+    #     （Left/Top）。这是最高优先级的约束。
+    #  2. 不允许改变主窗口的状态（WindowState — 最大化/最小化/还原）。
+    #  3. Visible 属性仅在连接时按用户配置设置一次，_cleanup 中不再改
+    #     变，避免释放 COM 时意外弹窗改变用户布局。
+    #  4. 内部图形视图窗口（ViewWindow）的缩放、平移、视角切换不受此
+    #     限制 — 这些操作应通过 view_zoom_* 和 view_set_direction 进行。
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def _set_state(self, new_state: ConnectionState):
+        """Update connection state and fire callbacks on change."""
+        old_state = self._state
+        if old_state == new_state:
+            return
+        self._state = new_state
+        logger.info(
+            "Connection state: %s -> %s",
+            old_state.value, new_state.value,
+        )
+        for cb in self._state_callbacks:
+            try:
+                cb(new_state, old_state)
+            except Exception:
+                logger.exception("Connection state callback failed")
+
+    def set_state_callback(
+        self, callback: Callable[[ConnectionState, ConnectionState], None]
+    ):
+        """Register a callback invoked when connection state changes.
+
+        The callback receives ``(new_state, old_state)`` as arguments.
+        Multiple callbacks are supported; remove with ``clear_state_callbacks``.
+        """
+        self._state_callbacks.append(callback)
+
+    def clear_state_callbacks(self):
+        """Remove all registered state change callbacks."""
+        self._state_callbacks.clear()
+
+    def _check_alive(self) -> bool:
+        """Probe whether the COM connection is truly alive.
+
+        Performs a two-level check:
+          1. Quick-name read (catches most disconnections)
+          2. Read ``ActiveDrawing`` (forces a real COM round-trip to
+             detect zombie handles from restarted AlphaCAM instances)
+
+        Returns ``True`` only when both succeed.
+        """
+        if self._app is None:
+            return False
+        try:
+            # Level 1: trivial property read (fast, most common case)
+            _ = self._app.Name
+            # Level 2: deeper probe — forces a real round-trip to the
+            # server process and catches zombie/stale RPC handles.
+            # ActiveDrawing may raise if the server is gone or the
+            # connection handle points to a terminated process.
+            _ = self._app.ActiveDrawing
+            return True
+        except Exception:
+            return False
 
     def _connect(self):
         """
         Connect to AlphaCAM via COM automation.
-        
-        Note: AlphaCAM must be started via COM (CreateObject) for the MCP bridge
-        to connect to it. Manually launched instances are not registered in COM's 
-        Running Object Table.
-        
+
+        Must be called *after* the previous connection has been fully
+        released (via ``_cleanup()``) so that a fresh ``Dispatch`` can
+        create a new server instance.
+
         Strategy:
           1. Try GetActiveObject (attaches to an existing COM-launched instance)
           2. Fall back to CreateObject/Dispatch (starts AlphaCAM fresh via COM)
         """
+        self._set_state(ConnectionState.CONNECTING)
         try:
-            self._app = _win32com.GetActiveObject(self._prog_id)
-        except Exception:
             try:
+                self._app = _win32com.GetActiveObject(self._prog_id)
+            except Exception:
                 self._app = _win32com.Dispatch(self._prog_id)
-            except Exception as exc:
-                raise AlphaCAMNotRunning(
-                    f"Cannot connect to AlphaCAM ({self._prog_id}): {exc}"
-                ) from exc
-        self._app.Visible = self._visible
+
+            # ── 保存原始窗口状态快照 ────────────────────────────────────
+            # 保存 Visible and WindowState 以便后续操作不意外改变用户布局。
+            # 绝不保存或修改 Width/Height/Left/Top。
+            self._orig_visible = self._safe_get(
+                self._app, "Visible", True
+            )
+            self._orig_window_state = self._safe_get(
+                self._app, "WindowState", None
+            )
+
+            # ── 按用户配置设置可见性 ─────────────────────────────────────
+            # 只在用户通过 ALPHACAM_VISIBLE 环境变量明确要求时才改变。
+            # 绝不改变窗口大小、位置或 WindowState。
+            if self._visible != self._orig_visible:
+                self._app.Visible = self._visible
+
+            self._set_state(ConnectionState.CONNECTED)
+        except Exception as exc:
+            self._app = None
+            self._set_state(ConnectionState.FAILED)
+            raise AlphaCAMNotRunning(
+                f"Cannot connect to AlphaCAM ({self._prog_id}): {exc}"
+            ) from exc
+
+    def _reconnect(self) -> bool:
+        """Attempt to reconnect with exponential backoff.
+
+        Returns ``True`` on success.  Sets state to ``FAILED`` and
+        returns ``False`` when all attempts are exhausted.
+        """
+        self._set_state(ConnectionState.RECONNECTING)
+        self._cleanup()  # release the stale COM references
+
+        for attempt in range(self._max_reconnect_attempts):
+            if attempt > 0:
+                delay = min(
+                    self._reconnect_base_delay * (2 ** (attempt - 1)),
+                    30.0,
+                )
+                logger.info(
+                    "Reconnect attempt %d/%d, waiting %.1fs …",
+                    attempt + 1, self._max_reconnect_attempts, delay,
+                )
+                time.sleep(delay)
+
+            try:
+                self._connect()
+                logger.info(
+                    "Reconnect succeeded after %d attempt(s)",
+                    attempt + 1,
+                )
+                return True
+            except AlphaCAMNotRunning:
+                logger.warning(
+                    "Reconnect attempt %d/%d failed",
+                    attempt + 1, self._max_reconnect_attempts,
+                )
+                continue
+
+        self._set_state(ConnectionState.FAILED)
+        logger.error(
+            "All %d reconnect attempts exhausted",
+            self._max_reconnect_attempts,
+        )
+        return False
+
+    def ensure_connection(self) -> None:
+        """Verify the COM connection is alive; attempt reconnect if not.
+
+        Call this before every COM operation that the MCP layer dispatches.
+        Raises ``AlphaCAMNotRunning`` when reconnection fails.
+        """
+        if self._state is ConnectionState.FAILED:
+            raise AlphaCAMNotRunning(
+                "AlphaCAM connection is in FAILED state. "
+                "Start AlphaCAM manually and call restart() to retry."
+            )
+        if self._check_alive():
+            return
+        # Connection is dead — attempt to revive it
+        if not self._reconnect():
+            raise AlphaCAMNotRunning(
+                f"AlphaCAM is not running (reconnect failed after "
+                f"{self._max_reconnect_attempts} attempts). "
+                "Please start AlphaCAM and try again."
+            )
 
     def _cleanup(self):
-        """Release the COM object and force garbage collection."""
+        """Release the COM object and force garbage collection.
+
+        ⚠ Does NOT change ``Visible`` or any other window property.
+          The user's window layout is preserved as-is.
+        """
         if self._app is not None:
-            try:
-                self._app.Visible = True
-            except Exception:
-                pass
+            # Do NOT set self._app.Visible here — that would change the
+            # user's window layout on cleanup.  Just release the reference.
             self._app = None
         import gc
         gc.collect()
+        # Don't set state here — caller (reconnect / restart) sets it
 
     def restart(self):
-        """Disconnect and reconnect."""
+        """Disconnect and reconnect with a fresh COM session."""
+        was_connected = self._check_alive()
         self._cleanup()
-        self._connect()
+        self._state = ConnectionState.DISCONNECTED
+        logger.info("Restarting COM connection …")
+        if not self._reconnect():
+            raise AlphaCAMNotRunning(
+                f"Restart failed after {self._max_reconnect_attempts} attempts."
+            )
+        return {"status": "ok", "reconnected": was_connected}
 
     @property
     def app(self) -> Any:
@@ -157,16 +353,22 @@ class AlphaCAM:
 
     @property
     def is_connected(self) -> bool:
-        try:
-            _ = self._app.Name
-            return True
-        except Exception:
-            return False
+        """Check if the COM transport is alive right now (no reconnect)."""
+        return self._state is ConnectionState.CONNECTED and self._check_alive()
+
+    @property
+    def connection_state(self) -> ConnectionState:
+        """Current connection state (DISCONNECTED / CONNECTING / CONNECTED / …)."""
+        return self._state
 
     # ---- info / status ---------------------------------------------------
 
     def get_info(self) -> dict:
-        """Return basic info about the AlphaCAM instance."""
+        """Return basic info about the AlphaCAM instance.
+
+        ⚠  ``window_*`` fields are READ-ONLY observations.  The bridge
+           never changes the main window's size, position, or state.
+        """
         return {
             "name": self._safe_get(self._app, "Name", ""),
             "full_name": self._safe_get(self._app, "FullName", ""),
@@ -179,7 +381,9 @@ class AlphaCAM:
             "licomdir_path": self._safe_get(self._app, "LicomdirPath", ""),
             "post_file_name": self._safe_get(self._app, "PostFileName", ""),
             "visible": self._safe_get(self._app, "Visible", False),
+            "window_state": self._safe_get(self._app, "WindowState", None),
             "is_connected": self.is_connected,
+            "connection_state": self._state.value,
         }
 
     # ---- drawing management ----------------------------------------------
@@ -402,11 +606,17 @@ class AlphaCAM:
     def create_text(self, text: str, height: float, x: float, y: float,
                     font: str = "Arial", align: int = 0,
                     angle: float = 0) -> dict:
-        """Create a text object."""
+        """Create a text object.
+
+        Note: Font must be set via the Drawing.Font property before
+        calling CreateText, and font names may require a special prefix
+        (e.g. "A" for Arial, "T" for TrueType).
+        """
         drw = self.active_drawing
         if drw is None:
             raise AlphaCAMError("No active drawing")
-        drw.CreateText(height, angle, text, x, y, font, align)
+        drw.Font = font
+        drw.CreateText(text, x, y, height)
         return {"text": text, "height": height, "x": x, "y": y}
 
     # ---- workplane & layer -----------------------------------------------

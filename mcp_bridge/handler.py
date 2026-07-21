@@ -11,7 +11,7 @@ from typing import Any
 
 from mcp.types import TextContent, CallToolResult
 
-from alphacam_com import AlphaCAM, AlphaCAMError, AlphaCAMNotRunning
+from alphacam_com import AlphaCAM, AlphaCAMError, AlphaCAMNotRunning, ConnectionState
 from .errors import ToolError
 from .tools import get_tool_func
 from .config import get_prog_id, get_visible
@@ -31,7 +31,21 @@ def get_acam() -> AlphaCAM:
     global _acam
     if _acam is None:
         _acam = AlphaCAM(prog_id=get_prog_id(), visible=get_visible())
+        # Wire up a logging callback for connection state changes
+        _acam.set_state_callback(_on_connection_state_change)
     return _acam
+
+
+def _on_connection_state_change(
+    new_state: "ConnectionState", old_state: "ConnectionState"
+):
+    """Log connection state transitions and take recovery actions."""
+    if new_state.name == "CONNECTED" and old_state.name != "CONNECTING":
+        log.info("AlphaCAM connection restored (was %s)", old_state.value)
+    elif new_state.name == "RECONNECTING":
+        log.warning("AlphaCAM connection lost — attempting reconnect …")
+    elif new_state.name == "FAILED":
+        log.error("AlphaCAM connection FAILED after all retries")
 
 
 def _get_acam_instance() -> AlphaCAM | None:
@@ -40,7 +54,11 @@ def _get_acam_instance() -> AlphaCAM | None:
 
 
 def set_prog_id(prog_id: str):
-    """Override the ProgID (called from CLI --progid)."""
+    """Override the ProgID (called from CLI --progid).
+
+    Resets the current connection; the next ``get_acam()`` call will
+    create a fresh AlphaCAM instance with the new ProgID.
+    """
     global _acam
     _acam = None
     import os
@@ -118,9 +136,21 @@ async def handle_tool(name: str, arguments: dict | None) -> CallToolResult:
             log.exception("chm_to_html failed")
             return CallToolResult(content=_error(str(e)))
 
+    if name == "chm_to_html_all":
+        try:
+            result = await doc_tools.handle_convert_all_chm(
+                arguments.get("output_base_dir"),
+            )
+            return CallToolResult(content=_json(result))
+        except Exception as e:
+            log.exception("chm_to_html_all failed")
+            return CallToolResult(content=_error(str(e)))
+
     # ---- AlphaCAM COM tools ----
     try:
         acam = get_acam()
+        # Verify the COM connection is alive; reconnect if AlphaCAM was restarted
+        acam.ensure_connection()
     except AlphaCAMNotRunning:
         return CallToolResult(content=_error(
             "AlphaCAM is not running. Start AlphaCAM first."))
@@ -146,6 +176,30 @@ async def handle_tool(name: str, arguments: dict | None) -> CallToolResult:
         return CallToolResult(content=_error(
             f"Missing required argument: {e}"))
     except Exception as e:
+        err_code = getattr(e, 'hresult', 0) or getattr(e, 'args', [0])[0]
+        is_zombie = (
+            isinstance(err_code, int) and err_code in (
+                -2147417851,  # 0x8000FFFF E_UNEXPECTED / catastrophic
+                -2147221021,  # 0x800401F3 操作不可用
+                -2147023174,  # 0x800706BA RPC 服务器不可用
+            )
+        )
+        if is_zombie:
+            log.warning(
+                "COM zombie detected (code %d) — restarting connection …",
+                err_code,
+            )
+            try:
+                acam.restart()
+                # Retry once with fresh connection
+                result = await func(acam, **arguments)
+                if result is None:
+                    result = {"status": "ok"}
+                return CallToolResult(content=_json(result))
+            except Exception as retry_err:
+                log.exception(f"Reconnect+retry of {name} also failed")
+                return CallToolResult(content=_error(
+                    f"AlphaCAM connection lost and reconnect failed: {retry_err}"))
         log.exception(f"Unexpected error in tool {name}")
         return CallToolResult(content=_error(str(e)))
     finally:

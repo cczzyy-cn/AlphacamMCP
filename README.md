@@ -18,6 +18,8 @@
 |---|---|
 | `server.py` | MCP 桥接器主程序（Python），通过 STDIO/SSE 协议与 AI 通信 |
 | `alphacam_com.py` | AlphaCAM COM 自动化封装层 |
+| `DOCUMENTATION_INDEX.md` | AlphaCAM 全部 33 个 .chm 文档的索引目录（含分组和转换状态） |
+| `chm/` | .chm 文档目录（含指向安装目录的符号链接 + 已转换的 _html 子目录） |
 | `CCC功能/` | VBA 插件合集目录（依边界裁剪、全排版刀具偏移、排版刀具排序） |
 | `RevNest_source/` | RevNest 反向排版 v1.2 插件完整源码（从 AlphaCAM 提取） |
 | `install.bat` | Windows 一键安装脚本 |
@@ -194,19 +196,20 @@ pip install -r requirements.txt
 |---|---|
 | `select_post` | 选择后处理器 |
 
-### API 文档（3）
+### API 文档（5）
 | 工具 | 说明 |
 |---|---|
-| `list_docs` | 列出文档来源目录及文件分类数量 |
-| `read_doc` | 读取指定文档页（API 参考、3D/4D 用户手册等） |
-| `search_docs` | 按关键词搜索全部文档（自动检测 AlphaCAM 安装目录） |
+| `list_docs` | 列出文档来源目录及分类，**含 CHM 索引状态**（显示全部 33 个 .chm 已转换/待转换状态） |
+| `search_docs` | 按关键词搜索，**支持 CHM 描述搜索 + 内容片段预览 + 60 秒缓存** |
+| `read_doc` | 读取指定文档页全文（支持 max_len 控制 token 消耗） |
+| `chm_to_html` | 单文件转换：将 `.chm` 编译帮助文件转换为 HTML |
+| `chm_to_html_all` | **批量转换**：一键转换全部未处理的 20 个 .chm 文件到 `chm/{Key}_html/` |
 
-> 文档搜索自动检测 AlphaCAM 安装目录，覆盖 **tempacamapi**（VBA API）、**ACAM3**（3D 模块）、**ACAM4**（4 轴模块）等所有已提取的 HTML 文档。未安装 AlphaCAM 时可放置 `*_html` 文件夹在 `chm/` 目录下作为离线回退。
-
-### 文档转换（1）
-| 工具 | 说明 |
-|---|---|
-| `chm_to_html` | 将 `.chm` 编译帮助文件转换为 HTML 文件 |
+> 文档搜索自动检测 AlphaCAM 安装目录，覆盖 **tempacamapi**（VBA API）、**ACAM3**（3D 模块）、**ACAM4**（4 轴模块）等所有已提取的 HTML 文档。
+>
+> CHM 索引系统注册了 **33 个唯一 .chm 帮助文件**，包括 CDM（橱柜设计模块）、APM、ModuleWorks 5 轴加工等。搜索时会同时匹配 CHM 描述和已解压的 HTML 内容。
+>
+> 使用 `chm_to_html_all` 可一键解压全部 .chm，解压后的 `_html` 目录自动纳入文档搜索路径。
 
 ### 实用工具（6）
 | 工具 | 说明 |
@@ -236,7 +239,37 @@ pip install -r requirements.txt
 `RevNest_source/` 目录包含从 AlphaCAM 2016 R1 `ReverseNest.arb` 插件提取的完整源码，
 实现排版零件的反面镜像生成。详见 [`RevNest_API参考.md`](RevNest_API参考.md)。
 
-## 项目链接
+## 操作规范
+
+### 🪟 窗口管理（最高优先级）
+
+| 规则 | 说明 |
+|---|---|
+| ✅ **允许** 调整图形视图窗口 | `view_zoom_extents`、`view_zoom_window`、`view_set_direction`、`zoom_all` |
+| ❌ **禁止** 改变主窗口大小 | 绝不设置 `Width` / `Height` |
+| ❌ **禁止** 移动主窗口位置 | 绝不设置 `Left` / `Top` |
+| ❌ **禁止** 改变主窗口状态 | 绝不设置 `WindowState`（最大化/最小化/还原） |
+| ⚠️ `Visible` 仅按需设置 | 仅在连接时根据 `ALPHACAM_VISIBLE` 环境变量设置一次 |
+| 🛡️ 释放 COM 时不改窗口 | `_cleanup()` 不会设置 `Visible` 或任何窗口属性 |
+
+所有视图缩放/方向操作均通过 `Drawing.ViewWindow` 进行，不影响主窗口布局。
+
+### 🔌 连接规范
+
+| 规则 | 说明 |
+|---|---|
+| 自动重连 | COM 断开后指数退避重连（最多 5 次，间隔 1s→2s→4s→8s→16s） |
+| 僵尸检测 | `_check_alive()` 双层探测（Name + ActiveDrawing），防止误判 |
+| 状态回调 | 连接状态变化通过 `set_state_callback()` 通知 |
+| 多实例支持 | 通过 `--progid` 参数指定不同 ProgID 切换实例 |
+
+### 📐 几何操作规范
+
+| 类型 | 空间 |
+|---|---|
+| 几何图元 | 在工作平面（Workplane）坐标系中创建 |
+| 图形视图 | 可通过 `view_*` 工具缩放/平移/旋转视角，不影响实际坐标 |
+| 图层 | 通过 `create_layer` 创建和命名图层，支持 RGB 颜色设置 |
 
 - GitHub: https://github.com/cczzyy-cn/AlphacamMCP
 - 问题反馈: https://github.com/cczzyy-cn/AlphacamMCP/issues

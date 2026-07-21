@@ -1,20 +1,51 @@
 """
 Documentation search helpers — scan AlphaCAM install dir + local chm/ for HTML docs.
+Includes content-snippet preview, CHM_DOCS awareness, and search result cache.
 """
 
 from __future__ import annotations
 
 import os
 import re
+import time
 import logging
 from typing import Any
 
-from .config import detect_alphacam_dir
+from .config import detect_alphacam_dir, CHM_DOCS
 
 log = logging.getLogger("alphacam-bridge.docs")
 
 # Project root directory (where the chm/ folder might be)
 _skill_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# ---------------------------------------------------------------------------
+# Simple in-memory search cache (TTL = 60 seconds)
+# ---------------------------------------------------------------------------
+_search_cache: dict[str, tuple[float, list[dict]]] = {}
+_SEARCH_CACHE_TTL = 60.0
+
+
+def _cache_key(query: str, search_content: bool) -> str:
+    return f"{query.lower()}|||{search_content}"
+
+
+def _get_cached(key: str) -> list[dict] | None:
+    entry = _search_cache.get(key)
+    if entry is None:
+        return None
+    ts, results = entry
+    if time.monotonic() - ts > _SEARCH_CACHE_TTL:
+        del _search_cache[key]
+        return None
+    return results
+
+
+def _set_cache(key: str, results: list[dict]):
+    _search_cache[key] = (time.monotonic(), results)
+    # Evict oldest if cache grows too large
+    if len(_search_cache) > 50:
+        oldest = min(_search_cache.items(), key=lambda x: x[1][0])
+        del _search_cache[oldest[0]]
 
 
 # ---------------------------------------------------------------------------
@@ -51,6 +82,57 @@ def _get_doc_roots() -> list[str]:
 
 def _is_doc_file(name: str) -> bool:
     return name.lower().endswith(".htm") or name.lower().endswith(".html")
+
+
+# ---------------------------------------------------------------------------
+# CHM status helpers
+# ---------------------------------------------------------------------------
+
+def _get_chm_status() -> list[dict]:
+    """Return status of every known CHM: whether it has been extracted to HTML."""
+    project_chm = os.path.join(_skill_dir, "chm")
+    results: list[dict] = []
+    for key, info in CHM_DOCS.items():
+        chm_file = info["file"]
+        desc = info["desc"]
+        # Determine the expected _html directory name
+        base = os.path.splitext(os.path.basename(chm_file))[0]
+        html_dir_name = base + "_html"
+        # Check if an _html folder exists (in chm/ or in install dir)
+        converted = False
+        html_dir_path = ""
+        # Check project chm/ first
+        candidate = os.path.join(project_chm, html_dir_name)
+        if os.path.isdir(candidate):
+            converted = True
+            html_dir_path = candidate
+        else:
+            # Check install dir
+            acam_dir = detect_alphacam_dir()
+            if acam_dir:
+                # Also check parent dir of chm_file
+                chm_parent = os.path.dirname(os.path.join(acam_dir, chm_file))
+                if os.path.isdir(chm_parent):
+                    for entry in os.listdir(chm_parent):
+                        if entry.lower() == html_dir_name.lower():
+                            full = os.path.join(chm_parent, entry)
+                            if os.path.isdir(full):
+                                converted = True
+                                html_dir_path = full
+                                break
+                # Also check acam_dir root
+                root_candidate = os.path.join(acam_dir, html_dir_name)
+                if os.path.isdir(root_candidate):
+                    converted = True
+                    html_dir_path = root_candidate
+        results.append({
+            "key": key,
+            "file": chm_file,
+            "desc": desc,
+            "converted": converted,
+            "html_dir": html_dir_path if converted else "",
+        })
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -138,11 +220,59 @@ def _get_doc_title(filepath: str) -> str:
     return os.path.basename(filepath).replace(".htm", "").replace("_", " ")
 
 
+def _extract_snippet(text: str, query: str, context_chars: int = 80) -> str:
+    """Extract a text snippet around the first occurrence of *query* (case-insensitive)."""
+    q = query.lower()
+    t = text.lower()
+    idx = t.find(q)
+    if idx == -1:
+        return text[:context_chars * 2] + ("…" if len(text) > context_chars * 2 else "")
+    start = max(0, idx - context_chars)
+    end = min(len(text), idx + len(q) + context_chars)
+    snippet = text[start:end]
+    if start > 0:
+        snippet = "…" + snippet
+    if end < len(text):
+        snippet = snippet + "…"
+    return snippet
+
+
 def _search_docs(query: str, max_results: int = 20,
                  search_content: bool = False) -> list[dict]:
-    """Search doc pages by filename, title, and optionally content."""
+    """Search doc pages by filename, title, and optionally content.
+
+    Also searches CHM_DOCS descriptions for matching keywords.
+    """
     q = query.lower()
-    results = []
+
+    # Check cache first
+    ck = _cache_key(q, search_content)
+    cached = _get_cached(ck)
+    if cached is not None:
+        return cached
+
+    results: list[dict] = []
+
+    # --- Search CHM_DOCS descriptions ---
+    for key, info in CHM_DOCS.items():
+        desc = info["desc"]
+        score = 0
+        if q in key.lower():
+            score += 2
+        if q in desc.lower():
+            score += 2
+        if score > 0:
+            results.append({
+                "file": info["file"],
+                "title": f"[CHM] {key} — {desc}",
+                "path": info["file"],
+                "source": "CHM_DOCS",
+                "score": score + 10,  # Boost CHM hits so they appear early
+                "snippet": f"📦 .chm 文档（未转换）: {desc}",
+                "chm_key": key,
+            })
+
+    # --- Search extracted HTML docs ---
     for root in _get_doc_roots():
         for r, _dirs, files in os.walk(root):
             for f in files:
@@ -151,21 +281,29 @@ def _search_docs(query: str, max_results: int = 20,
                 filepath = os.path.join(r, f)
                 rel_path = os.path.relpath(filepath, root)
                 score = 0
+                snippet = ""
                 if q in f.lower():
                     score += 2
                 title = _get_doc_title(filepath)
                 if q in title.lower():
                     score += 1
-                if score == 0 and search_content:
-                    # 搜索正文内容
-                    try:
-                        with open(filepath, "r", encoding="utf-8",
-                                  errors="replace") as fh:
-                            content = fh.read(8192)
-                        if q in content.lower():
-                            score += 1
-                    except Exception:
-                        pass
+                if score > 0 or search_content:
+                    content = ""
+                    if score == 0 or search_content:
+                        try:
+                            with open(filepath, "r", encoding="utf-8",
+                                      errors="replace") as fh:
+                                raw = fh.read(16384)
+                            content = _strip_html(raw)
+                            if q in content.lower():
+                                score += 1
+                        except Exception:
+                            pass
+                    # Extract snippet if content was read
+                    if content:
+                        snippet = _extract_snippet(content, q)
+                    elif title:
+                        snippet = title
                 if score > 0:
                     results.append({
                         "file": f,
@@ -173,9 +311,15 @@ def _search_docs(query: str, max_results: int = 20,
                         "path": rel_path,
                         "source": os.path.basename(root),
                         "score": score,
+                        "snippet": snippet,
                     })
+
     results.sort(key=lambda x: -x["score"])
-    return results[:max_results]
+    final = results[:max_results]
+
+    # Cache the result
+    _set_cache(ck, final)
+    return final
 
 
 # ---------------------------------------------------------------------------
@@ -183,19 +327,31 @@ def _search_docs(query: str, max_results: int = 20,
 # ---------------------------------------------------------------------------
 
 def handle_list_docs(expand: bool = False) -> dict:
-    """Handle the list_docs tool."""
+    """Handle the list_docs tool — now includes CHM_DOCS status."""
     roots = _get_doc_roots()
     categories = _get_doc_categories(expand=expand)
     total = 0
     for c in categories.values():
         total += c["file_count"] if isinstance(c, dict) else c
     acam_dir = detect_alphacam_dir()
+
+    # Build CHM status block
+    chm_status = _get_chm_status()
+    converted_count = sum(1 for c in chm_status if c["converted"])
+    pending_count = len(chm_status) - converted_count
+
     return {
         "alphacam_install_dir": acam_dir or "(not detected)",
         "doc_search_roots": roots,
         "doc_categories": categories,
         "total_html_files": total,
-        "tip": "read_doc(name) / search_docs(query) / list_docs(expand=True)",
+        "chm_docs_index": {
+            "total": len(chm_status),
+            "converted": converted_count,
+            "pending": pending_count,
+            "entries": chm_status,
+        },
+        "tip": "read_doc(name) / search_docs(query) / list_docs(expand=True) / chm_to_html_all()",
     }
 
 
@@ -235,7 +391,7 @@ def handle_read_doc(name: str, max_len: int = 8000) -> dict:
 
 
 def handle_search_docs(query: str, search_content: bool = False) -> dict:
-    """Handle the search_docs tool."""
+    """Handle the search_docs tool — now returns snippets and CHM hits."""
     results = _search_docs(query, search_content=search_content)
     if not results:
         return {
@@ -248,8 +404,14 @@ def handle_search_docs(query: str, search_content: bool = False) -> dict:
         "query": query,
         "count": len(results),
         "results": [
-            {"file": r["file"], "title": r["title"],
-             "path": r["path"], "source": r.get("source", "")}
+            {
+                "file": r["file"],
+                "title": r["title"],
+                "path": r["path"],
+                "source": r.get("source", ""),
+                "snippet": r.get("snippet", ""),
+                "chm_key": r.get("chm_key"),
+            }
             for r in results
         ],
     }
@@ -309,10 +471,85 @@ async def handle_convert_chm_to_html(chm_path: str,
             rel_path = os.path.relpath(filepath, output_dir)
             extracted.append({"path": rel_path, "size": size})
 
+    # Invalidate search cache so newly extracted pages appear
+    _search_cache.clear()
+
     return {
         "output_dir": output_dir,
         "chm_file": os.path.abspath(chm_path),
         "file_count": len(extracted),
         "total_size_bytes": total_size,
         "files": extracted,
+    }
+
+
+async def handle_convert_all_chm(output_base_dir: str | None = None) -> dict:
+    """Convert all pending (not-yet-extracted) .chm files to HTML.
+
+    Extracted output goes to ``chm/{Key}_html/`` inside the project folder,
+    which is automatically picked up by ``_get_doc_roots()``.
+    """
+    project_chm = os.path.join(_skill_dir, "chm")
+    if not os.path.isdir(project_chm):
+        raise FileNotFoundError(
+            f"Project chm/ directory not found at {project_chm}. "
+            "Run the doc index setup first."
+        )
+
+    statuses = _get_chm_status()
+    pending = [s for s in statuses if not s["converted"]]
+
+    if not pending:
+        return {
+            "total_pending": 0,
+            "converted": 0,
+            "failed": 0,
+            "results": [],
+            "message": "All CHM files are already converted. Nothing to do.",
+        }
+
+    results = []
+    converted_count = 0
+    failed_count = 0
+
+    for entry in pending:
+        key = entry["key"]
+        chm_rel = entry["file"]
+
+        # Resolve the absolute path of the .chm file
+        acam_dir = detect_alphacam_dir()
+        if acam_dir:
+            chm_abs = os.path.join(acam_dir, chm_rel)
+        else:
+            # Try project chm/
+            chm_abs = os.path.join(project_chm, os.path.basename(chm_rel))
+
+        if not os.path.isfile(chm_abs):
+            log.warning(f"CHM file not found: {chm_abs}, skipping")
+            results.append({"key": key, "file": chm_rel, "status": "skipped",
+                            "error": "file not found"})
+            failed_count += 1
+            continue
+
+        # Output goes to chm/{Key}_html/
+        out_dir = os.path.join(project_chm, f"{key}_html")
+        log.info(f"Converting {key} ({chm_abs}) → {out_dir}")
+
+        try:
+            conv_result = await handle_convert_chm_to_html(
+                chm_path=chm_abs, output_dir=out_dir)
+            results.append({"key": key, "file": chm_rel, "status": "ok",
+                            "file_count": conv_result["file_count"]})
+            converted_count += 1
+        except Exception as e:
+            log.exception(f"Failed to convert {key}")
+            results.append({"key": key, "file": chm_rel, "status": "failed",
+                            "error": str(e)})
+            failed_count += 1
+
+    return {
+        "total_pending": len(pending),
+        "converted": converted_count,
+        "failed": failed_count,
+        "results": results,
     }

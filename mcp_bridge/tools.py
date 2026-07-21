@@ -136,6 +136,16 @@ _DOC_TOOLS = [
             "required": ["chm_path"],
         },
     ),
+    Tool(
+        name="chm_to_html_all",
+        description="Convert ALL pending (not-yet-extracted) .chm files to HTML at once. Output goes to chm/{Key}_html/ and is automatically picked up by the doc search system.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "output_base_dir": {"type": "string", "description": "Optional base output directory (default: project chm/ folder)"},
+            },
+        },
+    ),
 ]
 
 TOOLS.extend(_DOC_TOOLS)
@@ -147,13 +157,26 @@ TOOLS.extend(_DOC_TOOLS)
 
 async def com_call(func, *args, max_retries: int = 2, delay: float = 0.5,
                    **kwargs) -> Any:
-    """Call a COM method with automatic retry on transient errors."""
+    """Call a COM method with automatic retry on transient errors.
+
+    This is a lightweight retry wrapper for *transient* COM errors
+    (RPC server busy, call queue full, etc.).  Permanent disconnections
+    are handled by ``AlphaCAM.ensure_connection()`` at the dispatch layer
+    before this helper is ever reached.
+    """
     for attempt in range(max_retries):
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            if attempt < max_retries - 1:
-                log.warning(f"COM call failed (attempt {attempt + 1}): {e}")
+            msg = str(e).lower()
+            is_transient = (
+                "busy" in msg or "timeout" in msg or "unavailable" in msg
+            )
+            if attempt < max_retries - 1 and is_transient:
+                log.warning(
+                    "Transient COM error (attempt %d/%d): %s",
+                    attempt + 1, max_retries, e,
+                )
                 await asyncio.sleep(delay)
             else:
                 raise ToolComError(str(e), retries=attempt)
