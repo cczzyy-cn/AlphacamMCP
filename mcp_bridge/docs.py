@@ -69,8 +69,7 @@ def _get_doc_categories(expand: bool = False) -> dict[str, Any]:
                     count += 1
                     if expand:
                         rel_path = os.path.relpath(os.path.join(r, f), root)
-                        title = _get_doc_title(os.path.join(r, f))
-                        files_list.append({"file": f, "path": rel_path, "title": title})
+                        files_list.append({"file": f, "path": rel_path})
         if count > 0:
             label = os.path.basename(root)
             entry: dict = {"file_count": count}
@@ -196,10 +195,7 @@ def handle_list_docs(expand: bool = False) -> dict:
         "doc_search_roots": roots,
         "doc_categories": categories,
         "total_html_files": total,
-        "chm_docs": {k: v["desc"] for k, v in CHM_DOCS.items()},
-        "tip": "Use read_doc(name='Path_TrimWithCuttingGeos') to read a specific API page. "
-                "Use search_docs(query='offset') to find matching pages. "
-                "Use list_docs(expand=True) to list all files.",
+        "tip": "read_doc(name) / search_docs(query) / list_docs(expand=True)",
     }
 
 
@@ -227,7 +223,7 @@ def handle_read_doc(name: str, max_len: int = 8000) -> dict:
     title = _get_doc_title(filepath)
     full_length = len(text)
     if max_len > 0 and len(text) > max_len:
-        text = text[:max_len] + f"\n\n... [truncated, full length: {full_length} chars. Set max_len=0 for full content]"
+        text = text[:max_len] + f"\n...[truncated {full_length} chars, set max_len=0 for full]"
     return {
         "title": title,
         "file": os.path.basename(filepath),
