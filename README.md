@@ -223,6 +223,8 @@ pip install -r requirements.txt
 
 ## VBA 插件功能
 
+> **关于 .arb 文件**：AlphaCAM 的插件以 `.arb`（Add-in Resource Bundle）格式发布，它是一个包含 VBA 源码、窗体、图标和菜单定义的资源包。**.arb 文件必须先被 AlphaCAM 加载（通过菜单或 `load_addin` 工具）**，然后才能通过 `list_vba_modules` 列出模块、通过 `get_vba_code` 读取源码。MCP 无法直接解析 .arb 文件格式，必须经由 AlphaCAM 的 VBA 编辑器接口间接读取。
+
 `CCC功能/` 目录包含四个 VBA 工具（通过 AlphaCAM 菜单栏 "CCC功能" 访问）：
 
 | 文件 | 功能 |
