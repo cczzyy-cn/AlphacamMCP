@@ -62,7 +62,7 @@ pip install -r requirements.txt
 }
 ```
 
-## MCP 工具清单（63 个）
+## MCP 工具清单（68 个）
 
 ### 状态与信息（2）
 | 工具 | 说明 |
