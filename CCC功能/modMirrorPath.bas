@@ -106,13 +106,40 @@ Public Sub DoMirrorPath(ByVal mirrorX As Boolean)
             Set tp = tp.GetNext
         Loop
         If Not (tp Is Nothing) Then
-            midX = (tp.MinXL + tp.MaxXL) / 2
-            midY = (tp.MinYL + tp.MaxYL) / 2
+            ' 排除 Rapid 元素后计算实际切割区域的包围盒中心
+            Dim cutMinX As Double: cutMinX = 1E+20
+            Dim cutMaxX As Double: cutMaxX = -1E+20
+            Dim cutMinY As Double: cutMinY = 1E+20
+            Dim cutMaxY As Double: cutMaxY = -1E+20
+            Dim tpElems2 As Elements: Set tpElems2 = tp.Elements
+            Dim elem2 As Element
+            If Not (tpElems2 Is Nothing) Then
+                For Each elem2 In tpElems2
+                    If Not (elem2 Is Nothing) Then
+                        If Not elem2.IsRapid Then
+                            If elem2.StartXL < cutMinX Then cutMinX = elem2.StartXL
+                            If elem2.StartXL > cutMaxX Then cutMaxX = elem2.StartXL
+                            If elem2.EndXL < cutMinX Then cutMinX = elem2.EndXL
+                            If elem2.EndXL > cutMaxX Then cutMaxX = elem2.EndXL
+                            If elem2.StartYL < cutMinY Then cutMinY = elem2.StartYL
+                            If elem2.StartYL > cutMaxY Then cutMaxY = elem2.StartYL
+                            If elem2.EndYL < cutMinY Then cutMinY = elem2.EndYL
+                            If elem2.EndYL > cutMaxY Then cutMaxY = elem2.EndYL
+                        End If
+                    End If
+                Next elem2
+            End If
+            If cutMaxX <= cutMinX Then
+                cutMinX = tp.MinXL: cutMaxX = tp.MaxXL
+                cutMinY = tp.MinYL: cutMaxY = tp.MaxYL
+            End If
+            midX = (cutMinX + cutMaxX) / 2
+            midY = (cutMinY + cutMaxY) / 2
             
             If mirrorX Then
-                tp.MirrorL tp.MinXL, midY, tp.MaxXL, midY
+                tp.MirrorL cutMinX, midY, cutMaxX, midY
             Else
-                tp.MirrorL midX, tp.MinYL, midX, tp.MaxYL
+                tp.MirrorL midX, cutMinY, midX, cutMaxY
             End If
             count = count + 1
         End If
