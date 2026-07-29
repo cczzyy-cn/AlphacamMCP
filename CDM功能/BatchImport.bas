@@ -1,4 +1,3 @@
-Attribute VB_Name = "BatchImport"
 Option Explicit
 
 ' ============================================================================
@@ -61,7 +60,7 @@ Public Sub Run(Optional sCSVPath As String = "", _
     End If
     
     ' ÷¥––µº»Î
-    Call ImportCSV sCSVPath, sJobName
+    ImportCSV sCSVPath, sJobName
     
     Set FSO = Nothing
 End Sub
