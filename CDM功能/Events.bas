@@ -274,7 +274,7 @@ On Error Resume Next
         End If
         
         ' Auto Import & Nest
-        blnRet = .AddMenuItem32("Auto Import && Nest", "m_AutoImportNest", acamMenuNEW, strMenuName, vbNullString, 20)
+        blnRet = .AddMenuItem32("自动化生产排版", "m_AutoImportNest", acamMenuNEW, strMenuName, vbNullString, 20)
         
         If blnRet Then blnRet = .AddMenuItem32("-", "", acamMenuNEW, strMenuName, vbNullString, 9)
         
