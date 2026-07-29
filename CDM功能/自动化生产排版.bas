@@ -9,18 +9,6 @@ Option Explicit
 ' ==============================================================================
 
 ' API 文件选择对话框
-Private Declare Function GetOpenFileName Lib "comdlg32.dll" Alias "GetOpenFileNameA" (pOpenfilename As OPENFILENAME) As Long
-Private Type OPENFILENAME
-    lStructSize As Long: hwndOwner As Long: hInstance As Long
-    lpstrFilter As String: lpstrCustomFilter As String: nMaxCustFilter As Long
-    nFilterIndex As Long: lpstrFile As String: nMaxFile As Long
-    lpstrFileTitle As String: nMaxFileTitle As Long: lpstrInitialDir As String
-    lpstrTitle As String: flags As Long
-    nFileOffset As Integer: nFileExtension As Integer: lpstrDefExt As String
-    lCustData As Long: lpfnHook As Long: lpTemplateName As String
-End Type
-Private Const OFN_FILEMUSTEXIST As Long = &H1000
-Private Const OFN_HIDEREADONLY  As Long = &H4
 
 
 ' ============================================================================
@@ -208,12 +196,12 @@ End Function
 ' 文件选择对话框
 ' ============================================================================
 Private Function ShowOpenFile(ByVal sDir As String, ByVal sFilter As String) As String
-    Dim ofn As OPENFILENAME, sFile As String, lRet As Long
-    sFile = String$(260, vbNullChar)
-    ofn.lStructSize = Len(ofn): ofn.hwndOwner = App.Frame.WindowHandle
-    ofn.lpstrFilter = sFilter: ofn.lpstrFile = sFile: ofn.nMaxFile = Len(sFile)
-    ofn.lpstrInitialDir = sDir: ofn.lpstrTitle = "选择 CSV 文件"
-    ofn.flags = OFN_FILEMUSTEXIST Or OFN_HIDEREADONLY: ofn.lpstrDefExt = "csv"
-    lRet = GetOpenFileName(ofn)
-    If lRet Then ShowOpenFile = Left$(ofn.lpstrFile, InStr(ofn.lpstrFile, vbNullChar) - 1)
+    Dim sName As String
+    sName = InputBox("请输入 CSV 文件名:" & vbCrLf & "目录: " & sDir, "自动化生产排版", "7-10中林SPC婷兰灰.csv")
+    If sName = "" Then Exit Function
+    If InStr(sName, "\") = 0 And InStr(sName, "/") = 0 Then
+        ShowOpenFile = sDir & sName
+    Else
+        ShowOpenFile = sName
+    End If
 End Function
