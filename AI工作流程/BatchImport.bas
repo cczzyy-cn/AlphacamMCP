@@ -174,6 +174,9 @@ NextRow:
     ts.Close
     
     ' ── 完成 ──
+    ' 保存 OrderID 到注册表（供跨工程调用读取）
+    SaveSetting "CCC", "AutoProd", "LastOrderID", CStr(lngOrderID)
+    
     sErrMsg = "导入完成！" & vbCrLf & _
               "  订单: " & sJobName & " (ID: " & lngOrderID & ")" & vbCrLf & _
               "  材料: " & sMaterial & vbCrLf & _
