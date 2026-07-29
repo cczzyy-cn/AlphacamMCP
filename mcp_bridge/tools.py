@@ -167,7 +167,7 @@ async def com_call(func, *args, max_retries: int = 2, delay: float = 0.5,
     for attempt in range(max_retries):
         try:
             return func(*args, **kwargs)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             msg = str(e).lower()
             is_transient = (
                 "busy" in msg or "timeout" in msg or "unavailable" in msg
