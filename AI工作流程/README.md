@@ -46,3 +46,46 @@ CDM 主界面 frmNTCW（132KB VBA 窗体代码）中：
 - 右键菜单事件在 **窗体中段**（代码截断部分，约 60KB-99KB 区域）
 - 处理函数名未知（无法完整读取）
 - 替代方案：使用上述自定义模块实现相同功能
+
+---
+
+## BatchImport 导入字段映射
+
+与 CDM 原版 CSV 导入配置一致（1-based 列号）：
+
+| CDM 字段 | 1-based 列号 | 0-based 索引 | CSV 实际列名 |
+|---------|:-----------:|:-----------:|-------------|
+| 门板类型 | 列1 | 0 | 造型名称 |
+| 宽 | 列2 | 1 | 宽度 |
+| 高 | 列3 | 2 | 高度 |
+| 数量 | 列4 | 3 | 数量 |
+| 组编号 | 列5 | 4 | 颜色 |
+| 客户名 | 列6 | 5 | 客户名称 |
+| 订单号 | 列10 | 9 | 板件码 |
+| 生产注释 | 列12 | 11 | 备注 |
+| **材料** | **列13 (M列)** | **12** | **(空 → 默认材料)** |
+
+### 材料处理
+
+- **来源列**：第13列（M列），0-based 索引 `COL_MATERIAL = 12`
+- **默认材料**：当 CSV 中第13列为空时，使用 `"开料机3000mm"`（18×1220×3000mm）
+- **自动创建**：材料名在 AD_MATERIALS 中不存在时自动创建
+
+### 常量定义（BatchImport.bas）
+
+```vb
+Private Const COL_STYLE_NAME    As Integer = 0   ' 列1: 门板类型
+Private Const COL_WIDTH         As Integer = 1   ' 列2: 宽
+Private Const COL_HEIGHT        As Integer = 2   ' 列3: 高
+Private Const COL_QUANTITY      As Integer = 3   ' 列4: 数量
+Private Const COL_GROUP_ID      As Integer = 4   ' 列5: 组编号
+Private Const COL_CUSTOMER      As Integer = 5   ' 列6: 客户名
+Private Const COL_ORDER_REF     As Integer = 9   ' 列10: 订单号
+Private Const COL_REMARK        As Integer = 11  ' 列12: 生产注释
+Private Const COL_MATERIAL      As Integer = 12  ' 列13: 材料
+
+Private Const DEF_MATERIAL_NAME As String = "开料机3000mm"
+Private Const DEF_MATERIAL_THK  As Double = 18
+Private Const DEF_MATERIAL_W    As Double = 1220
+Private Const DEF_MATERIAL_L    As Double = 3000
+```
