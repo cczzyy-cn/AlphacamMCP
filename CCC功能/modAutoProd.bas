@@ -1,5 +1,33 @@
 Option Explicit
 
+' API 文件选择对话框
+Private Declare Function GetOpenFileName Lib "comdlg32.dll" Alias "GetOpenFileNameA" (pOpenfilename As OPENFILENAME) As Long
+Private Type OPENFILENAME
+    lStructSize As Long
+    hwndOwner As Long
+    hInstance As Long
+    lpstrFilter As String
+    lpstrCustomFilter As String
+    nMaxCustFilter As Long
+    nFilterIndex As Long
+    lpstrFile As String
+    nMaxFile As Long
+    lpstrFileTitle As String
+    nMaxFileTitle As Long
+    lpstrInitialDir As String
+    lpstrTitle As String
+    flags As Long
+    nFileOffset As Integer
+    nFileExtension As Integer
+    lpstrDefExt As String
+    lCustData As Long
+    lpfnHook As Long
+    lpTemplateName As String
+End Type
+
+Private Const OFN_FILEMUSTEXIST As Long = &H1000
+Private Const OFN_HIDEREADONLY  As Long = &H4
+
 ' ==============================================================================
 ' 自动化生产排版 — 弹窗选CSV → 导入 → 批量生产 → 排版
 ' ==============================================================================
@@ -33,28 +61,13 @@ Public Sub 自动化生产排版()
     '
     Dim sCSVPath As String
     Dim sJobName As String
-    Dim sFolder  As String
     Dim sTemp    As String
     
     On Error GoTo EH
     
     ' ── 1. 选择 CSV 文件 ──
-    sCSVPath = InputBox( _
-        "请输入 CSV 文件名（含 .csv 扩展名）" & vbCrLf & vbCrLf & _
-        "目录: C:\Users\C\Desktop\2026优化表\", _
-        "自动化生产排版", "7-10中林SPC婷兰灰.csv")
-    
+    sCSVPath = ShowOpenFileDialog("C:\Users\C\Desktop\2026优化表", "CSV 文件|*.csv|所有文件|*.*")
     If sCSVPath = "" Then Exit Sub
-    
-    sFolder = "C:\Users\C\Desktop\2026优化表\"
-    If InStr(sCSVPath, "\") = 0 And InStr(sCSVPath, "/") = 0 Then
-        sCSVPath = sFolder & sCSVPath
-    End If
-    
-    If Dir(sCSVPath) = "" Then
-        MsgBox "文件不存在!" & vbCrLf & sCSVPath, vbExclamation
-        Exit Sub
-    End If
     
     ' 取文件名（不含 .csv）作为订单名
     sTemp = sCSVPath
@@ -307,4 +320,34 @@ End Function
 
 Private Function GetF(ByRef v As Variant, ByVal i As Integer, ByVal d As String) As String
     If i >= 0 And i <= UBound(v) Then GetF = v(i) Else GetF = d
+End Function
+
+' ============================================================================
+' 文件选择对话框
+' ============================================================================
+Private Function ShowOpenFileDialog(ByVal sInitialDir As String, _
+                                    ByVal sFilter As String) As String
+    '
+    Dim ofn As OPENFILENAME
+    Dim sFile As String
+    Dim lRet As Long
+    
+    ' 初始化结构体
+    sFile = String$(260, vbNullChar)
+    
+    ofn.lStructSize = Len(ofn)
+    ofn.hwndOwner = App.Frame.WindowHandle
+    ofn.lpstrFilter = sFilter
+    ofn.lpstrFile = sFile
+    ofn.nMaxFile = Len(sFile)
+    ofn.lpstrInitialDir = sInitialDir
+    ofn.lpstrTitle = "选择 CSV 文件"
+    ofn.flags = OFN_FILEMUSTEXIST Or OFN_HIDEREADONLY
+    ofn.lpstrDefExt = "csv"
+    
+    lRet = GetOpenFileName(ofn)
+    
+    If lRet Then
+        ShowOpenFileDialog = Left$(ofn.lpstrFile, InStr(ofn.lpstrFile, vbNullChar) - 1)
+    End If
 End Function
