@@ -2,12 +2,12 @@ Attribute VB_Name = "BatchProcess"
 Option Explicit
 
 ' ============================================================================
-' BatchProcess â€” CDM æ‰¹é‡ç”Ÿäº§æ¨¡å—
+' BatchProcess ¡ª CDM ÅúÁ¿Éú²úÄ£¿é
 ' ============================================================================
-' åŠŸèƒ½: ä» CDM æ•°æ®åº“è¯»å–è®¢å•é—¨æ¿æ•°æ®ï¼Œç”Ÿæˆå‡ ä½•å›¾å½¢å¹¶ä¿å­˜ä¸º .amd æ–‡ä»¶
-' ä¾èµ–: CDM.arb å·²åŠ è½½ï¼ˆæä¾› gdb_CDMã€gbln_ConnectToDBã€gs_FixSQL ç­‰ï¼‰
-' ç”¨æ³•: CDM.BatchProcess.Run 123           (123=OrderID)
-'       CDM.BatchProcess.RunByName "è®¢å•å" (æŒ‰åç§°æŸ¥æ‰¾)
+' ¹¦ÄÜ: ´Ó CDM Êı¾İ¿â¶ÁÈ¡¶©µ¥ÃÅ°åÊı¾İ£¬Éú³É¼¸ºÎÍ¼ĞÎ²¢±£´æÎª .amd ÎÄ¼ş
+' ÒÀÀµ: CDM.arb ÒÑ¼ÓÔØ£¨Ìá¹© gdb_CDM¡¢gbln_ConnectToDB¡¢gs_FixSQL µÈ£©
+' ÓÃ·¨: CDM.BatchProcess.Run 123           (123=OrderID)
+'       CDM.BatchProcess.RunByName "¶©µ¥Ãû" (°´Ãû³Æ²éÕÒ)
 ' ============================================================================
 
 Public Sub Run(ByVal lngOrderID As Long)
@@ -18,12 +18,12 @@ Public Sub RunByName(ByVal sJobName As String)
     Dim rst As ADODB.Recordset
     Dim lngOrderID As Long
     If Not gbln_ConnectToDB() Then
-        MsgBox "æ— æ³•è¿æ¥ CDM æ•°æ®åº“", vbCritical
+        MsgBox "ÎŞ·¨Á¬½Ó CDM Êı¾İ¿â", vbCritical
         Exit Sub
     End If
     Set rst = gdb_CDM.Execute("SELECT OrderID FROM AD_ORDERS WHERE JobName='" & gs_FixSQL(sJobName) & "'")
     If rst.BOF And rst.EOF Then
-        MsgBox "æœªæ‰¾åˆ°è®¢å•: " & sJobName, vbExclamation
+        MsgBox "Î´ÕÒµ½¶©µ¥: " & sJobName, vbExclamation
         rst.Close
         Exit Sub
     End If
@@ -38,13 +38,13 @@ Private Sub ProcessOrder(ByVal lngOrderID As Long)
     Dim lngSuccess As Long, lngFail As Long
     On Error GoTo EH
     If Not gbln_ConnectToDB() Then
-        MsgBox "æ— æ³•è¿æ¥ CDM æ•°æ®åº“", vbCritical
+        MsgBox "ÎŞ·¨Á¬½Ó CDM Êı¾İ¿â", vbCritical
         Exit Sub
     End If
     Dim rstOrder As ADODB.Recordset
     Set rstOrder = gdb_CDM.Execute("SELECT JobName FROM AD_ORDERS WHERE OrderID=" & lngOrderID)
     If rstOrder.BOF And rstOrder.EOF Then
-        MsgBox "è®¢å• ID " & lngOrderID & " ä¸å­˜åœ¨", vbExclamation
+        MsgBox "¶©µ¥ ID " & lngOrderID & " ²»´æÔÚ", vbExclamation
         rstOrder.Close
         Exit Sub
     End If
@@ -52,14 +52,14 @@ Private Sub ProcessOrder(ByVal lngOrderID As Long)
     rstOrder.Close
     Set rstDetails = gdb_CDM.Execute("SELECT * FROM AD_ORDER_DETAILS WHERE OrderID=" & lngOrderID)
     If rstDetails.BOF And rstDetails.EOF Then
-        MsgBox "è®¢å•ä¸­æ²¡æœ‰é—¨æ¿æ•°æ®", vbExclamation
+        MsgBox "¶©µ¥ÖĞÃ»ÓĞÃÅ°åÊı¾İ", vbExclamation
         rstDetails.Close
         Exit Sub
     End If
     rstDetails.MoveLast
     Dim lngCount As Long: lngCount = rstDetails.RecordCount
     rstDetails.MoveFirst
-    App.Frame.ShowProgressBox "æ‰¹é‡ç”Ÿäº§: " & sJobName, "å‡†å¤‡ä¸­..."
+    App.Frame.ShowProgressBox "ÅúÁ¿Éú²ú: " & sJobName, "×¼±¸ÖĞ..."
     lngSuccess = 0: lngFail = 0
     While Not rstDetails.EOF
         Dim sTypeName As String, dblWidth As Double, dblLength As Double, lngQty As Long, i As Long
@@ -68,7 +68,7 @@ Private Sub ProcessOrder(ByVal lngOrderID As Long)
         dblLength = PDbl(gvar_CheckNull(rstDetails.Fields("Length")))
         lngQty = CLng(gvar_CheckNull(rstDetails.Fields("Quantity")))
         If lngQty < 1 Then lngQty = 1
-        App.Frame.SetProgressText "å¤„ç†: " & sTypeName & " " & dblWidth & "x" & dblLength
+        App.Frame.SetProgressText "´¦Àí: " & sTypeName & " " & dblWidth & "x" & dblLength
         For i = 1 To lngQty
             If ProcessDoor(sTypeName, dblWidth, dblLength) Then
                 lngSuccess = lngSuccess + 1
@@ -80,10 +80,10 @@ Private Sub ProcessOrder(ByVal lngOrderID As Long)
     Wend
     rstDetails.Close
     App.Frame.CloseProgressBox
-    MsgBox "å¤„ç†å®Œæˆ!" & vbCrLf & "  æˆåŠŸ: " & lngSuccess & vbCrLf & "  å¤±è´¥: " & lngFail, vbInformation, "BatchProcess"
+    MsgBox "´¦ÀíÍê³É!" & vbCrLf & "  ³É¹¦: " & lngSuccess & vbCrLf & "  Ê§°Ü: " & lngFail, vbInformation, "BatchProcess"
     Exit Sub
 EH:
-    MsgBox "é”™è¯¯: " & Err.Description, vbCritical, "BatchProcess"
+    MsgBox "´íÎó: " & Err.Description, vbCritical, "BatchProcess"
     App.Frame.CloseProgressBox
 End Sub
 

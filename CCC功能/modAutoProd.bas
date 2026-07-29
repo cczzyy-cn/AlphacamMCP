@@ -2,13 +2,13 @@ Attribute VB_Name = "modAutoProd"
 Option Explicit
 
 ' ==============================================================================
-' è‡ªåŠ¨åŒ–ç”Ÿäº§æŽ’ç‰ˆ â€” ä¸€é”®å¯¼å…¥CSV â†’ æ‰¹é‡ç”Ÿäº§ â†’ æŽ’ç‰ˆ â†’ NCè¾“å‡º
+' ×Ô¶¯»¯Éú²úÅÅ°æ ¡ª Ò»¼üµ¼ÈëCSV ¡ú ÅúÁ¿Éú²ú ¡ú ÅÅ°æ ¡ú NCÊä³ö
 ' ==============================================================================
-' ä¾èµ–: CDM.arb å·²åŠ è½½ï¼ˆBatchImport æ¨¡å— + g_Make_Master å‡½æ•°ï¼‰
-' ç”¨æ³•: ç‚¹å‡» CCCåŠŸèƒ½ â†’ è‡ªåŠ¨åŒ–ç”Ÿäº§æŽ’ç‰ˆ â†’ è¾“å…¥CSVæ–‡ä»¶å
+' ÒÀÀµ: CDM.arb ÒÑ¼ÓÔØ£¨BatchImport Ä£¿é + g_Make_Master º¯Êý£©
+' ÓÃ·¨: µã»÷ CCC¹¦ÄÜ ¡ú ×Ô¶¯»¯Éú²úÅÅ°æ ¡ú ÊäÈëCSVÎÄ¼þÃû
 ' ==============================================================================
 
-Public Sub è‡ªåŠ¨åŒ–ç”Ÿäº§æŽ’ç‰ˆ()
+Public Sub ×Ô¶¯»¯Éú²úÅÅ°æ()
     '
     Dim sCSVPath As String
     Dim sJobName As String
@@ -19,46 +19,46 @@ Public Sub è‡ªåŠ¨åŒ–ç”Ÿäº§æŽ’ç‰ˆ()
     
     On Error GoTo EH
     
-    ' â”€â”€ 1. è¾“å…¥ CSV æ–‡ä»¶å â”€â”€
+    ' ©¤©¤ 1. ÊäÈë CSV ÎÄ¼þÃû ©¤©¤
     sCSVPath = InputBox( _
-        "è¯·è¾“å…¥ CSV æ–‡ä»¶åï¼ˆå« .csv æ‰©å±•åï¼‰" & vbCrLf & vbCrLf & _
-        "å°†ä»Žä»¥ä¸‹ç›®å½•è¯»å–ï¼š" & vbCrLf & _
-        "C:\Users\C\Desktop\2026ä¼˜åŒ–è¡¨\", _
-        "è‡ªåŠ¨åŒ–ç”Ÿäº§æŽ’ç‰ˆ", _
-        "7-10ä¸­æž—SPCå©·å…°ç°.csv")
+        "ÇëÊäÈë CSV ÎÄ¼þÃû£¨º¬ .csv À©Õ¹Ãû£©" & vbCrLf & vbCrLf & _
+        "½«´ÓÒÔÏÂÄ¿Â¼¶ÁÈ¡£º" & vbCrLf & _
+        "C:\Users\C\Desktop\2026ÓÅ»¯±í\", _
+        "×Ô¶¯»¯Éú²úÅÅ°æ", _
+        "7-10ÖÐÁÖSPCæÃÀ¼»Ò.csv")
     
-    ' ç‚¹å‡»å–æ¶ˆ
+    ' µã»÷È¡Ïû
     If sCSVPath = "" Then Exit Sub
     
-    ' å¦‚æžœç”¨æˆ·åªè¾“å…¥äº†æ–‡ä»¶åï¼Œè¡¥å…¨è·¯å¾„
-    sFolder = "C:\Users\C\Desktop\2026ä¼˜åŒ–è¡¨\"
+    ' Èç¹ûÓÃ»§Ö»ÊäÈëÁËÎÄ¼þÃû£¬²¹È«Â·¾¶
+    sFolder = "C:\Users\C\Desktop\2026ÓÅ»¯±í\"
     If InStr(sCSVPath, "\") = 0 And InStr(sCSVPath, "/") = 0 Then
         sCSVPath = sFolder & sCSVPath
     End If
     
-    ' â”€â”€ 2. æ£€æŸ¥æ–‡ä»¶æ˜¯å¦å­˜åœ¨ â”€â”€
+    ' ©¤©¤ 2. ¼ì²éÎÄ¼þÊÇ·ñ´æÔÚ ©¤©¤
     If Not FSO.FileExists(sCSVPath) Then
-        MsgBox "æ–‡ä»¶ä¸å­˜åœ¨:" & vbCrLf & sCSVPath, vbExclamation, "è‡ªåŠ¨åŒ–ç”Ÿäº§æŽ’ç‰ˆ"
+        MsgBox "ÎÄ¼þ²»´æÔÚ:" & vbCrLf & sCSVPath, vbExclamation, "×Ô¶¯»¯Éú²úÅÅ°æ"
         GoTo CleanUp
     End If
     
-    ' ä»Ž CSV æ–‡ä»¶åèŽ·å–è®¢å•åï¼ˆåŽ»æŽ‰ .csvï¼‰
+    ' ´Ó CSV ÎÄ¼þÃû»ñÈ¡¶©µ¥Ãû£¨È¥µô .csv£©
     sJobName = FSO.GetBaseName(sCSVPath)
     
-    ' â”€â”€ 3. æ£€æŸ¥ BatchImport æ¨¡å—æ˜¯å¦å·²å®‰è£… â”€â”€
+    ' ©¤©¤ 3. ¼ì²é BatchImport Ä£¿éÊÇ·ñÒÑ°²×° ©¤©¤
     On Error Resume Next
     Call BatchImport.Run(sCSVPath, sJobName)
     If Err.Number <> 0 Then
         On Error GoTo EH
-        MsgBox "BatchImport æ¨¡å—æœªå®‰è£…æˆ–å‡ºé”™ã€‚" & vbCrLf & _
-               "è¯·å…ˆé€šè¿‡ AlphaCAM VBA ç¼–è¾‘å™¨å¯¼å…¥ CDMåŠŸèƒ½/BatchImport.bas", vbCritical
+        MsgBox "BatchImport Ä£¿éÎ´°²×°»ò³ö´í¡£" & vbCrLf & _
+               "ÇëÏÈÍ¨¹ý AlphaCAM VBA ±à¼­Æ÷µ¼Èë CDM¹¦ÄÜ/BatchImport.bas", vbCritical
         GoTo CleanUp
     End If
     On Error GoTo EH
     
-    ' â”€â”€ 4. æŸ¥æ‰¾åˆšåˆ›å»ºçš„è®¢å• ID â”€â”€
+    ' ©¤©¤ 4. ²éÕÒ¸Õ´´½¨µÄ¶©µ¥ ID ©¤©¤
     If Not gbln_ConnectToDB() Then
-        MsgBox "æ— æ³•è¿žæŽ¥ CDM æ•°æ®åº“", vbCritical
+        MsgBox "ÎÞ·¨Á¬½Ó CDM Êý¾Ý¿â", vbCritical
         GoTo CleanUp
     End If
     
@@ -67,7 +67,7 @@ Public Sub è‡ªåŠ¨åŒ–ç”Ÿäº§æŽ’ç‰ˆ()
         "ORDER BY OrderID DESC")
     
     If rst.BOF And rst.EOF Then
-        MsgBox "æœªæ‰¾åˆ°åˆšåˆ›å»ºçš„è®¢å•ï¼Œè¯·æ£€æŸ¥å¯¼å…¥æ˜¯å¦æˆåŠŸ", vbExclamation
+        MsgBox "Î´ÕÒµ½¸Õ´´½¨µÄ¶©µ¥£¬Çë¼ì²éµ¼ÈëÊÇ·ñ³É¹¦", vbExclamation
         rst.Close
         GoTo CleanUp
     End If
@@ -75,23 +75,23 @@ Public Sub è‡ªåŠ¨åŒ–ç”Ÿäº§æŽ’ç‰ˆ()
     lngOrderID = rst.Fields("OrderID").Value
     rst.Close
     
-    ' â”€â”€ 5. æ‰§è¡Œæ‰¹é‡ç”Ÿäº§ + æŽ’ç‰ˆ â”€â”€
-    ' é”å®šå±å¹•åŠ é€Ÿ
+    ' ©¤©¤ 5. Ö´ÐÐÅúÁ¿Éú²ú + ÅÅ°æ ©¤©¤
+    ' Ëø¶¨ÆÁÄ»¼ÓËÙ
     App.Frame.ProjectBarUpdating = False
     App.DisableUndo = True
     
-    ' è°ƒç”¨ CDM åŠ å·¥å¼•æ“Ž
+    ' µ÷ÓÃ CDM ¼Ó¹¤ÒýÇæ
     Call g_Make_Master(CStr(lngOrderID))
     
-    ' â”€â”€ 6. å®Œæˆ â”€â”€
-    MsgBox "è‡ªåŠ¨åŒ–ç”Ÿäº§æŽ’ç‰ˆå®Œæˆï¼" & vbCrLf & vbCrLf & _
-           "è®¢å•: " & sJobName & vbCrLf & _
-           "åŽç»­å¯åœ¨ AlphaCAM ä¸­æŸ¥çœ‹å¹¶è¾“å‡º NC", vbInformation, "è‡ªåŠ¨åŒ–ç”Ÿäº§æŽ’ç‰ˆ"
+    ' ©¤©¤ 6. Íê³É ©¤©¤
+    MsgBox "×Ô¶¯»¯Éú²úÅÅ°æÍê³É£¡" & vbCrLf & vbCrLf & _
+           "¶©µ¥: " & sJobName & vbCrLf & _
+           "ºóÐø¿ÉÔÚ AlphaCAM ÖÐ²é¿´²¢Êä³ö NC", vbInformation, "×Ô¶¯»¯Éú²úÅÅ°æ"
     GoTo CleanUp
     
 EH:
-    MsgBox "é”™è¯¯: " & Err.Description & vbCrLf & _
-           "ä½ç½®: " & Erl, vbCritical, "è‡ªåŠ¨åŒ–ç”Ÿäº§æŽ’ç‰ˆ"
+    MsgBox "´íÎó: " & Err.Description & vbCrLf & _
+           "Î»ÖÃ: " & Erl, vbCritical, "×Ô¶¯»¯Éú²úÅÅ°æ"
     
 CleanUp:
     Set rst = Nothing

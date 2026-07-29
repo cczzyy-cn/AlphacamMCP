@@ -2,38 +2,38 @@ Attribute VB_Name = "BatchImport"
 Option Explicit
 
 ' ============================================================================
-' BatchImport â€” CDM æ‰¹é‡å¯¼å…¥æ¨¡å—
+' BatchImport ¡ª CDM ÅúÁ¿µ¼ÈëÄ£¿é
 ' ============================================================================
-' åŠŸèƒ½: ä» CSV æ–‡ä»¶æ‰¹é‡å¯¼å…¥é—¨æ¿æ•°æ®åˆ° CDM æ•°æ®åº“ï¼Œè‡ªåŠ¨åˆ›å»ºè®¢å•å’Œæ˜ç»†
-' ä¾èµ–: CDM.arb å·²åŠ è½½ï¼ˆæä¾› gdb_CDMã€gbln_ConnectToDBã€gs_FixSQLï¼‰
-' ç”¨æ³•: CDM.BatchImport.Run "C:\path\to\file.csv", "è®¢å•åç§°"
+' ¹¦ÄÜ: ´Ó CSV ÎÄ¼şÅúÁ¿µ¼ÈëÃÅ°åÊı¾İµ½ CDM Êı¾İ¿â£¬×Ô¶¯´´½¨¶©µ¥ºÍÃ÷Ï¸
+' ÒÀÀµ: CDM.arb ÒÑ¼ÓÔØ£¨Ìá¹© gdb_CDM¡¢gbln_ConnectToDB¡¢gs_FixSQL£©
+' ÓÃ·¨: CDM.BatchImport.Run "C:\path\to\file.csv", "¶©µ¥Ãû³Æ"
 ' ============================================================================
 
-' CSV åˆ—ç´¢å¼•ï¼ˆåŒ¹é… CDM å¯¼å…¥é…ç½®ï¼š1-based åˆ—å·ï¼‰
-' åˆ—1=é—¨æ¿ç±»å‹  åˆ—2=å®½  åˆ—3=é«˜  åˆ—4=æ•°é‡  åˆ—5=ç»„ç¼–å·
-' åˆ—6=å®¢æˆ·å    åˆ—7=   åˆ—8=è‡ªå®šä¹‰1  åˆ—9=è‡ªå®šä¹‰2  åˆ—10=è®¢å•å·
-' åˆ—11=        åˆ—12=ç”Ÿäº§æ³¨é‡Š  åˆ—13=ææ–™  åˆ—14~19=è´´é¢çº¹ç†/åå¤„ç†/æ—‹è½¬ç­‰
-Private Const COL_STYLE_NAME    As Integer = 0   ' åˆ—1: é—¨æ¿ç±»å‹ï¼ˆé€ å‹åç§°ï¼‰
-Private Const COL_WIDTH         As Integer = 1   ' åˆ—2: å®½
-Private Const COL_HEIGHT        As Integer = 2   ' åˆ—3: é«˜
-Private Const COL_QUANTITY      As Integer = 3   ' åˆ—4: æ•°é‡
-Private Const COL_GROUP_ID      As Integer = 4   ' åˆ—5: ç»„ç¼–å·ï¼ˆåŸé¢œè‰²ï¼‰
-Private Const COL_CUSTOMER      As Integer = 5   ' åˆ—6: å®¢æˆ·åç§°
-Private Const COL_CUSTOM_1      As Integer = 7   ' åˆ—8: è‡ªå®šä¹‰å­—ç¬¦ä¸²1ï¼ˆå¼€å¯æ–¹å‘ï¼‰
-Private Const COL_CUSTOM_2      As Integer = 8   ' åˆ—9: è‡ªå®šä¹‰å­—ç¬¦ä¸²2ï¼ˆç»ˆç«¯åœ°å€ï¼‰
-Private Const COL_ORDER_REF     As Integer = 9   ' åˆ—10: è®¢å•å·ï¼ˆæ¿ä»¶ç ï¼‰
-Private Const COL_REMARK        As Integer = 11  ' åˆ—12: ç”Ÿäº§æ³¨é‡Šï¼ˆå¤‡æ³¨ï¼‰
-Private Const COL_MATERIAL      As Integer = 12  ' åˆ—13: ææ–™ï¼ˆMåˆ—ï¼Œç©ºæ—¶ç”¨é»˜è®¤ææ–™ï¼‰
+' CSV ÁĞË÷Òı£¨Æ¥Åä CDM µ¼ÈëÅäÖÃ£º1-based ÁĞºÅ£©
+' ÁĞ1=ÃÅ°åÀàĞÍ  ÁĞ2=¿í  ÁĞ3=¸ß  ÁĞ4=ÊıÁ¿  ÁĞ5=×é±àºÅ
+' ÁĞ6=¿Í»§Ãû    ÁĞ7=   ÁĞ8=×Ô¶¨Òå1  ÁĞ9=×Ô¶¨Òå2  ÁĞ10=¶©µ¥ºÅ
+' ÁĞ11=        ÁĞ12=Éú²ú×¢ÊÍ  ÁĞ13=²ÄÁÏ  ÁĞ14~19=ÌùÃæÎÆÀí/ºó´¦Àí/Ğı×ªµÈ
+Private Const COL_STYLE_NAME    As Integer = 0   ' ÁĞ1: ÃÅ°åÀàĞÍ£¨ÔìĞÍÃû³Æ£©
+Private Const COL_WIDTH         As Integer = 1   ' ÁĞ2: ¿í
+Private Const COL_HEIGHT        As Integer = 2   ' ÁĞ3: ¸ß
+Private Const COL_QUANTITY      As Integer = 3   ' ÁĞ4: ÊıÁ¿
+Private Const COL_GROUP_ID      As Integer = 4   ' ÁĞ5: ×é±àºÅ£¨Ô­ÑÕÉ«£©
+Private Const COL_CUSTOMER      As Integer = 5   ' ÁĞ6: ¿Í»§Ãû³Æ
+Private Const COL_CUSTOM_1      As Integer = 7   ' ÁĞ8: ×Ô¶¨Òå×Ö·û´®1£¨¿ªÆô·½Ïò£©
+Private Const COL_CUSTOM_2      As Integer = 8   ' ÁĞ9: ×Ô¶¨Òå×Ö·û´®2£¨ÖÕ¶ËµØÖ·£©
+Private Const COL_ORDER_REF     As Integer = 9   ' ÁĞ10: ¶©µ¥ºÅ£¨°å¼şÂë£©
+Private Const COL_REMARK        As Integer = 11  ' ÁĞ12: Éú²ú×¢ÊÍ£¨±¸×¢£©
+Private Const COL_MATERIAL      As Integer = 12  ' ÁĞ13: ²ÄÁÏ£¨MÁĞ£¬¿ÕÊ±ÓÃÄ¬ÈÏ²ÄÁÏ£©
 
-' é»˜è®¤ææ–™
-Private Const DEF_MATERIAL_NAME As String = "å¼€æ–™æœº3000mm"
+' Ä¬ÈÏ²ÄÁÏ
+Private Const DEF_MATERIAL_NAME As String = "¿ªÁÏ»ú3000mm"
 Private Const DEF_MATERIAL_THK  As Double = 18
 Private Const DEF_MATERIAL_W    As Double = 1220
 Private Const DEF_MATERIAL_L    As Double = 3000
 
 
 ' ============================================================================
-' ä¸»å…¥å£ â€” ä»æŒ‡å®š CSV æ–‡ä»¶å¯¼å…¥
+' Ö÷Èë¿Ú ¡ª ´ÓÖ¸¶¨ CSV ÎÄ¼şµ¼Èë
 ' ============================================================================
 Public Sub Run(Optional sCSVPath As String = "", _
                Optional sJobName As String = "")
@@ -42,25 +42,25 @@ Public Sub Run(Optional sCSVPath As String = "", _
     Dim sDefaultCSV As String
     Dim sDefaultJob As String
     
-    ' é»˜è®¤å€¼ï¼šä»æ–‡ä»¶åæ¨æ–­
+    ' Ä¬ÈÏÖµ£º´ÓÎÄ¼şÃûÍÆ¶Ï
     If sCSVPath = "" Then
-        sDefaultCSV = "C:\Users\C\Desktop\2026ä¼˜åŒ–è¡¨\7-10ä¸­æ—SPCå©·å…°ç°.csv"
+        sDefaultCSV = "C:\Users\C\Desktop\2026ÓÅ»¯±í\7-10ÖĞÁÖSPCæÃÀ¼»Ò.csv"
         sCSVPath = sDefaultCSV
     End If
     
     If sJobName = "" Then
-        ' ä» CSV æ–‡ä»¶åå»æ‰ .csv ä½œä¸ºè®¢å•å
+        ' ´Ó CSV ÎÄ¼şÃûÈ¥µô .csv ×÷Îª¶©µ¥Ãû
         sDefaultJob = FSO.GetBaseName(sCSVPath)
         sJobName = sDefaultJob
     End If
     
-    ' æ£€æŸ¥æ–‡ä»¶æ˜¯å¦å­˜åœ¨
+    ' ¼ì²éÎÄ¼şÊÇ·ñ´æÔÚ
     If Not FSO.FileExists(sCSVPath) Then
-        MsgBox "CSV æ–‡ä»¶ä¸å­˜åœ¨: " & sCSVPath, vbExclamation, "BatchImport"
+        MsgBox "CSV ÎÄ¼ş²»´æÔÚ: " & sCSVPath, vbExclamation, "BatchImport"
         Exit Sub
     End If
     
-    ' æ‰§è¡Œå¯¼å…¥
+    ' Ö´ĞĞµ¼Èë
     Call ImportCSV sCSVPath, sJobName
     
     Set FSO = Nothing
@@ -68,7 +68,7 @@ End Sub
 
 
 ' ============================================================================
-' æ ¸å¿ƒï¼šå¯¼å…¥å•ä¸ª CSV åˆ° CDM æ•°æ®åº“
+' ºËĞÄ£ºµ¼Èëµ¥¸ö CSV µ½ CDM Êı¾İ¿â
 ' ============================================================================
 Private Sub ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String)
     '
@@ -85,26 +85,26 @@ Private Sub ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String)
     
     On Error GoTo EH
     
-    ' â”€â”€ è¿æ¥æ•°æ®åº“ â”€â”€
+    ' ©¤©¤ Á¬½ÓÊı¾İ¿â ©¤©¤
     If Not gbln_ConnectToDB() Then
-        MsgBox "æ— æ³•è¿æ¥åˆ° CDM æ•°æ®åº“ï¼Œè¯·æ£€æŸ¥ CDM.udl é…ç½®ã€‚", vbCritical, "BatchImport"
+        MsgBox "ÎŞ·¨Á¬½Óµ½ CDM Êı¾İ¿â£¬Çë¼ì²é CDM.udl ÅäÖÃ¡£", vbCritical, "BatchImport"
         GoTo CleanUp
     End If
     
-    ' â”€â”€ è·å–æˆ–åˆ›å»ºå®¢æˆ· â”€â”€
-    lngCustomerID = glng_GetOrCreateCustomer("é»˜è®¤å®¢æˆ·")
+    ' ©¤©¤ »ñÈ¡»ò´´½¨¿Í»§ ©¤©¤
+    lngCustomerID = glng_GetOrCreateCustomer("Ä¬ÈÏ¿Í»§")
     
-    ' â”€â”€ åˆ›å»ºè®¢å• â”€â”€
+    ' ©¤©¤ ´´½¨¶©µ¥ ©¤©¤
     lngOrderID = glng_CreateOrder(sJobName, lngCustomerID)
     If lngOrderID <= 0 Then
-        MsgBox "åˆ›å»ºè®¢å•å¤±è´¥ï¼", vbCritical, "BatchImport"
+        MsgBox "´´½¨¶©µ¥Ê§°Ü£¡", vbCritical, "BatchImport"
         GoTo CleanUp
     End If
     
-    ' â”€â”€ è¯»å– CSV å¹¶å¯¼å…¥ â”€â”€
+    ' ©¤©¤ ¶ÁÈ¡ CSV ²¢µ¼Èë ©¤©¤
     Set ts = FSO.OpenTextFile(sCSVPath, ForReading, False)
     
-    ' è·³è¿‡æ ‡é¢˜è¡Œ
+    ' Ìø¹ı±êÌâĞĞ
     If Not ts.AtEndOfStream Then ts.SkipLine
     
     lngRow = 0
@@ -115,19 +115,19 @@ Private Sub ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String)
         sLine = Trim$(ts.ReadLine)
         lngRow = lngRow + 1
         
-        ' è·³è¿‡ç©ºè¡Œ
+        ' Ìø¹ı¿ÕĞĞ
         If sLine = "" Then GoTo NextRow
         
-        ' è§£æ CSV è¡Œ
+        ' ½âÎö CSV ĞĞ
         vFields = SplitCSVLine(sLine)
         
-        ' éªŒè¯å¿…è¦å­—æ®µ
+        ' ÑéÖ¤±ØÒª×Ö¶Î
         If UBound(vFields) < 3 Then
             lngSkipped = lngSkipped + 1
             GoTo NextRow
         End If
         
-        ' æå–å­—æ®µ
+        ' ÌáÈ¡×Ö¶Î
         Dim sStyleName    As String
         Dim dblWidth      As Double
         Dim dblHeight     As Double
@@ -137,33 +137,33 @@ Private Sub ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String)
         Dim sOrderRef     As String
         Dim sPartCode     As String
         Dim sRemark       As String
-        Dim sCustom1      As String  ' è‡ªå®šä¹‰å­—ç¬¦ä¸²1ï¼ˆå¼€å¯æ–¹å‘ï¼‰
-        Dim sCustom2      As String  ' è‡ªå®šä¹‰å­—ç¬¦ä¸²2ï¼ˆç»ˆç«¯åœ°å€ï¼‰
+        Dim sCustom1      As String  ' ×Ô¶¨Òå×Ö·û´®1£¨¿ªÆô·½Ïò£©
+        Dim sCustom2      As String  ' ×Ô¶¨Òå×Ö·û´®2£¨ÖÕ¶ËµØÖ·£©
         
         sStyleName = Trim$(GetField(vFields, COL_STYLE_NAME, ""))
         dblWidth = Val(GetField(vFields, COL_WIDTH, "0"))
         dblHeight = Val(GetField(vFields, COL_HEIGHT, "0"))
         lngQty = Val(GetField(vFields, COL_QUANTITY, "1"))
         
-        ' ææ–™ä»ç¬¬13åˆ—(Måˆ—)è¯»å–ï¼Œç©ºæ—¶ç”¨é»˜è®¤ææ–™
+        ' ²ÄÁÏ´ÓµÚ13ÁĞ(MÁĞ)¶ÁÈ¡£¬¿ÕÊ±ÓÃÄ¬ÈÏ²ÄÁÏ
         sMaterial = Trim$(GetField(vFields, COL_MATERIAL, ""))
         If sMaterial = "" Then sMaterial = DEF_MATERIAL_NAME
         
         sCustomer = Trim$(GetField(vFields, COL_CUSTOMER, ""))
         sOrderRef = Trim$(GetField(vFields, COL_ORDER_REF, ""))
-        sPartCode = Trim$(GetField(vFields, COL_ORDER_REF, ""))  ' æ¿ä»¶ç =è®¢å•å·åˆ—
+        sPartCode = Trim$(GetField(vFields, COL_ORDER_REF, ""))  ' °å¼şÂë=¶©µ¥ºÅÁĞ
         sRemark = Trim$(GetField(vFields, COL_REMARK, ""))
-        sCustom1 = Trim$(GetField(vFields, COL_CUSTOM_1, ""))    ' åˆ—8: å¼€å¯æ–¹å‘
-        sCustom2 = Trim$(GetField(vFields, COL_CUSTOM_2, ""))    ' åˆ—9: ç»ˆç«¯åœ°å€
+        sCustom1 = Trim$(GetField(vFields, COL_CUSTOM_1, ""))    ' ÁĞ8: ¿ªÆô·½Ïò
+        sCustom2 = Trim$(GetField(vFields, COL_CUSTOM_2, ""))    ' ÁĞ9: ÖÕ¶ËµØÖ·
         
-        ' è·³è¿‡æ— æ•ˆè¡Œ
+        ' Ìø¹ıÎŞĞ§ĞĞ
         If dblWidth <= 0 Or dblHeight <= 0 Then
             lngSkipped = lngSkipped + 1
             GoTo NextRow
         End If
         If lngQty <= 0 Then lngQty = 1
         
-        ' æ’å…¥åˆ° AD_ORDER_DETAILS
+        ' ²åÈëµ½ AD_ORDER_DETAILS
         Call InsertOrderDetail lngOrderID, sStyleName, dblWidth, dblHeight, _
                                lngQty, sMaterial, sCustomer, sOrderRef, sPartCode, sRemark, _
                                sCustom1, sCustom2
@@ -174,19 +174,19 @@ NextRow:
     
     ts.Close
     
-    ' â”€â”€ å®Œæˆ â”€â”€
-    sErrMsg = "å¯¼å…¥å®Œæˆï¼" & vbCrLf & _
-              "  è®¢å•: " & sJobName & " (ID: " & lngOrderID & ")" & vbCrLf & _
-              "  ææ–™: " & sMaterial & vbCrLf & _
-              "  æˆåŠŸå¯¼å…¥: " & lngImported & " æ¡" & vbCrLf & _
-              "  è·³è¿‡: " & lngSkipped & " è¡Œ"
+    ' ©¤©¤ Íê³É ©¤©¤
+    sErrMsg = "µ¼ÈëÍê³É£¡" & vbCrLf & _
+              "  ¶©µ¥: " & sJobName & " (ID: " & lngOrderID & ")" & vbCrLf & _
+              "  ²ÄÁÏ: " & sMaterial & vbCrLf & _
+              "  ³É¹¦µ¼Èë: " & lngImported & " Ìõ" & vbCrLf & _
+              "  Ìø¹ı: " & lngSkipped & " ĞĞ"
     MsgBox sErrMsg, vbInformation, "BatchImport"
     GoTo CleanUp
     
 EH:
-    sErrMsg = "åœ¨ç¬¬ " & lngRow & " è¡Œå‘ç”Ÿé”™è¯¯:" & vbCrLf & _
+    sErrMsg = "ÔÚµÚ " & lngRow & " ĞĞ·¢Éú´íÎó:" & vbCrLf & _
               Err.Description & vbCrLf & vbCrLf & _
-              "å·²æˆåŠŸå¯¼å…¥ " & lngImported & " æ¡è®°å½•ã€‚"
+              "ÒÑ³É¹¦µ¼Èë " & lngImported & " Ìõ¼ÇÂ¼¡£"
     MsgBox sErrMsg, vbExclamation, "BatchImport"
     
 CleanUp:
@@ -196,14 +196,14 @@ End Sub
 
 
 ' ============================================================================
-' è·å–æˆ–åˆ›å»ºå®¢æˆ·
+' »ñÈ¡»ò´´½¨¿Í»§
 ' ============================================================================
 Private Function glng_GetOrCreateCustomer(ByVal sName As String) As Long
     '
     Dim rst As ADODB.Recordset
     Dim lngRet As Long
     
-    ' æŸ¥æ‰¾ç°æœ‰å®¢æˆ·
+    ' ²éÕÒÏÖÓĞ¿Í»§
     Set rst = New ADODB.Recordset
     rst.Open "SELECT CustomerID FROM AD_CUSTOMERS WHERE Name='" & gs_FixSQL(sName) & "'", _
              gdb_CDM, adOpenForwardOnly, adLockReadOnly
@@ -212,7 +212,7 @@ Private Function glng_GetOrCreateCustomer(ByVal sName As String) As Long
         glng_GetOrCreateCustomer = rst.Fields("CustomerID").Value
     Else
         rst.Close
-        ' åˆ›å»ºæ–°å®¢æˆ·
+        ' ´´½¨ĞÂ¿Í»§
         gdb_CDM.Execute "INSERT INTO AD_CUSTOMERS (Name) VALUES ('" & gs_FixSQL(sName) & "')", lngRet
         Set rst = gdb_CDM.Execute("SELECT @@IDENTITY AS NewID")
         glng_GetOrCreateCustomer = rst.Fields("NewID").Value
@@ -224,7 +224,7 @@ End Function
 
 
 ' ============================================================================
-' åˆ›å»ºè®¢å•
+' ´´½¨¶©µ¥
 ' ============================================================================
 Private Function glng_CreateOrder(ByVal sJobName As String, _
                                   ByVal lngCustomerID As Long) As Long
@@ -251,7 +251,7 @@ End Function
 
 
 ' ============================================================================
-' æ’å…¥è®¢å•æ˜ç»†
+' ²åÈë¶©µ¥Ã÷Ï¸
 ' ============================================================================
 Private Sub InsertOrderDetail(ByVal lngOrderID As Long, _
                               ByVal sStyleName As String, _
@@ -269,13 +269,13 @@ Private Sub InsertOrderDetail(ByVal lngOrderID As Long, _
     Dim lngRet As Long
     Dim sSQL As String
     
-    ' æ³¨å†Œé—¨å‹ï¼ˆStyleNumber=900 åŒ¹é… Make.mbln_ProcessPartï¼‰
+    ' ×¢²áÃÅĞÍ£¨StyleNumber=900 Æ¥Åä Make.mbln_ProcessPart£©
     Call glng_EnsureStyle(sStyleName)
     
-    ' æ³¨å†Œææ–™
+    ' ×¢²á²ÄÁÏ
     Call glng_EnsureMaterial(sMaterial)
     
-    ' æ’å…¥æ˜ç»†ï¼ˆå«è‡ªå®šä¹‰å­—æ®µï¼‰
+    ' ²åÈëÃ÷Ï¸£¨º¬×Ô¶¨Òå×Ö¶Î£©
     sSQL = "INSERT INTO AD_ORDER_DETAILS " & _
            "(OrderID, TypeName, StyleNumber, Quantity, Width, Length, " & _
            "Material, ProductionComment, " & _
@@ -299,7 +299,7 @@ End Sub
 
 
 ' ============================================================================
-' ç¡®ä¿é—¨å‹å­˜åœ¨ï¼ˆStyleNumber=900ï¼‰
+' È·±£ÃÅĞÍ´æÔÚ£¨StyleNumber=900£©
 ' ============================================================================
 Private Sub glng_EnsureStyle(ByVal sTypeName As String)
     '
@@ -324,7 +324,7 @@ End Sub
 
 
 ' ============================================================================
-' ç¡®ä¿ææ–™å­˜åœ¨ï¼ˆé»˜è®¤: å¼€æ–™æœº3000mmï¼‰
+' È·±£²ÄÁÏ´æÔÚ£¨Ä¬ÈÏ: ¿ªÁÏ»ú3000mm£©
 ' ============================================================================
 Private Sub glng_EnsureMaterial(ByVal sName As String)
     '
@@ -352,7 +352,7 @@ End Sub
 
 
 ' ============================================================================
-' CSV è¡Œè§£æï¼ˆæ”¯æŒå¼•å·åŒ…è£¹çš„å­—æ®µï¼‰
+' CSV ĞĞ½âÎö£¨Ö§³ÖÒıºÅ°ü¹üµÄ×Ö¶Î£©
 ' ============================================================================
 Private Function SplitCSVLine(ByVal sLine As String) As Variant
     '
@@ -401,13 +401,13 @@ Private Function SplitCSVLine(ByVal sLine As String) As Variant
         End If
     Next
     
-    ' æœ€åä¸€ä¸ªå­—æ®µ
+    ' ×îºóÒ»¸ö×Ö¶Î
     If iField > UBound(vResult) Then
         ReDim Preserve vResult(0 To iField + 10)
     End If
     vResult(iField) = sField
     
-    ' è£å‰ªæ•°ç»„
+    ' ²Ã¼ôÊı×é
     ReDim Preserve vResult(0 To iField)
     
     SplitCSVLine = vResult
@@ -415,7 +415,7 @@ End Function
 
 
 ' ============================================================================
-' å®‰å…¨è·å–æ•°ç»„å­—æ®µ
+' °²È«»ñÈ¡Êı×é×Ö¶Î
 ' ============================================================================
 Private Function GetField(ByRef vFields As Variant, _
                           ByVal iIndex As Integer, _
