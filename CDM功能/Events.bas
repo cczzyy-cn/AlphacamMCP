@@ -273,8 +273,8 @@ On Error Resume Next
                 
         End If
         
-        ' è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ
-        blnRet = .AddMenuItem32("è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ", "m_è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ", acamMenuNEW, strMenuName, vbNullString, 20)
+        ' ×Ô¶¯»¯Éú²úÅÅ°æ
+        blnRet = .AddMenuItem32("×Ô¶¯»¯Éú²úÅÅ°æ", "m_×Ô¶¯»¯Éú²úÅÅ°æ", acamMenuNEW, strMenuName, vbNullString, 20)
         
         If blnRet Then blnRet = .AddMenuItem32("-", "", acamMenuNEW, strMenuName, vbNullString, 9)
         
@@ -2853,8 +2853,8 @@ On Error Resume Next
 
 End Sub
 
-Public Sub m_è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ()
-    ' ç”± CDM èœå•è§¦å‘
-    è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ
+Public Sub m_×Ô¶¯»¯Éú²úÅÅ°æ()
+    ' ÓÉ CDM ²Ëµ¥´¥·¢
+    ×Ô¶¯»¯Éú²úÅÅ°æ
 End Sub
 
