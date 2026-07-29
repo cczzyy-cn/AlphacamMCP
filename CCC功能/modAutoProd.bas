@@ -270,7 +270,7 @@ End Function
 ' ============================================================================
 Private Function SplitCSVLine(ByVal sLine As String) As Variant
     Dim v() As String
-    Dim iF As Long
+    Dim idx As Long
     Dim i As Long
     Dim f As String
     Dim bQ As Boolean
@@ -292,16 +292,16 @@ Private Function SplitCSVLine(ByVal sLine As String) As Variant
             If c = """" Then
                 bQ = True
             ElseIf c = "," Then
-                v(iF) = f
-                iF = iF + 1
+                v(idx) = f
+                idx = idx + 1
                 f = ""
             Else
                 f = f & c
             End If
         End If
     Next
-    v(iF) = f
-    ReDim Preserve v(0 To iF)
+    v(idx) = f
+    ReDim Preserve v(0 To idx)
     SplitCSVLine = v
 End Function
 
