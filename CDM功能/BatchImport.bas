@@ -163,9 +163,9 @@ Private Sub ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String)
         If lngQty <= 0 Then lngQty = 1
         
         ' ²åÈëµ½ AD_ORDER_DETAILS
-        Call InsertOrderDetail lngOrderID, sStyleName, dblWidth, dblHeight, _
-                               lngQty, sMaterial, sCustomer, sOrderRef, sPartCode, sRemark, _
-                               sCustom1, sCustom2
+        InsertOrderDetail lngOrderID, sStyleName, dblWidth, dblHeight, _
+                          lngQty, sMaterial, sCustomer, sOrderRef, sPartCode, sRemark, _
+                          sCustom1, sCustom2
         lngImported = lngImported + 1
         
 NextRow:
