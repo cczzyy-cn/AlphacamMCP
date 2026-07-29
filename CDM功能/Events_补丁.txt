@@ -1,0 +1,42 @@
+在 CDM 工程的 Events.bas 中添加以下内容，使"自动化生产排版"按钮出现在 CDM 菜单中。
+
+## 操作步骤
+
+1. 打开 AlphaCAM → 工具 → VBA 编辑器
+2. 在工程窗口找到 CDM → 模块 → Events.bas
+3. 在代码中找到 `InitAlphacamAddIn` 函数
+4. 在 `blnRet = .AddMenuItem32("-", "", ...)` 行之后添加菜单注册代码
+5. 在文件末尾添加函数映射
+
+---
+
+## 添加菜单注册
+
+在 `InitAlphacamAddIn` 函数末尾（`Controlled_Exit` 之前），找到连续的 `blnRet = .AddMenuItem32("-", ...)` 行，在其后添加：
+
+```vba
+        ' 自动化生产排版
+        blnRet = .AddMenuItem32(.ReadTextFile(sCTX, 3, 13) & " - 自动化生产排版", "m_自动化生产排版", acamMenuNEW, strMenuName, vbNullString, 20)
+```
+
+## 添加函数映射
+
+在文件末尾（最后一个 `End Function` 之后）添加：
+
+```vba
+Public Sub m_自动化生产排版()
+    ' 调用自动化生产排版模块
+    Call 自动化生产排版
+End Sub
+```
+
+---
+
+## 依赖说明
+
+需要先在 CDM 工程中导入以下模块：
+
+| 模块文件 | 说明 |
+|---------|------|
+| `CDM功能/自动化生产排版.bas` | 主逻辑：选CSV → 导入 → g_Make_Master |
+| `CDM功能/BatchImport.bas` | CSV 导入工具（如果还用） |

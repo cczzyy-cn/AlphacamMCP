@@ -14,7 +14,6 @@ Function InitAlphacamAddIn(AcamVersion As Long) As Integer
         .AddButton barId, "offset.bmp", .LastMenuCommandID
         .AddMenuItem3 "排版刀具排&序", "m_排版刀具排序", acamMenuNEW, "CCC功能", vbNullString
         .AddButton barId, "sort.bmp", .LastMenuCommandID
-        .AddMenuItem3 "自动化生产排&版", "m_自动化生产排版", acamMenuNEW, "CCC功能", vbNullString
         .AddMenuItem3 "反面镜&像", "m_反面镜像", acamMenuNEW, "CCC功能", vbNullString
         .AddMenuItem3 "斜角下&刀", "m_斜角下刀", acamMenuNEW, "CCC功能", vbNullString
         .AddMenuItem3 "路径自身镜&像", "m_路径自身镜像", acamMenuNEW, "CCC功能", vbNullString
