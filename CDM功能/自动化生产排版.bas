@@ -175,13 +175,29 @@ Private Function SplitCSVLine(ByVal sLine As String) As Variant
         Dim c As String: c = Mid$(sLine, i, 1)
         If bQ Then
             If c = """" Then
-                If i < Len(sLine) And Mid$(sLine, i + 1, 1) = """" Then f = f & """": i = i + 1 Else bQ = False
-            Else: f = f & c: End If
+                If i < Len(sLine) And Mid$(sLine, i + 1, 1) = """" Then
+                    f = f & """"
+                    i = i + 1
+                Else
+                    bQ = False
+                End If
+            Else
+                f = f & c
+            End If
         Else
-            If c = """" Then bQ = True ElseIf c = "," Then v(idx) = f: idx = idx + 1: f = "" Else f = f & c
-        End If
+            If c = """" Then
+                bQ = True
+            ElseIf c = "," Then
+                v(idx) = f
+                idx = idx + 1
+                f = ""
+            Else
+                f = f & c
+            End If
     Next
-    v(idx) = f: ReDim Preserve v(0 To idx): SplitCSVLine = v
+    v(idx) = f
+    ReDim Preserve v(0 To idx)
+    SplitCSVLine = v
 End Function
 
 Private Function GetF(ByRef v As Variant, ByVal i As Integer, ByVal d As String) As String
