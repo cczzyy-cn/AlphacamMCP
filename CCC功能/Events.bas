@@ -26,7 +26,6 @@ End Function
 Function m_依边界裁剪(): 依边界裁剪: End Function
 Function m_全排版刀具偏移(): 全排版刀具偏移: End Function
 Function m_排版刀具排序(): 排版刀具排序: End Function
-Function m_自动化生产排版(): 自动化生产排版: End Function
 Function m_反面镜像(): 反面镜像: End Function
 Function m_斜角下刀(): 斜角下刀: End Function
 Function m_路径自身镜像(): 路径自身镜像: End Function
