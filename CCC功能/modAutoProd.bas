@@ -79,56 +79,80 @@ Public Sub 自动化生产排版()
         sJobName = sTemp
     End If
     
-    ' ── 2. 导入 CSV → 创建订单 ──
+    ' ── 2. 导入 CSV → 创建订单（直接数据库操作）──
     Dim lngOrderID As Long
     App.Frame.ShowProgressBox "自动化生产排版", "正在导入 CSV ..."
     DoEvents
     
-    ' 通过 CDM 工程的 BatchImport 导入（确保数据库连接稳定）
-    On Error Resume Next
-    Application.Run "CDM.BatchImport.Run", sCSVPath, sJobName
-    If Err.Number <> 0 Then
-        Dim sErr2 As String: sErr2 = Err.Description
-        On Error GoTo EH
-        App.Frame.CloseProgressBox
-        If InStr(sErr2, "Object required") Or InStr(sErr2, "未找到") Then
-            MsgBox "BatchImport 模块未安装！" & vbCrLf & vbCrLf & _
-                   "请先在 CDM 工程的 VBA 编辑器中导入:" & vbCrLf & _
-                   "CDM功能/BatchImport.bas", vbCritical, "自动化生产排版"
-        Else
-            MsgBox "CSV 导入失败:" & vbCrLf & sErr2, vbCritical, "自动化生产排版"
-        End If
-        Exit Sub
-    End If
-    On Error GoTo EH
+    Dim conn As Object
+    Set conn = CreateObject("ADODB.Connection")
+    conn.Open "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=D:\2016\LICOMDAT\CDM Data\CDM.mdb"
     
-    ' 从注册表读取 OrderID（BatchImport 已保存）
-    lngOrderID = CLng(GetSetting("CCC", "AutoProd", "LastOrderID", "0"))
+    ' 创建订单
+    conn.Execute "INSERT INTO AD_ORDERS (JobName,CustomerID,OrderDate) VALUES ('" & _
+                 FixSQL(sJobName) & "',1,Date())"
+    Dim rs As Object
+    Set rs = conn.Execute("SELECT @@IDENTITY AS NewID")
+    lngOrderID = rs.Fields("NewID")
+    rs.Close
+    
+    ' 读取 CSV 并插入明细
+    Dim iFile As Integer: iFile = FreeFile
+    Dim sLine As String, vF As Variant, lngRow As Long, lngOK As Long
+    Open sCSVPath For Input As #iFile
+    If Not EOF(iFile) Then Line Input #iFile, sLine  ' 跳过标题行
+    
+    Do While Not EOF(iFile)
+        Line Input #iFile, sLine: lngRow = lngRow + 1
+        sLine = Trim$(sLine): If sLine = "" Then GoTo NextLine
+        vF = SplitCSVLine(sLine)
+        If UBound(vF) < 3 Then GoTo NextLine
+        
+        Dim sTp As String, w As Double, h As Double, q As Long
+        Dim sMat As String, sCu As String, sRf As String, sRm As String
+        Dim sC1 As String, sC2 As String
+        
+        sTp = Trim$(GetF(vF, 0, "")): w = Val(GetF(vF, 1, "0"))
+        h = Val(GetF(vF, 2, "0")): q = Val(GetF(vF, 3, "1"))
+        sMat = Trim$(GetF(vF, 12, "")): If sMat = "" Then sMat = "开料机3000mm"
+        sCu = Trim$(GetF(vF, 5, "")): sRf = Trim$(GetF(vF, 9, ""))
+        sRm = Trim$(GetF(vF, 11, "")): sC1 = Trim$(GetF(vF, 7, ""))
+        sC2 = Trim$(GetF(vF, 8, ""))
+        If w <= 0 Or h <= 0 Then GoTo NextLine
+        If q <= 0 Then q = 1
+        
+        ' 确保门型 + 材料存在（StyleNumber=900，StyleName=TypeName）
+        conn.Execute "INSERT INTO AD_DOOR_TYPES (TypeID,StyleNumber) SELECT '" & _
+                     FixSQL(sTp) & "',900 WHERE NOT EXISTS(SELECT 1 FROM AD_DOOR_TYPES WHERE TypeID='" & FixSQL(sTp) & "')"
+        conn.Execute "INSERT INTO AD_MATERIALS (Name,Thickness,SheetWidth,SheetLength) SELECT '" & _
+                     FixSQL(sMat) & "',18,1220,3000 WHERE NOT EXISTS(SELECT 1 FROM AD_MATERIALS WHERE Name='" & FixSQL(sMat) & "')"
+        
+        ' 插入明细
+        conn.Execute "INSERT INTO AD_ORDER_DETAILS " & _
+            "(OrderID,TypeName,StyleName,StyleNumber,Quantity,Width,Length," & _
+            "Material,ProductionComment," & _
+            "CSV_CustomerName,CSV_OrderNumber,CSV_ItemNumber," & _
+            "CustomField1,CustomField2) VALUES (" & _
+            lngOrderID & ",'" & FixSQL(sTp) & "','" & FixSQL(sTp) & "',900," & _
+            q & "," & w & "," & h & ",'" & FixSQL(sMat) & "'," & _
+            "'" & FixSQL(sRm) & "','" & FixSQL(sCu) & "'," & _
+            "'" & FixSQL(sRf) & "','" & FixSQL(sRf) & "'," & _
+            "'" & FixSQL(sC1) & "','" & FixSQL(sC2) & "')"
+        lngOK = lngOK + 1
+NextLine:
+    Loop
+    Close #iFile
+    conn.Close: Set conn = Nothing
+    
+    App.Frame.SetProgressText "导入完成: " & lngOK & " 条记录"
     
     ' ── 3. 调用 CDM 加工引擎 ──
-    App.Frame.ShowProgressBox "自动化生产排版", "正在执行批量生产 + 排版 ..."
-    DoEvents
-    
-    Application.Run "CDM.g_Make_Master", CStr(lngOrderID)
-    
     App.Frame.CloseProgressBox
-    
-    ' ── 4. 完成 ──
-    Dim bOK As Boolean
-    bOK = CBool(GetSetting("LICOM AlphaDOOR", "Nest Parameters", "Nest Completed", 0))
-    
-    If bOK Then
-        MsgBox "自动化生产排版完成！" & vbCrLf & vbCrLf & _
-               "订单: " & sJobName & vbCrLf & _
-               "可在 AlphaCAM 中查看结果并输出 NC", vbInformation
-    Else
-        MsgBox "生产排版可能未完全成功，请检查 AlphaCAM 结果。" & vbCrLf & vbCrLf & _
-               "常见原因:" & vbCrLf & _
-               "  - 门型刀路未配置 (AD_DOOR_PATHS)" & vbCrLf & _
-               "  - 材料参数不正确" & vbCrLf & _
-               "  - 后处理器未选择", vbExclamation
-    End If
+    MsgBox "CSV 导入完成！订单: " & sJobName & " (ID: " & lngOrderID & ")" & vbCrLf & vbCrLf & _
+           "请通过 CDM 菜单 → Processing → Orders → 选择该订单 → Load to Production Queue" & vbCrLf & _
+           "→ Run Production 完成批量生产+排版。", vbInformation, "自动化生产排版"
     Exit Sub
+    ' (注: g_Make_Master 在 CCC 工程中无法直接调用，需通过 CDM UI 操作)
     
 EH:
     App.Frame.CloseProgressBox
@@ -164,4 +188,35 @@ Private Function ShowOpenFileDialog(ByVal sInitialDir As String, _
     If lRet Then
         ShowOpenFileDialog = Left$(ofn.lpstrFile, InStr(ofn.lpstrFile, vbNullChar) - 1)
     End If
+End Function
+
+' ============================================================================
+' 工具函数
+' ============================================================================
+Private Function FixSQL(ByVal s As String) As String
+    If s = "" Then FixSQL = "": Else FixSQL = Replace(s, "'", "''")
+End Function
+
+Private Function SplitCSVLine(ByVal sLine As String) As Variant
+    Dim v() As String, idx As Long, i As Long, f As String, bQ As Boolean
+    ReDim v(0 To 20)
+    For i = 1 To Len(sLine)
+        Dim c As String: c = Mid$(sLine, i, 1)
+        If bQ Then
+            If c = """" Then
+                If i < Len(sLine) And Mid$(sLine, i + 1, 1) = """" Then
+                    f = f & """": i = i + 1
+                Else: bQ = False: End If
+            Else: f = f & c: End If
+        Else
+            If c = """" Then: bQ = True
+            ElseIf c = "," Then: v(idx) = f: idx = idx + 1: f = ""
+            Else: f = f & c: End If
+        End If
+    Next
+    v(idx) = f: ReDim Preserve v(0 To idx): SplitCSVLine = v
+End Function
+
+Private Function GetF(ByRef v As Variant, ByVal i As Integer, ByVal d As String) As String
+    If i >= 0 And i <= UBound(v) Then GetF = v(i) Else GetF = d
 End Function
