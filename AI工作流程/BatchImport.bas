@@ -11,16 +11,18 @@ Option Explicit
 
 ' CSV 列索引（匹配 CDM 导入配置：1-based 列号）
 ' 列1=门板类型  列2=宽  列3=高  列4=数量  列5=组编号
-' 列6=客户名    列7=   列8=自定义1  列9=详细尺寸  列10=订单号
+' 列6=客户名    列7=   列8=自定义1  列9=自定义2  列10=订单号
 ' 列11=        列12=生产注释  列13=材料  列14~19=贴面纹理/后处理/旋转等
 Private Const COL_STYLE_NAME    As Integer = 0   ' 列1: 门板类型（造型名称）
 Private Const COL_WIDTH         As Integer = 1   ' 列2: 宽
 Private Const COL_HEIGHT        As Integer = 2   ' 列3: 高
 Private Const COL_QUANTITY      As Integer = 3   ' 列4: 数量
-Private Const COL_GROUP_ID      As Integer = 4   ' 列5: 组编号（原颜色/材料名，仅作参考）
+Private Const COL_GROUP_ID      As Integer = 4   ' 列5: 组编号（原颜色）
 Private Const COL_CUSTOMER      As Integer = 5   ' 列6: 客户名称
-Private Const COL_ORDER_REF     As Integer = 9   ' 列10: 订单号（=CSV第10列 板件码）
-Private Const COL_REMARK        As Integer = 11  ' 列12: 生产注释（原备注）
+Private Const COL_CUSTOM_1      As Integer = 7   ' 列8: 自定义字符串1（开启方向）
+Private Const COL_CUSTOM_2      As Integer = 8   ' 列9: 自定义字符串2（终端地址）
+Private Const COL_ORDER_REF     As Integer = 9   ' 列10: 订单号（板件码）
+Private Const COL_REMARK        As Integer = 11  ' 列12: 生产注释（备注）
 Private Const COL_MATERIAL      As Integer = 12  ' 列13: 材料（M列，空时用默认材料）
 
 ' 默认材料
@@ -135,6 +137,8 @@ Private Sub ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String)
         Dim sOrderRef     As String
         Dim sPartCode     As String
         Dim sRemark       As String
+        Dim sCustom1      As String  ' 自定义字符串1（开启方向）
+        Dim sCustom2      As String  ' 自定义字符串2（终端地址）
         
         sStyleName = Trim$(GetField(vFields, COL_STYLE_NAME, ""))
         dblWidth = Val(GetField(vFields, COL_WIDTH, "0"))
@@ -149,6 +153,8 @@ Private Sub ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String)
         sOrderRef = Trim$(GetField(vFields, COL_ORDER_REF, ""))
         sPartCode = Trim$(GetField(vFields, COL_ORDER_REF, ""))  ' 板件码=订单号列
         sRemark = Trim$(GetField(vFields, COL_REMARK, ""))
+        sCustom1 = Trim$(GetField(vFields, COL_CUSTOM_1, ""))    ' 列8: 开启方向
+        sCustom2 = Trim$(GetField(vFields, COL_CUSTOM_2, ""))    ' 列9: 终端地址
         
         ' 跳过无效行
         If dblWidth <= 0 Or dblHeight <= 0 Then
@@ -159,7 +165,8 @@ Private Sub ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String)
         
         ' 插入到 AD_ORDER_DETAILS
         Call InsertOrderDetail lngOrderID, sStyleName, dblWidth, dblHeight, _
-                               lngQty, sMaterial, sCustomer, sOrderRef, sPartCode, sRemark
+                               lngQty, sMaterial, sCustomer, sOrderRef, sPartCode, sRemark, _
+                               sCustom1, sCustom2
         lngImported = lngImported + 1
         
 NextRow:
@@ -255,7 +262,9 @@ Private Sub InsertOrderDetail(ByVal lngOrderID As Long, _
                               ByVal sCustomer As String, _
                               ByVal sOrderRef As String, _
                               ByVal sPartCode As String, _
-                              ByVal sRemark As String)
+                              ByVal sRemark As String, _
+                              ByVal sCustom1 As String, _
+                              ByVal sCustom2 As String)
     '
     Dim lngRet As Long
     Dim sSQL As String
@@ -266,11 +275,12 @@ Private Sub InsertOrderDetail(ByVal lngOrderID As Long, _
     ' 注册材料
     Call glng_EnsureMaterial(sMaterial)
     
-    ' 插入明细
+    ' 插入明细（含自定义字段）
     sSQL = "INSERT INTO AD_ORDER_DETAILS " & _
            "(OrderID, TypeName, StyleNumber, Quantity, Width, Length, " & _
            "Material, ProductionComment, " & _
-           "CSV_CustomerName, CSV_OrderNumber, CSV_ItemNumber) " & _
+           "CSV_CustomerName, CSV_OrderNumber, CSV_ItemNumber, " & _
+           "CustomField1, CustomField2) " & _
            "VALUES (" & lngOrderID & ", " & _
            "'" & gs_FixSQL(sStyleName) & "', 900, " & _
            "" & lngQty & ", " & _
@@ -280,7 +290,9 @@ Private Sub InsertOrderDetail(ByVal lngOrderID As Long, _
            "'" & gs_FixSQL(sRemark) & "', " & _
            "'" & gs_FixSQL(sCustomer) & "', " & _
            "'" & gs_FixSQL(sOrderRef) & "', " & _
-           "'" & gs_FixSQL(sPartCode) & "')"
+           "'" & gs_FixSQL(sPartCode) & "', " & _
+           "'" & gs_FixSQL(sCustom1) & "', " & _
+           "'" & gs_FixSQL(sCustom2) & "')"
     
     gdb_CDM.Execute sSQL, lngRet
 End Sub
