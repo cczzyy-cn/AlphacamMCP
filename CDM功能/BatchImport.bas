@@ -124,6 +124,9 @@ End Sub
         Dim sMaterial     As String
         Dim sProdName     As String
         Dim sRemark       As String
+        Dim sCustomer     As String  ' CSV_CustomerName
+        Dim sOrderRef     As String  ' CSV_OrderNumber
+        Dim sPartCode     As String  ' CSV_ItemNumber
         
         sStyleName = Trim$(GetField(vFields, COL_STYLE_NAME, ""))
         dblWidth = Val(GetField(vFields, COL_WIDTH, "0"))
@@ -132,6 +135,9 @@ End Sub
         sMaterial = Trim$(GetField(vFields, COL_COLOR, ""))
         sProdName = Trim$(GetField(vFields, COL_PROD_NAME, ""))
         sRemark = Trim$(GetField(vFields, COL_REMARK, ""))
+        sCustomer = Trim$(GetField(vFields, COL_CUSTOMER, ""))
+        sOrderRef = Trim$(GetField(vFields, COL_ORDER_REF, ""))
+        sPartCode = Trim$(GetField(vFields, COL_PART_CODE, ""))
         
         ' 跳过无效行
         If dblWidth <= 0 Or dblHeight <= 0 Then
@@ -142,7 +148,8 @@ End Sub
         
         ' 插入到 AD_ORDER_DETAILS
         Call InsertOrderDetail lngOrderID, sStyleName, dblWidth, dblHeight, _
-                               lngQty, sMaterial, sProdName, sRemark
+                               lngQty, sMaterial, sProdName, sRemark, _
+                               sCustomer, sOrderRef, sPartCode
         lngImported = lngImported + 1
         
 NextRow:
@@ -235,66 +242,64 @@ Private Sub InsertOrderDetail(ByVal lngOrderID As Long, _
                               ByVal lngQty As Long, _
                               ByVal sMaterial As String, _
                               ByVal sProdName As String, _
-                              ByVal sRemark As String)
+                              ByVal sRemark As String, _
+                              ByVal sCustomer As String, _
+                              ByVal sOrderRef As String, _
+                              ByVal sPartCode As String)
     '
     Dim lngRet As Long
     Dim sSQL As String
     
-    ' 查找或创建材料
-    Dim lngStyleNumber As Long
-    lngStyleNumber = glng_GetOrCreateStyle(sStyleName)
+    ' 注册门型（固定 StyleNumber=900 以匹配 Make.mbln_ProcessPart）
+    Call glng_EnsureStyle(sStyleName)
     
     ' 查找或注册材料名
     Call glng_EnsureMaterial(sMaterial)
     
-    ' 插入明细
+    ' 插入明细（含 CSV 辅助字段）
     sSQL = "INSERT INTO AD_ORDER_DETAILS " & _
-           "(OrderID, TypeName, StyleNumber, Quantity, Width, Length, Material, ProductionComment) " & _
+           "(OrderID, TypeName, StyleNumber, Quantity, Width, Length, " & _
+           "Material, ProductionComment, " & _
+           "CSV_CustomerName, CSV_OrderNumber, CSV_ItemNumber) " & _
            "VALUES (" & lngOrderID & ", " & _
-           "'" & gs_FixSQL(sStyleName) & "', " & _
-           "" & lngStyleNumber & ", " & _
+           "'" & gs_FixSQL(sStyleName) & "', 900, " & _
            "" & lngQty & ", " & _
            "" & dblWidth & ", " & _
            "" & dblHeight & ", " & _
            "'" & gs_FixSQL(sMaterial) & "', " & _
-           "'" & gs_FixSQL(sRemark) & "')"
+           "'" & gs_FixSQL(sRemark) & "', " & _
+           "'" & gs_FixSQL(sCustomer) & "', " & _
+           "'" & gs_FixSQL(sOrderRef) & "', " & _
+           "'" & gs_FixSQL(sPartCode) & "')"
     
     gdb_CDM.Execute sSQL, lngRet
 End Sub
 
 
 ' ============================================================================
-' 获取或创建门型
+' 确保门型存在（固定 StyleNumber=900，匹配 Make.mbln_ProcessPart）
 ' ============================================================================
-Private Function glng_GetOrCreateStyle(ByVal sTypeName As String) As Long
+Private Sub glng_EnsureStyle(ByVal sTypeName As String)
     '
     Dim rst As ADODB.Recordset
     Dim lngRet As Long
-    Dim sSQL As String
     
-    ' 查找现有类型
+    If sTypeName = "" Then Exit Sub
+    
     Set rst = New ADODB.Recordset
-    rst.Open "SELECT PK, TypeID FROM AD_DOOR_TYPES WHERE TypeID='" & gs_FixSQL(sTypeName) & "'", _
+    rst.Open "SELECT PK FROM AD_DOOR_TYPES WHERE TypeID='" & gs_FixSQL(sTypeName) & "'", _
              gdb_CDM, adOpenForwardOnly, adLockReadOnly
     
-    If Not (rst.BOF And rst.EOF) Then
-        glng_GetOrCreateStyle = rst.Fields("PK").Value
-    Else
+    If rst.BOF And rst.EOF Then
         rst.Close
-        ' 创建简单门型（使用默认参数）
-        sSQL = "INSERT INTO AD_DOOR_TYPES (TypeID, StyleNumber) VALUES ('" & _
-               gs_FixSQL(sTypeName) & "', 1)"
-        gdb_CDM.Execute sSQL, lngRet
-        Set rst = gdb_CDM.Execute("SELECT @@IDENTITY AS NewID")
-        If Not (rst.BOF And rst.EOF) Then
-            glng_GetOrCreateStyle = rst.Fields("NewID").Value
-        End If
+        ' 创建门型，StyleNumber=900 对应标准镶板门
+        gdb_CDM.Execute "INSERT INTO AD_DOOR_TYPES (TypeID, StyleNumber) VALUES ('" & _
+                        gs_FixSQL(sTypeName) & "', 900)", lngRet
     End If
     
     rst.Close
     Set rst = Nothing
-End Function
-
+End Sub
 
 ' ============================================================================
 ' 确保材料存在（如不存在则插入）
