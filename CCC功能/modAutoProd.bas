@@ -12,7 +12,7 @@ Public Sub 自动化生产排版()
     Dim sCSVPath As String
     Dim sJobName As String
     Dim sFolder  As String
-    Dim FSO      As New Scripting.FileSystemObject
+    Dim sTemp    As String
     Dim lngOrderID As Long
     Dim rst      As ADODB.Recordset
     
@@ -36,13 +36,24 @@ Public Sub 自动化生产排版()
     End If
     
     ' ── 2. 检查文件是否存在 ──
-    If Not FSO.FileExists(sCSVPath) Then
+    If Dir(sCSVPath) = "" Then
         MsgBox "文件不存在:" & vbCrLf & sCSVPath, vbExclamation, "自动化生产排版"
         GoTo CleanUp
     End If
     
     ' 从 CSV 文件名获取订单名（去掉 .csv）
-    sJobName = FSO.GetBaseName(sCSVPath)
+    sTemp = sCSVPath
+    Do While InStr(sTemp, "\") > 0
+        sTemp = Mid$(sTemp, InStr(sTemp, "\") + 1)
+    Loop
+    Do While InStr(sTemp, "/") > 0
+        sTemp = Mid$(sTemp, InStr(sTemp, "/") + 1)
+    Loop
+    If LCase(Right$(sTemp, 4)) = ".csv" Then
+        sJobName = Left$(sTemp, Len(sTemp) - 4)
+    Else
+        sJobName = sTemp
+    End If
     
     ' ── 3. 检查 BatchImport 是否已安装 ──
     On Error Resume Next
@@ -116,7 +127,6 @@ EH:
     
 CleanUp:
     Set rst = Nothing
-    Set FSO = Nothing
     App.Frame.ProjectBarUpdating = True
     App.DisableUndo = False
 End Sub
