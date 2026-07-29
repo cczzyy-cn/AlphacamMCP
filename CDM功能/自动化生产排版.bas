@@ -1,14 +1,14 @@
 Option Explicit
 
 ' ==============================================================================
-' è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ â€” å¼¹çª—é€‰CSV â†’ å¯¼å…¥ â†’ æ‰¹é‡ç”Ÿäº§ â†’ æ’ç‰ˆï¼ˆCDM å·¥ç¨‹å†…ï¼‰
+' ×Ô¶¯»¯Éú²úÅÅ°æ ¡ª µ¯´°Ñ¡CSV ¡ú µ¼Èë ¡ú ÅúÁ¿Éú²ú ¡ú ÅÅ°æ£¨CDM ¹¤³ÌÄÚ£©
 ' ==============================================================================
-' å®‰è£…: åœ¨ CDM å·¥ç¨‹çš„ VBA ç¼–è¾‘å™¨ä¸­å¯¼å…¥æ­¤æ–‡ä»¶
-' ç”¨æ³•: AlphaCAM èœå• â†’ CCCåŠŸèƒ½ â†’ è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ
-' è¯´æ˜: ç”± CCC åŠŸèƒ½èœå•è§¦å‘ï¼Œä»£ç åœ¨ CDM å·¥ç¨‹ä¸­æ‰§è¡Œä»¥ç›´æ¥è°ƒç”¨ g_Make_Master
+' °²×°: ÔÚ CDM ¹¤³ÌµÄ VBA ±à¼­Æ÷ÖĞµ¼Èë´ËÎÄ¼ş
+' ÓÃ·¨: AlphaCAM ²Ëµ¥ ¡ú CCC¹¦ÄÜ ¡ú ×Ô¶¯»¯Éú²úÅÅ°æ
+' ËµÃ÷: ÓÉ CCC ¹¦ÄÜ²Ëµ¥´¥·¢£¬´úÂëÔÚ CDM ¹¤³ÌÖĞÖ´ĞĞÒÔÖ±½Óµ÷ÓÃ g_Make_Master
 ' ==============================================================================
 
-' API æ–‡ä»¶é€‰æ‹©å¯¹è¯æ¡†
+' API ÎÄ¼şÑ¡Ôñ¶Ô»°¿ò
 Private Declare Function GetOpenFileName Lib "comdlg32.dll" Alias "GetOpenFileNameA" (pOpenfilename As OPENFILENAME) As Long
 Private Type OPENFILENAME
     lStructSize As Long: hwndOwner As Long: hInstance As Long
@@ -24,9 +24,9 @@ Private Const OFN_HIDEREADONLY  As Long = &H4
 
 
 ' ============================================================================
-' ä¸»å…¥å£ï¼ˆCCC åŠŸèƒ½èœå•è§¦å‘ï¼‰
+' Ö÷Èë¿Ú£¨CCC ¹¦ÄÜ²Ëµ¥´¥·¢£©
 ' ============================================================================
-Public Sub m_è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ()
+Public Sub m_×Ô¶¯»¯Éú²úÅÅ°æ()
     '
     Dim sCSVPath As String
     Dim sJobName As String
@@ -34,49 +34,49 @@ Public Sub m_è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ()
     
     On Error GoTo EH
     
-    ' â”€â”€ 1. é€‰æ‹© CSV æ–‡ä»¶ â”€â”€
-    sCSVPath = ShowOpenFile("C:\Users\C\Desktop\2026ä¼˜åŒ–è¡¨", "CSV æ–‡ä»¶|*.csv|æ‰€æœ‰æ–‡ä»¶|*.*")
+    ' ©¤©¤ 1. Ñ¡Ôñ CSV ÎÄ¼ş ©¤©¤
+    sCSVPath = ShowOpenFile("C:\Users\C\Desktop\2026ÓÅ»¯±í", "CSV ÎÄ¼ş|*.csv|ËùÓĞÎÄ¼ş|*.*")
     If sCSVPath = "" Then Exit Sub
     
-    ' å–æ–‡ä»¶åä½œä¸ºè®¢å•å
+    ' È¡ÎÄ¼şÃû×÷Îª¶©µ¥Ãû
     sTemp = sCSVPath
     Do While InStr(sTemp, "\") > 0: sTemp = Mid$(sTemp, InStr(sTemp, "\") + 1): Loop
     Do While InStr(sTemp, "/") > 0: sTemp = Mid$(sTemp, InStr(sTemp, "/") + 1): Loop
     If LCase(Right$(sTemp, 4)) = ".csv" Then sJobName = Left$(sTemp, Len(sTemp) - 4) Else sJobName = sTemp
     
-    ' â”€â”€ 2. è¿æ¥ DB å¹¶å¯¼å…¥ CSV â”€â”€
+    ' ©¤©¤ 2. Á¬½Ó DB ²¢µ¼Èë CSV ©¤©¤
     If Not gbln_ConnectToDB() Then
-        MsgBox "æ— æ³•è¿æ¥ CDM æ•°æ®åº“", vbCritical: Exit Sub
+        MsgBox "ÎŞ·¨Á¬½Ó CDM Êı¾İ¿â", vbCritical: Exit Sub
     End If
     
     Dim lngOrderID As Long
     lngOrderID = ImportCSV(sCSVPath, sJobName)
     If lngOrderID <= 0 Then Exit Sub
     
-    ' â”€â”€ 3. è°ƒç”¨ g_Make_Master æ‰¹é‡ç”Ÿäº§+æ’ç‰ˆ â”€â”€
-    Frame.ShowProgressBox "è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ", "æ­£åœ¨æ‰§è¡Œæ‰¹é‡ç”Ÿäº§ + æ’ç‰ˆ ..."
+    ' ©¤©¤ 3. µ÷ÓÃ g_Make_Master ÅúÁ¿Éú²ú+ÅÅ°æ ©¤©¤
+    Frame.ShowProgressBox "×Ô¶¯»¯Éú²úÅÅ°æ", "ÕıÔÚÖ´ĞĞÅúÁ¿Éú²ú + ÅÅ°æ ..."
     DoEvents
     Call g_Make_Master(CStr(lngOrderID))
     Frame.CloseProgressBox
     
-    ' â”€â”€ 4. å®Œæˆ â”€â”€
+    ' ©¤©¤ 4. Íê³É ©¤©¤
     Dim bOK As Boolean
     bOK = CBool(GetSetting("LICOM AlphaDOOR", "Nest Parameters", "Nest Completed", 0))
     If bOK Then
-        MsgBox "è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆå®Œæˆï¼" & vbCrLf & "è®¢å•: " & sJobName, vbInformation
+        MsgBox "×Ô¶¯»¯Éú²úÅÅ°æÍê³É£¡" & vbCrLf & "¶©µ¥: " & sJobName, vbInformation
     Else
-        MsgBox "ç”Ÿäº§æ’ç‰ˆå¯èƒ½æœªå®Œå…¨æˆåŠŸï¼Œè¯·æ£€æŸ¥ AlphaCAM ç»“æœã€‚", vbExclamation
+        MsgBox "Éú²úÅÅ°æ¿ÉÄÜÎ´ÍêÈ«³É¹¦£¬Çë¼ì²é AlphaCAM ½á¹û¡£", vbExclamation
     End If
     Exit Sub
     
 EH:
     Frame.CloseProgressBox
-    MsgBox "é”™è¯¯: " & Err.Description, vbCritical
+    MsgBox "´íÎó: " & Err.Description, vbCritical
 End Sub
 
 
 ' ============================================================================
-' å¯¼å…¥ CSV â†’ åˆ›å»ºè®¢å•ï¼Œè¿”å› OrderID
+' µ¼Èë CSV ¡ú ´´½¨¶©µ¥£¬·µ»Ø OrderID
 ' ============================================================================
 Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) As Long
     '
@@ -85,11 +85,11 @@ Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) A
     
     On Error GoTo EH
     
-    ' åˆ›å»ºè®¢å•
+    ' ´´½¨¶©µ¥
     lngOrderID = glng_CreateOrder(sJobName, 1)
     If lngOrderID <= 0 Then GoTo CleanUp
     
-    ' è¯»å– CSV
+    ' ¶ÁÈ¡ CSV
     iFile = FreeFile
     Open sCSVPath For Input As #iFile
     If Not EOF(iFile) Then Line Input #iFile, sLine
@@ -106,17 +106,17 @@ Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) A
         
         sTp = Trim$(GetF(vF, 0, "")): w = Val(GetF(vF, 1, "0"))
         h = Val(GetF(vF, 2, "0")): q = Val(GetF(vF, 3, "1"))
-        sMat = Trim$(GetF(vF, 12, "")): If sMat = "" Then sMat = "å¼€æ–™æœº3000mm"
+        sMat = Trim$(GetF(vF, 12, "")): If sMat = "" Then sMat = "¿ªÁÏ»ú3000mm"
         sCu = Trim$(GetF(vF, 5, "")): sRf = Trim$(GetF(vF, 9, ""))
         sRm = Trim$(GetF(vF, 11, "")): sC1 = Trim$(GetF(vF, 7, "")): sC2 = Trim$(GetF(vF, 8, ""))
         If w <= 0 Or h <= 0 Then GoTo NextLine
         If q <= 0 Then q = 1
         
-        ' ç¡®ä¿é—¨å‹å’Œææ–™å­˜åœ¨
+        ' È·±£ÃÅĞÍºÍ²ÄÁÏ´æÔÚ
         glng_EnsureStyle sTp
         glng_EnsureMaterial sMat
         
-        ' æ’å…¥æ˜ç»†
+        ' ²åÈëÃ÷Ï¸
         gdb_CDM.Execute "INSERT INTO AD_ORDER_DETAILS " & _
             "(OrderID,TypeName,StyleName,StyleNumber,Quantity,Width,Length," & _
             "Material,ProductionComment,CSV_CustomerName,CSV_OrderNumber,CSV_ItemNumber," & _
@@ -136,7 +136,7 @@ NextLine:
     
 EH:
     ImportCSV = 0
-    MsgBox "ç¬¬ " & lngRow & " è¡Œé”™è¯¯: " & Err.Description, vbExclamation
+    MsgBox "µÚ " & lngRow & " ĞĞ´íÎó: " & Err.Description, vbExclamation
 CleanUp:
     Close #iFile
 End Function
@@ -166,7 +166,7 @@ Private Sub glng_EnsureMaterial(ByVal sName As String)
 End Sub
 
 ' ============================================================================
-' CSV è§£æ
+' CSV ½âÎö
 ' ============================================================================
 Private Function SplitCSVLine(ByVal sLine As String) As Variant
     Dim v() As String, idx As Long, i As Long, f As String, bQ As Boolean
@@ -189,14 +189,14 @@ Private Function GetF(ByRef v As Variant, ByVal i As Integer, ByVal d As String)
 End Function
 
 ' ============================================================================
-' æ–‡ä»¶é€‰æ‹©å¯¹è¯æ¡†
+' ÎÄ¼şÑ¡Ôñ¶Ô»°¿ò
 ' ============================================================================
 Private Function ShowOpenFile(ByVal sDir As String, ByVal sFilter As String) As String
     Dim ofn As OPENFILENAME, sFile As String, lRet As Long
     sFile = String$(260, vbNullChar)
     ofn.lStructSize = Len(ofn): ofn.hwndOwner = App.Frame.WindowHandle
     ofn.lpstrFilter = sFilter: ofn.lpstrFile = sFile: ofn.nMaxFile = Len(sFile)
-    ofn.lpstrInitialDir = sDir: ofn.lpstrTitle = "é€‰æ‹© CSV æ–‡ä»¶"
+    ofn.lpstrInitialDir = sDir: ofn.lpstrTitle = "Ñ¡Ôñ CSV ÎÄ¼ş"
     ofn.flags = OFN_FILEMUSTEXIST Or OFN_HIDEREADONLY: ofn.lpstrDefExt = "csv"
     lRet = GetOpenFileName(ofn)
     If lRet Then ShowOpenFile = Left$(ofn.lpstrFile, InStr(ofn.lpstrFile, vbNullChar) - 1)
