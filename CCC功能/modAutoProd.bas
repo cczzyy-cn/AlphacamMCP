@@ -127,7 +127,7 @@ Private Function ImportCSVAndCreateOrder(ByVal sCSVPath As String, _
     conn.Open DB_CONN & DB_PATH
     
     ' 确保客户
-    Call EnsureCustomer conn, "默认客户"
+    EnsureCustomer conn, "默认客户"
     
     ' 创建订单
     lngOrderID = CreateOrder(conn, sJobName, 1)
