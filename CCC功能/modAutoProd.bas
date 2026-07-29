@@ -49,12 +49,11 @@ Public Sub 自动化生产排版()
         sJobName = sTemp
     End If
     
-    ' ── 3. 调用 CDM.BatchImport.Run 导入 CSV ──
+    ' ── 3. 调用本工程的 导入CSV ──
     App.Frame.ShowProgressBox "自动化生产排版", "正在导入 CSV ..."
     DoEvents
     
-    On Error Resume Next
-    Application.Run "CDM.BatchImport.Run", sCSVPath, sJobName
+    Call 导入CSV文件 sCSVPath, sJobName
     If Err.Number <> 0 Then
         Dim sErr As String: sErr = Err.Description
         On Error GoTo EH
