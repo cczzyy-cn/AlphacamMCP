@@ -81,12 +81,29 @@ Public Sub 自动化生产排版()
     
     ' ── 2. 导入 CSV → 创建订单 ──
     Dim lngOrderID As Long
-    lngOrderID = ImportCSVAndCreateOrder(sCSVPath, sJobName)
+    App.Frame.ShowProgressBox "自动化生产排版", "正在导入 CSV ..."
+    DoEvents
     
-    If lngOrderID <= 0 Then
-        MsgBox "导入失败，无法创建订单", vbCritical
+    ' 通过 CDM 工程的 BatchImport 导入（确保数据库连接稳定）
+    On Error Resume Next
+    Application.Run "CDM.BatchImport.Run", sCSVPath, sJobName
+    If Err.Number <> 0 Then
+        Dim sErr2 As String: sErr2 = Err.Description
+        On Error GoTo EH
+        App.Frame.CloseProgressBox
+        If InStr(sErr2, "Object required") Or InStr(sErr2, "未找到") Then
+            MsgBox "BatchImport 模块未安装！" & vbCrLf & vbCrLf & _
+                   "请先在 CDM 工程的 VBA 编辑器中导入:" & vbCrLf & _
+                   "CDM功能/BatchImport.bas", vbCritical, "自动化生产排版"
+        Else
+            MsgBox "CSV 导入失败:" & vbCrLf & sErr2, vbCritical, "自动化生产排版"
+        End If
         Exit Sub
     End If
+    On Error GoTo EH
+    
+    ' 从注册表读取 OrderID（BatchImport 已保存）
+    lngOrderID = CLng(GetSetting("CCC", "AutoProd", "LastOrderID", "0"))
     
     ' ── 3. 调用 CDM 加工引擎 ──
     App.Frame.ShowProgressBox "自动化生产排版", "正在执行批量生产 + 排版 ..."
@@ -118,209 +135,6 @@ EH:
     MsgBox "错误: " & Err.Description, vbCritical, "自动化生产排版"
 End Sub
 
-
-' ============================================================================
-' 导入 CSV 并创建订单，返回 OrderID
-' ============================================================================
-Private Function ImportCSVAndCreateOrder(ByVal sCSVPath As String, _
-                                         ByVal sJobName As String) As Long
-    '
-    Dim conn As Object      ' ADODB.Connection
-    Dim lngOrderID As Long
-    Dim lngRow As Long
-    Dim lngOK As Long
-    Dim sLine As String
-    Dim vFields As Variant
-    Dim iFile As Integer
-    
-    On Error GoTo EH
-    
-    ' 连接数据库
-    Set conn = CreateObject("ADODB.Connection")
-    conn.Open DB_CONN & DB_PATH
-    
-    ' 确保客户
-    EnsureCustomer conn, "默认客户"
-    
-    ' 创建订单
-    lngOrderID = CreateOrder(conn, sJobName, 1)
-    If lngOrderID <= 0 Then GoTo CleanUp
-    
-    ' 读取 CSV
-    iFile = FreeFile
-    Open sCSVPath For Input As #iFile
-    If Not EOF(iFile) Then Line Input #iFile, sLine  ' 跳过标题行
-    
-    lngRow = 0: lngOK = 0
-    
-    Do While Not EOF(iFile)
-        Line Input #iFile, sLine
-        lngRow = lngRow + 1
-        sLine = Trim$(sLine)
-        If sLine = "" Then GoTo NextLine
-        
-        vFields = SplitCSVLine(sLine)
-        If UBound(vFields) < 3 Then GoTo NextLine
-        
-        Dim sStyle As String, dblW As Double, dblH As Double, lngQ As Long
-        Dim sMat As String, sCust As String, sRef As String, sRem As String
-        Dim sC1 As String, sC2 As String
-        
-        sStyle = Trim$(GetF(vFields, C_STYLE, ""))
-        dblW = Val(GetF(vFields, C_W, "0"))
-        dblH = Val(GetF(vFields, C_H, "0"))
-        lngQ = Val(GetF(vFields, C_QTY, "1"))
-        sMat = Trim$(GetF(vFields, C_MAT, ""))
-        If sMat = "" Then sMat = MAT_NAME
-        sCust = Trim$(GetF(vFields, C_CUST, ""))
-        sRef = Trim$(GetF(vFields, C_REF, ""))
-        sRem = Trim$(GetF(vFields, C_REMARK, ""))
-        sC1 = Trim$(GetF(vFields, C_C1, ""))
-        sC2 = Trim$(GetF(vFields, C_C2, ""))
-        
-        If dblW <= 0 Or dblH <= 0 Then GoTo NextLine
-        If lngQ <= 0 Then lngQ = 1
-        
-        EnsureStyle conn, sStyle
-        EnsureMaterial conn, sMat
-        InsertDetail conn, lngOrderID, sStyle, dblW, dblH, lngQ, _
-                     sMat, sCust, sRef, sRem, sC1, sC2
-        lngOK = lngOK + 1
-NextLine:
-    Loop
-    
-    Close #iFile
-    
-    ImportCSVAndCreateOrder = lngOrderID
-    GoTo CleanUp
-    
-EH:
-    ImportCSVAndCreateOrder = 0
-    MsgBox "第 " & lngRow & " 行错误: " & Err.Description, vbExclamation
-    
-CleanUp:
-    If Not conn Is Nothing Then If conn.State = 1 Then conn.Close
-    Set conn = Nothing
-    Close #iFile
-End Function
-
-
-' ============================================================================
-' 数据库辅助
-' ============================================================================
-Private Function CreateOrder(conn As Object, ByVal sName As String, _
-                             ByVal lngCustID As Long) As Long
-    Dim rst As Object, lngRet As Long
-    conn.Execute "INSERT INTO AD_ORDERS (JobName,CustomerID,OrderDate) VALUES ('" & _
-                 FixSQL(sName) & "'," & lngCustID & ",Date())", lngRet
-    If lngRet > 0 Then
-        Set rst = conn.Execute("SELECT @@IDENTITY AS NewID")
-        CreateOrder = rst.Fields("NewID")
-        rst.Close
-    End If
-End Function
-
-Private Sub EnsureCustomer(conn As Object, ByVal sName As String)
-    Dim rst As Object
-    Set rst = CreateObject("ADODB.Recordset")
-    rst.Open "SELECT CustomerID FROM AD_CUSTOMERS WHERE Name='" & FixSQL(sName) & "'", _
-             conn, 0, 1
-    If rst.BOF And rst.EOF Then
-        rst.Close: conn.Execute "INSERT INTO AD_CUSTOMERS (Name) VALUES ('" & FixSQL(sName) & "')"
-    End If
-    rst.Close
-End Sub
-
-Private Sub EnsureStyle(conn As Object, ByVal sName As String)
-    Dim rst As Object, lngRet As Long
-    If sName = "" Then Exit Sub
-    Set rst = CreateObject("ADODB.Recordset")
-    rst.Open "SELECT PK FROM AD_DOOR_TYPES WHERE TypeID='" & FixSQL(sName) & "'", conn, 0, 1
-    If rst.BOF And rst.EOF Then
-        rst.Close
-        conn.Execute "INSERT INTO AD_DOOR_TYPES (TypeID,StyleNumber) VALUES ('" & FixSQL(sName) & "',900)", lngRet
-    End If
-    rst.Close
-End Sub
-
-Private Sub EnsureMaterial(conn As Object, ByVal sName As String)
-    Dim rst As Object, lngRet As Long
-    If sName = "" Then Exit Sub
-    Set rst = CreateObject("ADODB.Recordset")
-    rst.Open "SELECT Name FROM AD_MATERIALS WHERE Name='" & FixSQL(sName) & "'", conn, 0, 1
-    If rst.BOF And rst.EOF Then
-        rst.Close
-        conn.Execute "INSERT INTO AD_MATERIALS (Name,Thickness,SheetWidth,SheetLength) VALUES ('" & _
-                     FixSQL(sName) & "'," & MAT_THK & "," & MAT_W & "," & MAT_L & ")", lngRet
-    End If
-    rst.Close
-End Sub
-
-Private Sub InsertDetail(conn As Object, ByVal lngOrderID As Long, _
-    ByVal sStyle As String, ByVal dblW As Double, ByVal dblH As Double, _
-    ByVal lngQ As Long, ByVal sMat As String, ByVal sCust As String, _
-    ByVal sRef As String, ByVal sRem As String, ByVal sC1 As String, ByVal sC2 As String)
-    Dim lngRet As Long
-    conn.Execute "INSERT INTO AD_ORDER_DETAILS " & _
-        "(OrderID,TypeName,StyleNumber,Quantity,Width,Length," & _
-        "Material,ProductionComment," & _
-        "CSV_CustomerName,CSV_OrderNumber,CSV_ItemNumber," & _
-        "CustomField1,CustomField2) VALUES (" & _
-        lngOrderID & ",'" & FixSQL(sStyle) & "',900," & _
-        lngQ & "," & dblW & "," & dblH & ",'" & FixSQL(sMat) & "'," & _
-        "'" & FixSQL(sRem) & "','" & FixSQL(sCust) & "'," & _
-        "'" & FixSQL(sRef) & "','" & FixSQL(sRef) & "'," & _
-        "'" & FixSQL(sC1) & "','" & FixSQL(sC2) & "')", lngRet
-End Sub
-
-Private Function FixSQL(ByVal s As String) As String
-    If s = "" Then FixSQL = "": Else FixSQL = Replace(s, "'", "''")
-End Function
-
-
-' ============================================================================
-' CSV 解析
-' ============================================================================
-Private Function SplitCSVLine(ByVal sLine As String) As Variant
-    Dim v() As String
-    Dim idx As Long
-    Dim i As Long
-    Dim f As String
-    Dim bQ As Boolean
-    ReDim v(0 To 20)
-    For i = 1 To Len(sLine)
-        Dim c As String: c = Mid$(sLine, i, 1)
-        If bQ Then
-            If c = """" Then
-                If i < Len(sLine) And Mid$(sLine, i + 1, 1) = """" Then
-                    f = f & """"
-                    i = i + 1
-                Else
-                    bQ = False
-                End If
-            Else
-                f = f & c
-            End If
-        Else
-            If c = """" Then
-                bQ = True
-            ElseIf c = "," Then
-                v(idx) = f
-                idx = idx + 1
-                f = ""
-            Else
-                f = f & c
-            End If
-        End If
-    Next
-    v(idx) = f
-    ReDim Preserve v(0 To idx)
-    SplitCSVLine = v
-End Function
-
-Private Function GetF(ByRef v As Variant, ByVal i As Integer, ByVal d As String) As String
-    If i >= 0 And i <= UBound(v) Then GetF = v(i) Else GetF = d
-End Function
 
 ' ============================================================================
 ' 文件选择对话框
