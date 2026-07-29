@@ -45,20 +45,27 @@ Public Sub 自动化生产排版()
     ' 从 CSV 文件名获取订单名（去掉 .csv）
     sJobName = FSO.GetBaseName(sCSVPath)
     
-    ' ── 3. 检查 BatchImport 模块是否已安装 ──
+    ' ── 3. 检查 BatchImport 是否已安装 ──
     On Error Resume Next
     Call BatchImport.Run(sCSVPath, sJobName)
     If Err.Number <> 0 Then
+        Dim sErrMsg As String
+        sErrMsg = Err.Description
         On Error GoTo EH
-        MsgBox "BatchImport 模块未安装或出错。" & vbCrLf & _
-               "请先通过 AlphaCAM VBA 编辑器导入 CDM功能/BatchImport.bas", vbCritical
+        If InStr(sErrMsg, "未找到") Then
+            MsgBox "BatchImport 模块未安装！" & vbCrLf & vbCrLf & _
+                   "请先在 VBA 编辑器中导入:" & vbCrLf & _
+                   "CDM功能/BatchImport.bas", vbCritical, "自动化生产排版"
+        Else
+            MsgBox "CSV 导入失败:" & vbCrLf & sErrMsg, vbCritical, "自动化生产排版"
+        End If
         GoTo CleanUp
     End If
     On Error GoTo EH
     
     ' ── 4. 查找刚创建的订单 ID ──
     If Not gbln_ConnectToDB() Then
-        MsgBox "无法连接 CDM 数据库", vbCritical
+        MsgBox "无法连接 CDM 数据库", vbCritical, "自动化生产排版"
         GoTo CleanUp
     End If
     
@@ -67,7 +74,7 @@ Public Sub 自动化生产排版()
         "ORDER BY OrderID DESC")
     
     If rst.BOF And rst.EOF Then
-        MsgBox "未找到刚创建的订单，请检查导入是否成功", vbExclamation
+        MsgBox "未找到订单，CSV 导入可能失败", vbExclamation, "自动化生产排版"
         rst.Close
         GoTo CleanUp
     End If
@@ -80,13 +87,28 @@ Public Sub 自动化生产排版()
     App.Frame.ProjectBarUpdating = False
     App.DisableUndo = True
     
+    ' 先清除上次完成标记
+    SaveSetting "LICOM AlphaDOOR", "Nest Parameters", "Nest Completed", 0
+    
     ' 调用 CDM 加工引擎
     Call g_Make_Master(CStr(lngOrderID))
     
+    ' 检查加工结果
+    Dim bSuccess As Boolean
+    bSuccess = CBool(GetSetting("LICOM AlphaDOOR", "Nest Parameters", "Nest Completed", 0))
+    
     ' ── 6. 完成 ──
-    MsgBox "自动化生产排版完成！" & vbCrLf & vbCrLf & _
-           "订单: " & sJobName & vbCrLf & _
-           "后续可在 AlphaCAM 中查看并输出 NC", vbInformation, "自动化生产排版"
+    If bSuccess Then
+        MsgBox "自动化生产排版完成！" & vbCrLf & vbCrLf & _
+               "订单: " & sJobName & vbCrLf & _
+               "后续可在 AlphaCAM 中查看结果并输出 NC", vbInformation, "自动化生产排版"
+    Else
+        MsgBox "生产排版可能未完全成功，请检查 AlphaCAM 中的结果。" & vbCrLf & vbCrLf & _
+               "常见原因:" & vbCrLf & _
+               "  - 门型刀路未配置 (AD_DOOR_PATHS)" & vbCrLf & _
+               "  - 材料参数不正确" & vbCrLf & _
+               "  - 后处理器未选择", vbExclamation, "自动化生产排版"
+    End If
     GoTo CleanUp
     
 EH:
