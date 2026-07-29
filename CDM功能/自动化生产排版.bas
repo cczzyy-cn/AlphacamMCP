@@ -26,7 +26,7 @@ Private Const OFN_HIDEREADONLY  As Long = &H4
 ' ============================================================================
 ' 主入口（CCC 功能菜单触发）
 ' ============================================================================
-Public Sub m_自动化生产排版()
+Public Sub m_AutoImportNest()
     '
     Dim sCSVPath As String
     Dim sJobName As String
