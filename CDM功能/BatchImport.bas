@@ -9,19 +9,25 @@ Option Explicit
 ' 用法: CDM.BatchImport.Run "C:\path\to\file.csv", "订单名称"
 ' ============================================================================
 
-' CSV 列索引（基于实际文件头）
-Private Const COL_STYLE_NAME    As Integer = 0   ' 造型名称
-Private Const COL_WIDTH         As Integer = 1   ' 宽度
-Private Const COL_HEIGHT        As Integer = 2   ' 高度
-Private Const COL_QUANTITY      As Integer = 3   ' 数量
-Private Const COL_COLOR         As Integer = 4   ' 颜色（映射到材料）
-Private Const COL_CUSTOMER      As Integer = 5   ' 客户名称
-Private Const COL_ORDER_REF     As Integer = 6   ' 订单号
-Private Const COL_OPEN_DIR      As Integer = 7   ' 开启方向
-Private Const COL_ADDRESS       As Integer = 8   ' 终端地址
-Private Const COL_PART_CODE     As Integer = 9   ' 板件码
-Private Const COL_PROD_NAME     As Integer = 10  ' 产品名称
-Private Const COL_REMARK        As Integer = 11  ' 备注
+' CSV 列索引（匹配 CDM 导入配置：1-based 列号）
+' 列1=门板类型  列2=宽  列3=高  列4=数量  列5=组编号
+' 列6=客户名    列7=   列8=自定义1  列9=详细尺寸  列10=订单号
+' 列11=        列12=生产注释  列13=材料  列14~19=贴面纹理/后处理/旋转等
+Private Const COL_STYLE_NAME    As Integer = 0   ' 列1: 门板类型（造型名称）
+Private Const COL_WIDTH         As Integer = 1   ' 列2: 宽
+Private Const COL_HEIGHT        As Integer = 2   ' 列3: 高
+Private Const COL_QUANTITY      As Integer = 3   ' 列4: 数量
+Private Const COL_GROUP_ID      As Integer = 4   ' 列5: 组编号（原颜色/材料名，仅作参考）
+Private Const COL_CUSTOMER      As Integer = 5   ' 列6: 客户名称
+Private Const COL_ORDER_REF     As Integer = 9   ' 列10: 订单号（=CSV第10列 板件码）
+Private Const COL_REMARK        As Integer = 11  ' 列12: 生产注释（原备注）
+Private Const COL_MATERIAL      As Integer = 12  ' 列13: 材料（M列，空时用默认材料）
+
+' 默认材料
+Private Const DEF_MATERIAL_NAME As String = "开料机3000mm"
+Private Const DEF_MATERIAL_THK  As Double = 18
+Private Const DEF_MATERIAL_W    As Double = 1220
+Private Const DEF_MATERIAL_L    As Double = 3000
 
 
 ' ============================================================================
@@ -59,7 +65,10 @@ Public Sub Run(Optional sCSVPath As String = "", _
 End Sub
 
 
-(ByVal sCSVPath As String, ByVal sJobName As String)
+' ============================================================================
+' 核心：导入单个 CSV 到 CDM 数据库
+' ============================================================================
+Private Sub ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String)
     '
     Dim FSO As New Scripting.FileSystemObject
     Dim ts As TextStream
@@ -107,7 +116,7 @@ End Sub
         ' 跳过空行
         If sLine = "" Then GoTo NextRow
         
-        ' 解析 CSV 行（简单按逗号分割，支持引号）
+        ' 解析 CSV 行
         vFields = SplitCSVLine(sLine)
         
         ' 验证必要字段
@@ -122,22 +131,24 @@ End Sub
         Dim dblHeight     As Double
         Dim lngQty        As Long
         Dim sMaterial     As String
-        Dim sProdName     As String
+        Dim sCustomer     As String
+        Dim sOrderRef     As String
+        Dim sPartCode     As String
         Dim sRemark       As String
-        Dim sCustomer     As String  ' CSV_CustomerName
-        Dim sOrderRef     As String  ' CSV_OrderNumber
-        Dim sPartCode     As String  ' CSV_ItemNumber
         
         sStyleName = Trim$(GetField(vFields, COL_STYLE_NAME, ""))
         dblWidth = Val(GetField(vFields, COL_WIDTH, "0"))
         dblHeight = Val(GetField(vFields, COL_HEIGHT, "0"))
         lngQty = Val(GetField(vFields, COL_QUANTITY, "1"))
-        sMaterial = Trim$(GetField(vFields, COL_COLOR, ""))
-        sProdName = Trim$(GetField(vFields, COL_PROD_NAME, ""))
-        sRemark = Trim$(GetField(vFields, COL_REMARK, ""))
+        
+        ' 材料从第13列(M列)读取，空时用默认材料
+        sMaterial = Trim$(GetField(vFields, COL_MATERIAL, ""))
+        If sMaterial = "" Then sMaterial = DEF_MATERIAL_NAME
+        
         sCustomer = Trim$(GetField(vFields, COL_CUSTOMER, ""))
         sOrderRef = Trim$(GetField(vFields, COL_ORDER_REF, ""))
-        sPartCode = Trim$(GetField(vFields, COL_PART_CODE, ""))
+        sPartCode = Trim$(GetField(vFields, COL_ORDER_REF, ""))  ' 板件码=订单号列
+        sRemark = Trim$(GetField(vFields, COL_REMARK, ""))
         
         ' 跳过无效行
         If dblWidth <= 0 Or dblHeight <= 0 Then
@@ -148,8 +159,7 @@ End Sub
         
         ' 插入到 AD_ORDER_DETAILS
         Call InsertOrderDetail lngOrderID, sStyleName, dblWidth, dblHeight, _
-                               lngQty, sMaterial, sProdName, sRemark, _
-                               sCustomer, sOrderRef, sPartCode
+                               lngQty, sMaterial, sCustomer, sOrderRef, sPartCode, sRemark
         lngImported = lngImported + 1
         
 NextRow:
@@ -160,6 +170,7 @@ NextRow:
     ' ── 完成 ──
     sErrMsg = "导入完成！" & vbCrLf & _
               "  订单: " & sJobName & " (ID: " & lngOrderID & ")" & vbCrLf & _
+              "  材料: " & sMaterial & vbCrLf & _
               "  成功导入: " & lngImported & " 条" & vbCrLf & _
               "  跳过: " & lngSkipped & " 行"
     MsgBox sErrMsg, vbInformation, "BatchImport"
@@ -241,22 +252,21 @@ Private Sub InsertOrderDetail(ByVal lngOrderID As Long, _
                               ByVal dblHeight As Double, _
                               ByVal lngQty As Long, _
                               ByVal sMaterial As String, _
-                              ByVal sProdName As String, _
-                              ByVal sRemark As String, _
                               ByVal sCustomer As String, _
                               ByVal sOrderRef As String, _
-                              ByVal sPartCode As String)
+                              ByVal sPartCode As String, _
+                              ByVal sRemark As String)
     '
     Dim lngRet As Long
     Dim sSQL As String
     
-    ' 注册门型（固定 StyleNumber=900 以匹配 Make.mbln_ProcessPart）
+    ' 注册门型（StyleNumber=900 匹配 Make.mbln_ProcessPart）
     Call glng_EnsureStyle(sStyleName)
     
-    ' 查找或注册材料名
+    ' 注册材料
     Call glng_EnsureMaterial(sMaterial)
     
-    ' 插入明细（含 CSV 辅助字段）
+    ' 插入明细
     sSQL = "INSERT INTO AD_ORDER_DETAILS " & _
            "(OrderID, TypeName, StyleNumber, Quantity, Width, Length, " & _
            "Material, ProductionComment, " & _
@@ -277,7 +287,7 @@ End Sub
 
 
 ' ============================================================================
-' 确保门型存在（固定 StyleNumber=900，匹配 Make.mbln_ProcessPart）
+' 确保门型存在（StyleNumber=900）
 ' ============================================================================
 Private Sub glng_EnsureStyle(ByVal sTypeName As String)
     '
@@ -292,7 +302,6 @@ Private Sub glng_EnsureStyle(ByVal sTypeName As String)
     
     If rst.BOF And rst.EOF Then
         rst.Close
-        ' 创建门型，StyleNumber=900 对应标准镶板门
         gdb_CDM.Execute "INSERT INTO AD_DOOR_TYPES (TypeID, StyleNumber) VALUES ('" & _
                         gs_FixSQL(sTypeName) & "', 900)", lngRet
     End If
@@ -301,8 +310,9 @@ Private Sub glng_EnsureStyle(ByVal sTypeName As String)
     Set rst = Nothing
 End Sub
 
+
 ' ============================================================================
-' 确保材料存在（如不存在则插入）
+' 确保材料存在（默认: 开料机3000mm）
 ' ============================================================================
 Private Sub glng_EnsureMaterial(ByVal sName As String)
     '
@@ -317,9 +327,11 @@ Private Sub glng_EnsureMaterial(ByVal sName As String)
     
     If rst.BOF And rst.EOF Then
         rst.Close
-        ' 创建材料记录（使用默认参数）
         gdb_CDM.Execute "INSERT INTO AD_MATERIALS (Name, Thickness, SheetWidth, SheetLength) " & _
-                        "VALUES ('" & gs_FixSQL(sName) & "', 18, 2440, 1220)", lngRet
+                        "VALUES ('" & gs_FixSQL(sName) & "', " & _
+                        DEF_MATERIAL_THK & ", " & _
+                        DEF_MATERIAL_W & ", " & _
+                        DEF_MATERIAL_L & ")", lngRet
     End If
     
     rst.Close
@@ -352,7 +364,6 @@ Private Function SplitCSVLine(ByVal sLine As String) As Variant
         
         If bInQuote Then
             If sCh = """" Then
-                ' 检查是否转义引号
                 If iPos < iLen And Mid$(sLine, iPos + 1, 1) = """" Then
                     sField = sField & """"
                     iPos = iPos + 1
