@@ -279,11 +279,12 @@ Private Sub InsertOrderDetail(ByVal lngOrderID As Long, _
     
     ' 插入明细（含自定义字段）
     sSQL = "INSERT INTO AD_ORDER_DETAILS " & _
-           "(OrderID, TypeName, StyleNumber, Quantity, Width, Length, " & _
+           "(OrderID, TypeName, StyleName, StyleNumber, Quantity, Width, Length, " & _
            "Material, ProductionComment, " & _
            "CSV_CustomerName, CSV_OrderNumber, CSV_ItemNumber, " & _
            "CustomField1, CustomField2) " & _
            "VALUES (" & lngOrderID & ", " & _
+           "'" & gs_FixSQL(sStyleName) & "', " & _
            "'" & gs_FixSQL(sStyleName) & "', 900, " & _
            "" & lngQty & ", " & _
            "" & dblWidth & ", " & _
