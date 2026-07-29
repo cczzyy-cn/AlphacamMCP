@@ -269,7 +269,11 @@ End Function
 ' CSV ½âÎö
 ' ============================================================================
 Private Function SplitCSVLine(ByVal sLine As String) As Variant
-    Dim v() As String, iF As Long, i As Long, f As String, bQ As Boolean
+    Dim v() As String
+    Dim iF As Long
+    Dim i As Long
+    Dim f As String
+    Dim bQ As Boolean
     ReDim v(0 To 20)
     For i = 1 To Len(sLine)
         Dim c As String: c = Mid$(sLine, i, 1)
