@@ -16,6 +16,7 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: |
+          pip install -q ruff==0.15.22
           pip install -r requirements.txt
       - name: Check Python syntax
         run: |
@@ -33,4 +34,4 @@ jobs:
       - name: Lint with Ruff
         run: |
           pip install ruff
-          ruff check --fix server.py alphacam_com.py mcp_bridge/
+          ruff check server.py alphacam_com.py mcp_bridge/
