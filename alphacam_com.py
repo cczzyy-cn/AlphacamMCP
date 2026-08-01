@@ -959,7 +959,6 @@ class AlphaCAM:
         """List all VBA modules (standard modules, forms, classes) in the active project."""
         modules = []
         try:
-            vbe = self._app.VBE
             proj = self._get_vba_project()
             for comp in proj.VBComponents:
                 modules.append({
@@ -973,7 +972,6 @@ class AlphaCAM:
     def get_vba_code(self, module_name: str) -> dict:
         """Get the source code of a VBA module by name."""
         try:
-            vbe = self._app.VBE
             proj = self._get_vba_project()
             found = None
             for comp in proj.VBComponents:
@@ -992,7 +990,6 @@ class AlphaCAM:
     def delete_vba_module(self, module_name: str) -> dict:
         """Delete a VBA module by name. Returns deleted module name."""
         try:
-            vbe = self._app.VBE
             proj = self._get_vba_project()
             found = None
             for comp in list(proj.VBComponents):
@@ -1011,7 +1008,6 @@ class AlphaCAM:
     def install_vba_module(self, module_name: str, code: str) -> dict:
         """Install a VBA module by name with the given source code."""
         try:
-            vbe = self._app.VBE
             proj = self._get_vba_project()
             # Remove existing module with same name
             for comp in list(proj.VBComponents):
@@ -1033,7 +1029,6 @@ class AlphaCAM:
         import uuid
         temp_name = f"_MCP_TEMP_{uuid.uuid4().hex[:8]}"
         try:
-            vbe = self._app.VBE
             proj = self._get_vba_project()
             module = proj.VBComponents.Add(1)
             module.Name = temp_name
