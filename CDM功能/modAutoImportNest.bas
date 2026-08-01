@@ -78,6 +78,13 @@ Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) A
     lngOrderID = glng_CreateOrder(sJobName, 1)
     If lngOrderID <= 0 Then GoTo CleanUp
     
+    ' 检查文件是否存在
+    If Dir(sCSVPath) = "" Then
+        MsgBox "文件不存在:" & vbCrLf & sCSVPath, vbExclamation, "自动化生产排版"
+        ImportCSV = 0
+        Exit Function
+    End If
+    
     ' 读取 CSV
     iFile = FreeFile
     Open sCSVPath For Input As #iFile
