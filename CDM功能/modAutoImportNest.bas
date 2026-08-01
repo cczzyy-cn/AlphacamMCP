@@ -36,6 +36,7 @@ Public Sub AutoImportNest()
     
     Dim lngOrderID As Long
     lngOrderID = ImportCSV(sCSVPath, sJobName)
+    If lngOrderID = -1 Then Exit Sub   ' 用户取消（订单名重复）
     If lngOrderID <= 0 Then Exit Sub
     
     ' ── 3. 调用 g_Make_Master 批量生产+排版 ──
@@ -104,9 +105,10 @@ Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) A
         If w <= 0 Or h <= 0 Then GoTo NextLine
         If q <= 0 Then q = 1
         
-        ' 确保门型和材料存在，获取门型实际 StyleNumber
+        ' 确保门型和材料存在，获取门型实际 StyleNumber 和用户样式名
         Dim lngStyleNum As Long
-        lngStyleNum = glng_EnsureStyle(sTp)
+        Dim sUsrStyle As String
+        lngStyleNum = glng_EnsureStyle(sTp, sUsrStyle)
         glng_EnsureMaterial sMat
         
         ' 插入明细（INSERT...SELECT 从 AD_DOOR_TYPES 复制用户样式参数含 UserValue_0~6）
@@ -115,7 +117,8 @@ Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) A
             "Material,ProductionComment,CSV_CustomerName,CSV_OrderNumber,CSV_ItemNumber," & _
             "CustomField1,CustomField2,UserVariableString,UserDescriptionString," & _
             "UserValue_0,UserValue_1,UserValue_2,UserValue_3,UserValue_4,UserValue_5,UserValue_6) " & _
-            "SELECT " & lngOrderID & ",'" & gs_FixSQL(sTp) & "','" & gs_FixSQL(sTp) & "'," & lngStyleNum & "," & _
+            "SELECT " & lngOrderID & ",'" & gs_FixSQL(sTp) & "'," & _
+            "'" & gs_FixSQL(sUsrStyle) & "'," & lngStyleNum & "," & _
             q & "," & w & "," & h & ",'" & gs_FixSQL(sMat) & "'," & _
             "'" & gs_FixSQL(sRm) & "','" & gs_FixSQL(sCu) & "'," & _
             "'" & gs_FixSQL(sRf) & "','" & gs_FixSQL(sRf) & "'," & _
@@ -140,27 +143,46 @@ End Function
 
 Private Function glng_CreateOrder(ByVal sName As String, ByVal lngCustID As Long) As Long
     Dim rst As ADODB.Recordset, lngRet As Long
+    Dim iAns As VbMsgBoxResult
+    
+    ' 检查是否存在相同订单名
+    Set rst = New ADODB.Recordset
+    rst.Open "SELECT OrderID FROM AD_ORDERS WHERE JobName='" & gs_FixSQL(sName) & "'", gdb_CDM, adOpenForwardOnly, adLockReadOnly
+    If Not (rst.BOF And rst.EOF) Then
+        ' 订单名已存在
+        iAns = MsgBox("订单名已存在: " & sName & vbCrLf & vbCrLf & _
+                      "是: 继续创建同名新订单" & vbCrLf & _
+                      "否: 取消导入", _
+                      vbYesNo + vbQuestion, "自动化生产排版")
+        If iAns = vbNo Then
+            rst.Close
+            glng_CreateOrder = -1   ' 取消
+            Exit Function
+        End If
+    End If
+    rst.Close
+    
+    ' 创建订单
     gdb_CDM.Execute "INSERT INTO AD_ORDERS (JobName,CustomerID,OrderDate) VALUES ('" & gs_FixSQL(sName) & "'," & lngCustID & ",Date())", lngRet
     If lngRet > 0 Then Set rst = gdb_CDM.Execute("SELECT @@IDENTITY AS NewID"): glng_CreateOrder = rst.Fields("NewID"): rst.Close
 End Function
 
-Private Function glng_EnsureStyle(ByVal sName As String) As Long
+Private Function glng_EnsureStyle(ByVal sName As String, ByRef sUserStyleName As String) As Long
     Dim rst As ADODB.Recordset, lngRet As Long
     If sName = "" Then
         glng_EnsureStyle = 900
         Exit Function
     End If
     Set rst = New ADODB.Recordset
-    rst.Open "SELECT TypeID,UserStyle FROM AD_DOOR_TYPES WHERE TypeID='" & gs_FixSQL(sName) & "'", gdb_CDM, adOpenForwardOnly, adLockReadOnly
+    rst.Open "SELECT TypeID,UserStyle,UserStyleName FROM AD_DOOR_TYPES WHERE TypeID='" & gs_FixSQL(sName) & "'", gdb_CDM, adOpenForwardOnly, adLockReadOnly
     If rst.BOF And rst.EOF Then
-        ' 新门型：创建为 900 标准镶板门
         rst.Close
         gdb_CDM.Execute "INSERT INTO AD_DOOR_TYPES (TypeID,UserStyle,UserStyleName,Width,Length) VALUES ('" & gs_FixSQL(sName) & "',False,'',900,900)", lngRet
         glng_EnsureStyle = 900
     Else
-        ' 已存在门型：使用其 UserStyle 判断 StyleNumber
         If CBool(rst.Fields("UserStyle")) Then
             glng_EnsureStyle = 930
+            sUserStyleName = gvar_CheckNull(rst.Fields("UserStyleName"))
         Else
             glng_EnsureStyle = 900
         End If
