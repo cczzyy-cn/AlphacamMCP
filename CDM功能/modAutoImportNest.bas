@@ -98,9 +98,9 @@ Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) A
         
         Dim sTp As String, w As Double, h As Double, q As Long
         Dim sMat As String, sCu As String, sRf As String, sRm As String
-        Dim sC1 As String, sC2 As String
+        Dim sC1 As String, sC2 As String, sGrp As String
         
-        sTp = Trim$(GetF(vF, 0, "")): w = Val(GetF(vF, 1, "0"))
+        sGrp = Trim$(GetF(vF, 4, "")): sTp = Trim$(GetF(vF, 0, "")): w = Val(GetF(vF, 1, "0"))
         h = Val(GetF(vF, 2, "0")): q = Val(GetF(vF, 3, "1"))
         sMat = Trim$(GetF(vF, 12, "")): If sMat = "" Then sMat = "¿ªÁÏ»ú3000mm"
         sCu = Trim$(GetF(vF, 5, "")): sRf = Trim$(GetF(vF, 9, ""))
@@ -118,14 +118,14 @@ Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) A
         gdb_CDM.Execute "INSERT INTO AD_ORDER_DETAILS " & _
             "(OrderID,TypeName,StyleName,StyleNumber,Quantity,Width,Length," & _
             "Material,ProductionComment,CSV_CustomerName,CSV_OrderNumber,CSV_ItemNumber," & _
-            "CustomField1,CustomField2,UserVariableString,UserDescriptionString," & _
+            "CustomField1,CustomField2,ComponentGrouping,UserVariableString,UserDescriptionString," & _
             "UserValue_0,UserValue_1,UserValue_2,UserValue_3,UserValue_4,UserValue_5,UserValue_6) " & _
-            "SELECT " & lngOrderID & ",'" & gs_FixSQL(sTp) & "'," & _
-            "'" & gs_FixSQL(sUsrStyle) & "'," & lngStyleNum & "," & _
+            "SELECT " & lngOrderID & ",'" & gs_FixSQL(sTp) & "','" & gs_FixSQL(sUsrStyle) & "'," & lngStyleNum & "," & _
             q & "," & w & "," & h & ",'" & gs_FixSQL(sMat) & "'," & _
             "'" & gs_FixSQL(sRm) & "','" & gs_FixSQL(sCu) & "'," & _
             "'" & gs_FixSQL(sRf) & "','" & gs_FixSQL(sRf) & "'," & _
             "'" & gs_FixSQL(sC1) & "','" & gs_FixSQL(sC2) & "'," & _
+            "'" & gs_FixSQL(sGrp) & "'," & _
             "dt.UserVariableString,dt.UserDescriptionString," & _
             "dt.UserValue_0,dt.UserValue_1,dt.UserValue_2,dt.UserValue_3,dt.UserValue_4,dt.UserValue_5,dt.UserValue_6 " & _
             "FROM AD_DOOR_TYPES dt WHERE dt.TypeID='" & gs_FixSQL(sTp) & "'"
