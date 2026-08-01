@@ -17,10 +17,14 @@
 | 文件 | 说明 |
 |---|---|
 | `server.py` | MCP 桥接器主程序（Python），通过 STDIO/SSE 协议与 AI 通信 |
-| `alphacam_com.py` | AlphaCAM COM 自动化封装层 |
+| `alphacam_com.py` | AlphaCAM COM 自动化封装层（含 VBA 模块管理、自动重连） |
 | `DOCUMENTATION_INDEX.md` | AlphaCAM 全部 33 个 .chm 文档的索引目录（含分组和转换状态） |
 | `chm/` | .chm 文档目录（含指向安装目录的符号链接 + 已转换的 _html 子目录） |
 | `CCC功能/` | VBA 插件合集目录（依边界裁剪、全排版刀具偏移、排版刀具排序） |
+| `CDM功能/` | CDM 自动化模块（`modAutoImportNest.bas` 一键导入+排版，`Events.bas` 菜单注册） |
+| `AI工作流程/` | CDM 源码分析（Make/Events/frmNTCW）+ 自动化方案文档 |
+| `软件工作流程.md` | AI 操作手册：CSV 导入 → 批量生产 → 排版的完整工作流 |
+| `open_vba_editor.py` | 自动激活/最大化 AlphaCAM 窗口并打开 VBA 编辑器（Alt+F11） |
 | `RevNest_source/` | RevNest 反向排版 v1.2 插件完整源码（从 AlphaCAM 提取） |
 | `install.bat` | Windows 一键安装脚本 |
 | `install_vba.py` | VBA 代码安装到 AlphaCAM 的 Python 脚本 |
@@ -64,7 +68,7 @@ pip install -r requirements.txt
 }
 ```
 
-## MCP 工具清单（68 个）
+## MCP 工具清单（69 个）
 
 ### 状态与信息（2）
 | 工具 | 说明 |
@@ -72,7 +76,7 @@ pip install -r requirements.txt
 | `get_status` | 检查 AlphaCAM 连接状态、版本、路径 |
 | `get_drawing_info` | 获取当前图纸详情（几何数、路径数、图层、操作数） |
 
-### VBA 与插件（8）
+### VBA 与插件（9）
 | 工具 | 说明 |
 |---|---|
 | `run_vba_macro` | 运行 VBA 宏（支持传参） |
@@ -80,6 +84,7 @@ pip install -r requirements.txt
 | `list_vba_modules` | 列出 VBA 项目中所有模块名称和类型 |
 | `get_vba_code` | 读取指定 VBA 模块的完整源代码 |
 | `install_vba_module` | 安装 VBA 模块（从源码，覆盖同名模块） |
+| `delete_vba_module` | **删除 VBA 模块**（按名称清理多余模块） |
 | `load_addin` | 加载插件 DLL / VBA 项目 |
 | `enable_addin` | 启用/禁用插件 |
 | `list_addins` | 列出已加载的全部插件 |
@@ -225,7 +230,7 @@ pip install -r requirements.txt
 
 > **关于 .arb 文件**：AlphaCAM 的插件以 `.arb`（Add-in Resource Bundle）格式发布，它是一个包含 VBA 源码、窗体、图标和菜单定义的资源包。**.arb 文件必须先被 AlphaCAM 加载（通过菜单或 `load_addin` 工具）**，然后才能通过 `list_vba_modules` 列出模块、通过 `get_vba_code` 读取源码。MCP 无法直接解析 .arb 文件格式，必须经由 AlphaCAM 的 VBA 编辑器接口间接读取。
 
-`CCC功能/` 目录包含四个 VBA 工具（通过 AlphaCAM 菜单栏 "CCC功能" 访问）：
+`CCC功能/` 目录包含 VBA 工具（通过 AlphaCAM 菜单栏 "CCC功能" 访问）：
 
 | 文件 | 功能 |
 |---|---|
@@ -235,6 +240,32 @@ pip install -r requirements.txt
 | `modSort.bas` | **排版刀具排序** — 按加工方式+刀具分组，拖拽调整加工顺序 |
 | `modMirror.bas` | **反面镜像** — 自动镜像排版 Sheet 几何生成反面（X 轴或 Y 轴镜像） |
 | `frmToolOffset.txt` / `frmToolSort.txt` | 刀具偏移/排序对话框的窗体定义 |
+
+### CDM 橱柜门自动化
+
+`CDM功能/` 目录包含 CDM（Cabinet Door Manufacturing）自动化模块：
+
+| 文件 | 功能 |
+|---|---|
+| `modAutoImportNest.bas` | **自动化生产排版**：弹窗选 CSV → 导入门板数据 → `g_Make_Master` 批量生产+排版 |
+| `Events.bas` | CDM 工程菜单注册（含 "自动化生产排版" 按钮） |
+
+自动化流程（已在 CDM 工程中运行验证）：
+
+```
+选择 CSV 文件（带记忆）
+  → 客户名"自动化生产"（自动创建）
+  → 创建订单（重名直接取消）
+  → 逐行导入门板明细
+     ├── 门型已存在 → 用其 UserStyle（900/930）
+     │     930 门型（如平板PETA）→ 复制 UserStyleName + UserValue_0~6
+     │     正确加载用户样式宏（AD_OnePanelSquare 等）
+     └── 新门型 → 创建为 900 标准镶板门
+  → g_Make_Master 批量生产 + 排版 + NC 输出
+```
+
+> **关键技术点**：930 用户自定义门型的几何由 VBA 宏生成，导入时必须复制
+> `StyleName=UserStyleName`（宏项目名）和 `UserValue_0~6`（宏参数），否则报"无法连接用户定义的宏"。
 
 ### RevNest 反向排版
 
@@ -264,6 +295,17 @@ pip install -r requirements.txt
 | 僵尸检测 | `_check_alive()` 双层探测（Name + ActiveDrawing），防止误判 |
 | 状态回调 | 连接状态变化通过 `set_state_callback()` 通知 |
 | 多实例支持 | 通过 `--progid` 参数指定不同 ProgID 切换实例 |
+| VBA 工程定位 | `_get_vba_project()` 自动定位：ActiveVBProject → CDM 工程 → 首个工程 |
+
+### 🖥️ VBA 编辑器自动化
+
+用户已授权 AI 在需要时自动打开 VBA 编辑器：
+
+| 操作 | 方式 |
+|---|---|
+| 激活+最大化窗口 | `open_vba_editor.py`（user32 SetForegroundWindow + ShowWindow SW_MAXIMIZE） |
+| 打开 VBA 编辑器 | 发送 Alt+F11 快捷键 |
+| 读取/写入模块 | 直接通过 `get_vba_code` / `install_vba_module`，无需打开编辑器 |
 
 ### 📐 几何操作规范
 
