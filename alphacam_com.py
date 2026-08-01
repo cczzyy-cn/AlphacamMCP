@@ -1008,12 +1008,74 @@ class AlphaCAM:
 
     # ---- VBA module management -----------------------------------------
 
+    def _dismiss_popups(self) -> int:
+        """Close modal popup/dialog windows (e.g. MsgBox) that block AlphaCAM.
+
+        Enumerates windows belonging to Acam.exe; any *visible* window that
+        is not the AlphaCAM main window is treated as a popup and sent
+        WM_CLOSE. Returns the number of popups closed.
+        """
+        import ctypes
+        user32 = ctypes.windll.user32
+
+        # Collect Acam.exe process IDs
+        pids: set[int] = set()
+        try:
+            import subprocess
+            out = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq Acam.exe", "/FO", "CSV", "/NH"],
+                capture_output=True, text=True, timeout=10,
+            ).stdout
+            for line in out.strip().splitlines():
+                parts = [p.strip('"') for p in line.split('","')]
+                if len(parts) > 1 and parts[0].lower() == "acam.exe":
+                    try:
+                        pids.add(int(parts[1]))
+                    except ValueError:
+                        pass
+        except Exception:
+            pass
+        if not pids:
+            return 0
+
+        main_keywords = ("3d 5-", "alphacam", "alpha cam")
+        closed = [0]
+
+        @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+        def enum_cb(hwnd, _lparam):
+            pid = ctypes.c_ulong()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value not in pids:
+                return True
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            length = user32.GetWindowTextLengthW(hwnd)
+            title = ""
+            if length > 0:
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                title = buf.value.lower()
+            # Skip the main AlphaCAM window; close everything else visible
+            if title and any(k in title for k in main_keywords):
+                return True
+            user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
+            closed[0] += 1
+            return True
+
+        user32.EnumWindows(enum_cb, 0)
+        if closed[0] > 0:
+            logger.info("Closed %d blocking popup(s)", closed[0])
+            import time as _t
+            _t.sleep(0.5)  # allow the popups to disappear
+        return closed[0]
+
     def _get_vba_project(self) -> Any:
         """Get the target VBA project: ActiveVBProject if available, else CDM project, else first project.
 
         Retries briefly to allow the VBE object model to become ready
         (e.g. right after AlphaCAM start or when the VBA IDE is busy).
         """
+        self._dismiss_popups()  # clear any blocking dialog before touching VBE
         import time as _time
         last_proj = None
         for _attempt in range(3):
