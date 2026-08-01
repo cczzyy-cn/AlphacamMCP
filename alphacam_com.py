@@ -935,12 +935,32 @@ class AlphaCAM:
 
     # ---- VBA module management -----------------------------------------
 
+    def _get_vba_project(self) -> Any:
+        """Get the target VBA project: ActiveVBProject if available, else CDM project, else first project."""
+        vbe = self._app.VBE
+        proj = vbe.ActiveVBProject
+        if proj is None:
+            # Try to find CDM project by name
+            try:
+                for p in vbe.VBProjects:
+                    if p.Name == "CDM":
+                        return p
+            except Exception:
+                pass
+            # Fall back to first project
+            try:
+                if vbe.VBProjects.Count > 0:
+                    return vbe.VBProjects(1)
+            except Exception:
+                pass
+        return proj
+
     def list_vba_modules(self) -> list[dict]:
         """List all VBA modules (standard modules, forms, classes) in the active project."""
         modules = []
         try:
             vbe = self._app.VBE
-            proj = vbe.ActiveVBProject
+            proj = self._get_vba_project()
             for comp in proj.VBComponents:
                 modules.append({
                     "name": comp.Name,
@@ -954,7 +974,7 @@ class AlphaCAM:
         """Get the source code of a VBA module by name."""
         try:
             vbe = self._app.VBE
-            proj = vbe.ActiveVBProject
+            proj = self._get_vba_project()
             found = None
             for comp in proj.VBComponents:
                 if comp.Name == module_name:
@@ -973,7 +993,7 @@ class AlphaCAM:
         """Install a VBA module by name with the given source code."""
         try:
             vbe = self._app.VBE
-            proj = vbe.ActiveVBProject
+            proj = self._get_vba_project()
             # Remove existing module with same name
             for comp in list(proj.VBComponents):
                 if comp.Name == module_name:
@@ -995,7 +1015,7 @@ class AlphaCAM:
         temp_name = f"_MCP_TEMP_{uuid.uuid4().hex[:8]}"
         try:
             vbe = self._app.VBE
-            proj = vbe.ActiveVBProject
+            proj = self._get_vba_project()
             module = proj.VBComponents.Add(1)
             module.Name = temp_name
             full_code = f"Public Sub _MCP_Run()\n{code_line}\nEnd Sub"
