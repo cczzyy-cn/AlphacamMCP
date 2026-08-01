@@ -9,15 +9,42 @@ Private Const SWP_NOMOVE As Long = &H2
 Private Const SWP_NOZORDER As Long = &H4
 Private Const SWP_FRAMECHANGED As Long = &H20
 
+' ÎÄ¼ş¶Ô»°¿ò API
+Private Declare PtrSafe Function GetOpenFileName Lib "comdlg32.dll" Alias "GetOpenFileNameA" (pOpenfilename As OPENFILENAME) As Long
+Private Type OPENFILENAME
+    lStructSize As Long
+    hwndOwner As Long
+    hInstance As Long
+    lpstrFilter As String
+    lpstrCustomFilter As String
+    nMaxCustFilter As Long
+    nFilterIndex As Long
+    lpstrFile As String
+    nMaxFile As Long
+    lpstrFileTitle As String
+    nMaxFileTitle As Long
+    lpstrInitialDir As String
+    lpstrTitle As String
+    flags As Long
+    nFileOffset As Integer
+    nFileExtension As Integer
+    lpstrDefExt As String
+    lCustData As Long
+    lpfnHook As Long
+    lpTemplateName As String
+End Type
+Private Const OFN_FILEMUSTEXIST As Long = &H1000
+Private Const OFN_HIDEREADONLY As Long = &H4
+
 Option Explicit
 
 ' ==============================================================================
-' è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ â€” å‚æ•°çª—ä½“
+' ×Ô¶¯»¯Éú²úÅÅ°æ ¡ª ²ÎÊı´°Ìå
 ' ==============================================================================
-' ç”¨æ³•: æ’å…¥ â†’ ç”¨æˆ·çª—ä½“ â†’ åç§°æ”¹ frmAutoNest â†’ æ·»åŠ æ§ä»¶ â†’ ç²˜è´´æœ¬ä»£ç 
-' æ§ä»¶: lblCSV/txtCSV/cmdBrowse, lblMaterial/cmbMaterial,
+' ÓÃ·¨: ²åÈë ¡ú ÓÃ»§´°Ìå ¡ú Ãû³Æ¸Ä frmAutoNest ¡ú Ìí¼Ó¿Ø¼ş ¡ú Õ³Ìù±¾´úÂë
+' ¿Ø¼ş: lblCSV/txtCSV/cmdBrowse, lblMaterial/cmbMaterial,
 '       lblCustomer/txtCustomer, chkRunNest, cmdOK/cmdCancel
-' ç”± modAutoImportNest.AutoImportNestWithParams å¤„ç†å¯¼å…¥+æ’ç‰ˆ
+' ÓÉ modAutoImportNest.AutoImportNestWithParams ´¦Àíµ¼Èë+ÅÅ°æ
 ' ==============================================================================
 
 Private Sub AddMinButton(frm As Object)
@@ -35,21 +62,21 @@ End Sub
 Private Sub UserForm_Activate(): AddMinButton Me: End Sub
 
 Private Sub UserForm_Initialize()
-    Me.Caption = "è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ"
+    Me.Caption = "×Ô¶¯»¯Éú²úÅÅ°æ"
     Dim sLast As String
     Dim rst As Object
     Dim conn As Object
     
-    ' CSV è·¯å¾„ï¼ˆè®°å¿†ï¼‰
-    sLast = GetSetting("CCC", "AutoImportNest", "LastPath", "C:\Users\C\Desktop\2026ä¼˜åŒ–è¡¨\7-10ä¸­æ—SPCå©·å…°ç°.csv")
+    ' CSV Â·¾¶£¨¼ÇÒä£©
+    sLast = GetSetting("CCC", "AutoImportNest", "LastPath", "C:\Users\C\Desktop\2026ÓÅ»¯±í\7-10ÖĞÁÖSPCæÃÀ¼»Ò.csv")
     txtCSV = sLast
     
-    ' å®¢æˆ·åï¼ˆè®°å¿†ï¼‰
-    txtCustomer = GetSetting("CCC", "AutoImportNest", "Customer", "è‡ªåŠ¨åŒ–ç”Ÿäº§")
+    ' ¿Í»§Ãû£¨¼ÇÒä£©
+    txtCustomer = GetSetting("CCC", "AutoImportNest", "Customer", "×Ô¶¯»¯Éú²ú")
     
-    ' ææ–™åˆ—è¡¨ï¼ˆä» AD_MATERIALS åŠ è½½ï¼‰
+    ' ²ÄÁÏÁĞ±í£¨´Ó AD_MATERIALS ¼ÓÔØ£©
     cmbMaterial.Clear
-    cmbMaterial.AddItem ""          ' ç©º = ä½¿ç”¨é»˜è®¤"å¼€æ–™æœº3000mm"
+    cmbMaterial.AddItem ""          ' ¿Õ = Ê¹ÓÃÄ¬ÈÏ"¿ªÁÏ»ú3000mm"
     On Error Resume Next
     Set conn = CreateObject("ADODB.Connection")
     conn.Open "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=D:\2016\LICOMDAT\CDM Data\CDM.mdb"
@@ -62,32 +89,51 @@ Private Sub UserForm_Initialize()
     conn.Close
     On Error GoTo 0
     
-    ' ææ–™è®°å¿†
+    ' ²ÄÁÏ¼ÇÒä
     cmbMaterial = GetSetting("CCC", "AutoImportNest", "Material", "")
 End Sub
 
+' ==============================================================================
+' ä¯ÀÀ°´Å¥ ¡ª ÏµÍ³ÎÄ¼şÑ¡Ôñ¶Ô»°¿ò
+' ==============================================================================
 Private Sub cmdBrowse_Click()
-    Dim sInput As String
-    sInput = InputBox("è¯·è¾“å…¥ CSV æ–‡ä»¶å®Œæ•´è·¯å¾„:", "é€‰æ‹© CSV", txtCSV)
-    If sInput <> "" Then txtCSV = sInput
+    Dim ofn As OPENFILENAME
+    Dim sFile As String
+    Dim lRet As Long
+    
+    sFile = String$(260, vbNullChar)
+    ofn.lStructSize = Len(ofn)
+    ofn.hwndOwner = App.Frame.WindowHandle
+    ofn.lpstrFilter = "CSV ÎÄ¼ş (*.csv)" & Chr$(0) & "*.csv" & Chr$(0) & "ËùÓĞÎÄ¼ş (*.*)" & Chr$(0) & "*.*" & Chr$(0)
+    ofn.lpstrFile = sFile
+    ofn.nMaxFile = Len(sFile)
+    ofn.lpstrInitialDir = "C:\Users\C\Desktop\2026ÓÅ»¯±í"
+    ofn.lpstrTitle = "Ñ¡Ôñ CSV ÎÄ¼ş"
+    ofn.flags = OFN_FILEMUSTEXIST Or OFN_HIDEREADONLY
+    ofn.lpstrDefExt = "csv"
+    
+    lRet = GetOpenFileName(ofn)
+    If lRet Then
+        txtCSV = Left$(ofn.lpstrFile, InStr(ofn.lpstrFile, vbNullChar) - 1)
+    End If
 End Sub
 
 Private Sub cmdOK_Click()
     If Trim$(txtCSV) = "" Then
-        MsgBox "è¯·é€‰æ‹© CSV æ–‡ä»¶", vbExclamation, "è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ"
+        MsgBox "ÇëÑ¡Ôñ CSV ÎÄ¼ş", vbExclamation, "×Ô¶¯»¯Éú²úÅÅ°æ"
         Exit Sub
     End If
     If Dir(Trim$(txtCSV)) = "" Then
-        MsgBox "æ–‡ä»¶ä¸å­˜åœ¨:" & vbCrLf & Trim$(txtCSV), vbExclamation, "è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ"
+        MsgBox "ÎÄ¼ş²»´æÔÚ:" & vbCrLf & Trim$(txtCSV), vbExclamation, "×Ô¶¯»¯Éú²úÅÅ°æ"
         Exit Sub
     End If
     
-    ' ä¿å­˜è®°å¿†
+    ' ±£´æ¼ÇÒä
     SaveSetting "CCC", "AutoImportNest", "LastPath", Trim$(txtCSV)
     SaveSetting "CCC", "AutoImportNest", "Customer", Trim$(txtCustomer)
     SaveSetting "CCC", "AutoImportNest", "Material", Trim$(cmbMaterial)
     
-    ' è°ƒç”¨æ¨¡å—å¸¦å‚å…¥å£ï¼ˆå¯¼å…¥ + æ’ç‰ˆï¼‰
+    ' µ÷ÓÃÄ£¿é´ø²ÎÈë¿Ú£¨µ¼Èë + ÅÅ°æ£©
     Me.Hide
     modAutoImportNest.AutoImportNestWithParams _
         Trim$(txtCSV), _
