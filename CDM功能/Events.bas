@@ -1,4 +1,3 @@
-Attribute VB_Name = "Events"
 Option Explicit
 
 Public m_AlphaDOORRunning As Boolean

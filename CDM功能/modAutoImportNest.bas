@@ -1,4 +1,3 @@
-Attribute VB_Name = "modAutoImportNest"
 Option Explicit
 
 ' ==============================================================================
