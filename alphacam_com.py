@@ -1008,77 +1008,6 @@ class AlphaCAM:
 
     # ---- VBA module management -----------------------------------------
 
-    def _dismiss_popups(self) -> int:
-        """Close modal popup/dialog windows (e.g. MsgBox) that block AlphaCAM.
-
-        SAFETY: only windows whose title matches known dialog keywords are
-        closed. Untitled windows and the AlphaCAM main window are NEVER
-        touched, to avoid accidentally closing the application.
-        Returns the number of popups closed.
-        """
-        import ctypes
-        user32 = ctypes.windll.user32
-
-        # Collect Acam.exe process IDs
-        pids: set[int] = set()
-        try:
-            import subprocess
-            out = subprocess.run(
-                ["tasklist", "/FI", "IMAGENAME eq Acam.exe", "/FO", "CSV", "/NH"],
-                capture_output=True, text=True, timeout=10,
-            ).stdout
-            for line in out.strip().splitlines():
-                parts = [p.strip('"') for p in line.split('","')]
-                if len(parts) > 1 and parts[0].lower() == "acam.exe":
-                    try:
-                        pids.add(int(parts[1]))
-                    except ValueError:
-                        pass
-        except Exception:
-            pass
-        if not pids:
-            return 0
-
-        # Dialog keywords: closing only these avoids killing the main window
-        dialog_keywords = (
-            "error", "错误", "warning", "警告", "confirm", "确认",
-            "question", "message", "消息", "visual basic", "vb",
-            "alphadoor", "alpha door", "cdm", "exclamation", "提示",
-        )
-        main_keywords = ("3d 5-", "alphacam", "alpha cam")
-        closed = [0]
-
-        @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
-        def enum_cb(hwnd, _lparam):
-            pid = ctypes.c_ulong()
-            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            if pid.value not in pids:
-                return True
-            if not user32.IsWindowVisible(hwnd):
-                return True
-            length = user32.GetWindowTextLengthW(hwnd)
-            if length == 0:
-                # Untitled windows are never auto-closed (may be the app frame)
-                return True
-            buf = ctypes.create_unicode_buffer(length + 1)
-            user32.GetWindowTextW(hwnd, buf, length + 1)
-            title = buf.value.lower()
-            # Never close the main AlphaCAM window
-            if any(k in title for k in main_keywords):
-                return True
-            # Close only if the title looks like a dialog/popup
-            if any(k in title for k in dialog_keywords):
-                user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
-                closed[0] += 1
-            return True
-
-        user32.EnumWindows(enum_cb, 0)
-        if closed[0] > 0:
-            logger.info("Closed %d blocking popup(s)", closed[0])
-            import time as _t
-            _t.sleep(0.5)  # allow the popups to disappear
-        return closed[0]
-
     def _get_vba_project(self) -> Any:
         """Get the target VBA project: ActiveVBProject if available, else CDM project, else first project.
 
@@ -1121,7 +1050,7 @@ class AlphaCAM:
                     "type": str(comp.Type),
                 })
         except Exception as exc:
-            raise AlphaCAMError(f"Failed to list VBA modules: {exc}") from exc
+            raise AlphaCAMError(f"Failed to list VBA modules: {exc}. Please close any popup/dialog in AlphaCAM (e.g. an error MsgBox) and retry.") from exc
         return modules
 
     def get_vba_code(self, module_name: str) -> dict:
@@ -1140,7 +1069,7 @@ class AlphaCAM:
         except AlphaCAMError:
             raise
         except Exception as exc:
-            raise AlphaCAMError(f"Failed to get VBA code: {exc}") from exc
+            raise AlphaCAMError(f"Failed to get VBA code: {exc}. Please close any popup/dialog in AlphaCAM (e.g. an error MsgBox) and retry.") from exc
 
     def delete_vba_module(self, module_name: str) -> dict:
         """Delete a VBA module by name. Returns deleted module name."""
@@ -1158,7 +1087,7 @@ class AlphaCAM:
         except AlphaCAMError:
             raise
         except Exception as exc:
-            raise AlphaCAMError(f"Failed to delete VBA module: {exc}") from exc
+            raise AlphaCAMError(f"Failed to delete VBA module: {exc}. Please close any popup/dialog in AlphaCAM (e.g. an error MsgBox) and retry.") from exc
 
     def install_vba_module(self, module_name: str, code: str) -> dict:
         """Install a VBA module by name with the given source code."""
@@ -1175,7 +1104,7 @@ class AlphaCAM:
             module.CodeModule.AddFromString(code)
             return {"name": module_name, "status": "installed", "chars": len(code)}
         except Exception as exc:
-            raise AlphaCAMError(f"Failed to install VBA module: {exc}") from exc
+            raise AlphaCAMError(f"Failed to install VBA module: {exc}. Please close any popup/dialog in AlphaCAM (e.g. an error MsgBox) and retry.") from exc
 
     def run_vba_line(self, code_line: str) -> dict:
         """Execute a single line of VBA code immediately.
@@ -1202,7 +1131,7 @@ class AlphaCAM:
                         break
             except Exception:
                 pass
-            raise AlphaCAMError(f"VBA line execution failed: {exc}") from exc
+            raise AlphaCAMError(f"VBA line execution failed: {exc}. Please close any popup/dialog in AlphaCAM (e.g. an error MsgBox) and retry.") from exc
 
     def load_addin(self, file_name: str) -> dict:
         """Load an add-in DLL or VBA project file."""
