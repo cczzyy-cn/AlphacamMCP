@@ -989,6 +989,25 @@ class AlphaCAM:
         except Exception as exc:
             raise AlphaCAMError(f"Failed to get VBA code: {exc}") from exc
 
+    def delete_vba_module(self, module_name: str) -> dict:
+        """Delete a VBA module by name. Returns deleted module name."""
+        try:
+            vbe = self._app.VBE
+            proj = self._get_vba_project()
+            found = None
+            for comp in list(proj.VBComponents):
+                if comp.Name == module_name:
+                    found = comp
+                    break
+            if found is None:
+                raise AlphaCAMError(f"VBA module '{module_name}' not found")
+            proj.VBComponents.Remove(found)
+            return {"status": "deleted", "name": module_name}
+        except AlphaCAMError:
+            raise
+        except Exception as exc:
+            raise AlphaCAMError(f"Failed to delete VBA module: {exc}") from exc
+
     def install_vba_module(self, module_name: str, code: str) -> dict:
         """Install a VBA module by name with the given source code."""
         try:

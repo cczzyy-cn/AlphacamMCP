@@ -281,3 +281,4 @@ Private Function ShowOpenFile(ByVal sDir As String, ByVal sFilter As String) As 
     
     ShowOpenFile = sInput
 End Function
+

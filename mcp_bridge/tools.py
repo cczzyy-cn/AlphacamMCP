@@ -448,6 +448,13 @@ async def handle_get_vba_code(acam, module_name, **kw):
 async def handle_install_vba_module(acam, module_name, code, **kw):
     return acam.install_vba_module(module_name, code)
 
+@mcp_tool("delete_vba_module",
+    "Delete a VBA module by name.",
+    module_name={"type": "string", "description": "Module name to delete"},
+)
+async def handle_delete_vba_module(acam, module_name, **kw):
+    return acam.delete_vba_module(module_name)
+
 @mcp_tool("run_vba_line",
     "Execute a single line of VBA code immediately. Creates and runs a temp module.",
     code_line={"type": "string", "description": "A single VBA statement or expression"},
