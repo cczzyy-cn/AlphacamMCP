@@ -39,12 +39,10 @@ Private Const OFN_HIDEREADONLY As Long = &H4
 Option Explicit
 
 ' ==============================================================================
-' 自动化生产排版 — 参数窗体
+' 自动化生产排版 — CSV 文件选择窗体
 ' ==============================================================================
 ' 用法: 插入 → 用户窗体 → 名称改 frmAutoNest → 添加控件 → 粘贴本代码
-' 控件: lblCSV/txtCSV/cmdBrowse, lblMaterial/cmbMaterial,
-'       lblCustomer/txtCustomer, chkRunNest, cmdOK/cmdCancel
-' 由 modAutoImportNest.AutoImportNestWithParams 处理导入+排版
+' 控件: lblCSV, txtCSV, cmdBrowse, cmdOK, cmdCancel
 ' ==============================================================================
 
 Private Sub AddMinButton(frm As Object)
@@ -63,34 +61,8 @@ Private Sub UserForm_Activate(): AddMinButton Me: End Sub
 
 Private Sub UserForm_Initialize()
     Me.Caption = "自动化生产排版"
-    Dim sLast As String
-    Dim rst As Object
-    Dim conn As Object
-    
-    ' CSV 路径（记忆）
-    sLast = GetSetting("CCC", "AutoImportNest", "LastPath", "C:\Users\C\Desktop\2026优化表\7-10中林SPC婷兰灰.csv")
-    txtCSV = sLast
-    
-    ' 客户名（记忆）
-    txtCustomer = GetSetting("CCC", "AutoImportNest", "Customer", "自动化生产")
-    
-    ' 材料列表（从 AD_MATERIALS 加载）
-    cmbMaterial.Clear
-    cmbMaterial.AddItem ""          ' 空 = 使用默认"开料机3000mm"
-    On Error Resume Next
-    Set conn = CreateObject("ADODB.Connection")
-    conn.Open "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=D:\2016\LICOMDAT\CDM Data\CDM.mdb"
-    Set rst = conn.Execute("SELECT Name FROM AD_MATERIALS ORDER BY Name")
-    Do While Not rst.EOF
-        cmbMaterial.AddItem rst.Fields("Name")
-        rst.MoveNext
-    Loop
-    rst.Close
-    conn.Close
-    On Error GoTo 0
-    
-    ' 材料记忆
-    cmbMaterial = GetSetting("CCC", "AutoImportNest", "Material", "")
+    ' 读取记忆的 CSV 路径
+    txtCSV = GetSetting("CCC", "AutoImportNest", "LastPath", "C:\Users\C\Desktop\2026优化表\7-10中林SPC婷兰灰.csv")
 End Sub
 
 ' ==============================================================================
@@ -130,16 +102,11 @@ Private Sub cmdOK_Click()
     
     ' 保存记忆
     SaveSetting "CCC", "AutoImportNest", "LastPath", Trim$(txtCSV)
-    SaveSetting "CCC", "AutoImportNest", "Customer", Trim$(txtCustomer)
-    SaveSetting "CCC", "AutoImportNest", "Material", Trim$(cmbMaterial)
     
     ' 调用模块带参入口（导入 + 排版）
     Me.Hide
     modAutoImportNest.AutoImportNestWithParams _
-        Trim$(txtCSV), _
-        Trim$(txtCustomer), _
-        Trim$(cmbMaterial), _
-        CBool(chkRunNest.Value)
+        Trim$(txtCSV), "自动化生产", "", True
     Unload Me
 End Sub
 

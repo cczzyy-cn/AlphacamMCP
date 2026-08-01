@@ -1,142 +1,37 @@
-# frmAutoNest çª—ä½“ â€” æ‰‹åŠ¨åˆ›å»ºæŒ‡å—
+# frmAutoNest ´°Ìå ¡ª ÊÖ¶¯´´½¨Ö¸ÄÏ£¨CSV ÎÄ¼şÑ¡Ôñ°æ£©
 
-> AlphaCAM VBA **ä¸æ”¯æŒå¯¼å…¥ .frm è®¾è®¡æ–‡ä»¶**ï¼ˆVBE æŠ¥"ä¸æ”¯æŒçª—ä½“ç±»"ï¼‰ã€‚
-> è¯·æŒ‰ä»¥ä¸‹æ­¥éª¤æ‰‹åŠ¨åˆ›å»ºçª—ä½“ï¼Œç„¶åç²˜è´´ä»£ç ã€‚
+> AlphaCAM VBA **²»Ö§³Öµ¼Èë .frm Éè¼ÆÎÄ¼ş**£¬ĞèÊÖ¶¯´´½¨´°Ìå¡£
+> ²ÎÕÕ `CCC¹¦ÄÜ/frmToolOffset.txt` µÄ·½Ê½±£´æ´úÂë¡£
 
-## åˆ›å»ºæ­¥éª¤
+## ´´½¨²½Öè
 
-1. æ‰“å¼€ AlphaCAM VBA ç¼–è¾‘å™¨
-2. èœå•ï¼š**æ’å…¥ â†’ ç”¨æˆ·çª—ä½“(UserForm)** â†’ ç”Ÿæˆ `UserForm1`
-3. åœ¨å±æ€§çª—å£å°† `(åç§°)` æ”¹ä¸º **frmAutoNest**ï¼Œ`Caption` æ”¹ä¸º **è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ**
-4. ä»å·¥å…·ç®±æ·»åŠ ä»¥ä¸‹æ§ä»¶ï¼ˆ**åç§°å¿…é¡»å®Œå…¨ä¸€è‡´**ï¼‰ï¼š
+1. ´ò¿ª AlphaCAM VBA ±à¼­Æ÷
+2. ²Ëµ¥£º**²åÈë ¡ú ÓÃ»§´°Ìå(UserForm)** ¡ú Éú³É `UserForm1`
+3. ÊôĞÔ´°¿Ú£º`(Ãû³Æ)` = **frmAutoNest**£¬`Caption` = **×Ô¶¯»¯Éú²úÅÅ°æ**
+4. ´Ó¹¤¾ßÏäÌí¼Ó **5 ¸ö¿Ø¼ş**£¨Ãû³Æ±ØĞëÍêÈ«Ò»ÖÂ£©£º
 
-| æ§ä»¶ | åç§° | ç±»å‹ | è¯´æ˜ |
+| ¿Ø¼ş | Ãû³Æ | ±êÌâ | ËµÃ÷ |
 |------|------|------|------|
-| Label | lblCSV | æ ‡ç­¾ | "CSV æ–‡ä»¶:" |
-| TextBox | txtCSV | æ–‡æœ¬æ¡† | CSV è·¯å¾„ |
-| CommandButton | cmdBrowse | æŒ‰é’® | "..." æµè§ˆ |
-| Label | lblMaterial | æ ‡ç­¾ | "ææ–™:" |
-| ComboBox | cmbMaterial | ç»„åˆæ¡† | ææ–™ä¸‹æ‹‰ |
-| Label | lblCustomer | æ ‡ç­¾ | "å®¢æˆ·å:" |
-| TextBox | txtCustomer | æ–‡æœ¬æ¡† | å®¢æˆ·å |
-| CheckBox | chkRunNest | å¤é€‰æ¡† | "å¯¼å…¥åæ‰§è¡Œæ‰¹é‡ç”Ÿäº§+æ’ç‰ˆ"ï¼ˆå‹¾é€‰ï¼‰ |
-| CommandButton | cmdOK | æŒ‰é’® | "ç¡®å®š(&O)" |
-| CommandButton | cmdCancel | æŒ‰é’® | "å–æ¶ˆ(&C)" |
+| Label | `lblCSV` | "CSV ÎÄ¼ş:" | ±êÇ© |
+| TextBox | `txtCSV` | ¡ª | CSV Â·¾¶ |
+| CommandButton | `cmdBrowse` | "..." | ä¯ÀÀ£¨ÎÄ¼ş¶Ô»°¿ò£© |
+| CommandButton | `cmdOK` | "È·¶¨(&O)" | Default=True |
+| CommandButton | `cmdCancel` | "È¡Ïû(&C)" | Cancel=True |
 
-5. åŒå‡»çª—ä½“ç©ºç™½å¤„æ‰“å¼€ä»£ç çª—å£ï¼Œ**å…¨é€‰åˆ é™¤é»˜è®¤ä»£ç **ï¼Œç²˜è´´ [`frmAutoNest.txt`](frmAutoNest.txt) ä¸­çš„å…¨éƒ¨ä»£ç ï¼ˆä¸ CCCåŠŸèƒ½/frmToolOffset.txt åŒæ ¼å¼ï¼‰
-6. ç¼–è¯‘ä¿å­˜ï¼ˆCtrl+Sï¼‰
+5. Ë«»÷´°Ìå¿Õ°×´¦ ¡ú ´úÂë´°¿Ú ¡ú È«Ñ¡É¾³ıÄ¬ÈÏ´úÂë ¡ú Õ³Ìù [`frmAutoNest.txt`](frmAutoNest.txt) È«²¿´úÂë
+6. ±àÒë±£´æ£¨Ctrl+S£©
 
-## çª—ä½“ä»£ç ï¼ˆå…¨éƒ¨ï¼‰
+## ²¼¾ÖÊ¾Òâ
 
-```vba
-Option Explicit
-
-' ==============================================================================
-' è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ â€” å‚æ•°çª—ä½“
-' ==============================================================================
-' æä¾›å‚æ•°è¾“å…¥ï¼Œæ–¹ä¾¿åæœŸæ·»åŠ å¢å¼ºåŠŸèƒ½ï¼ˆææ–™/å®¢æˆ·/é€‰é¡¹ç­‰ï¼‰
-' ç”± modAutoImportNest.AutoImportNest è°ƒç”¨
-' ==============================================================================
-
-' è¾“å‡ºå‚æ•°ï¼ˆç”±è°ƒç”¨æ¨¡å—è¯»å–ï¼‰
-Public CSVPath As String
-Public CustomerName As String
-Public MaterialName As String
-Public RunNest As Boolean
-Public Cancelled As Boolean
-
-' é»˜è®¤å€¼
-Private Const DEF_FOLDER As String = "C:\Users\C\Desktop\2026ä¼˜åŒ–è¡¨\"
-Private Const DEF_CUSTOMER As String = "è‡ªåŠ¨åŒ–ç”Ÿäº§"
-
-
-' ==============================================================================
-' çª—ä½“åˆå§‹åŒ– â€” åŠ è½½è®°å¿†å€¼
-' ==============================================================================
-Private Sub UserForm_Initialize()
-    Dim sLast As String
-    Dim rst As Object
-    Dim conn As Object
-    
-    Cancelled = True
-    
-    ' CSV è·¯å¾„ï¼ˆè®°å¿†ï¼‰
-    sLast = GetSetting("CCC", "AutoImportNest", "LastPath", DEF_FOLDER & "7-10ä¸­æ—SPCå©·å…°ç°.csv")
-    txtCSV = sLast
-    
-    ' å®¢æˆ·åï¼ˆè®°å¿†ï¼‰
-    txtCustomer = GetSetting("CCC", "AutoImportNest", "Customer", DEF_CUSTOMER)
-    
-    ' ææ–™åˆ—è¡¨ï¼ˆä» AD_MATERIALS åŠ è½½ï¼‰
-    cmbMaterial.Clear
-    cmbMaterial.AddItem ""          ' ç©º = ä½¿ç”¨é»˜è®¤"å¼€æ–™æœº3000mm"
-    On Error Resume Next
-    Set conn = CreateObject("ADODB.Connection")
-    conn.Open "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=D:\2016\LICOMDAT\CDM Data\CDM.mdb"
-    Set rst = conn.Execute("SELECT Name FROM AD_MATERIALS ORDER BY Name")
-    Do While Not rst.EOF
-        cmbMaterial.AddItem rst.Fields("Name")
-        rst.MoveNext
-    Loop
-    rst.Close
-    conn.Close
-    On Error GoTo 0
-    
-    ' ææ–™è®°å¿†
-    cmbMaterial = GetSetting("CCC", "AutoImportNest", "Material", "")
-End Sub
-
-
-' ==============================================================================
-' æµè§ˆæŒ‰é’® â€” é€‰æ‹© CSV æ–‡ä»¶
-' ==============================================================================
-Private Sub cmdBrowse_Click()
-    Dim sInput As String
-    sInput = InputBox("è¯·è¾“å…¥ CSV æ–‡ä»¶å®Œæ•´è·¯å¾„:", "é€‰æ‹© CSV", txtCSV)
-    If sInput <> "" Then txtCSV = sInput
-End Sub
-
-
-' ==============================================================================
-' ç¡®å®šæŒ‰é’®
-' ==============================================================================
-Private Sub cmdOK_Click()
-    If Trim$(txtCSV) = "" Then
-        MsgBox "è¯·é€‰æ‹© CSV æ–‡ä»¶", vbExclamation, "è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ"
-        Exit Sub
-    End If
-    If Dir(Trim$(txtCSV)) = "" Then
-        MsgBox "æ–‡ä»¶ä¸å­˜åœ¨:" & vbCrLf & Trim$(txtCSV), vbExclamation, "è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ"
-        Exit Sub
-    End If
-    
-    ' ä¿å­˜è®°å¿†
-    SaveSetting "CCC", "AutoImportNest", "LastPath", Trim$(txtCSV)
-    SaveSetting "CCC", "AutoImportNest", "Customer", Trim$(txtCustomer)
-    SaveSetting "CCC", "AutoImportNest", "Material", Trim$(cmbMaterial)
-    
-    ' è°ƒç”¨æ¨¡å—å¸¦å‚å…¥å£ï¼ˆçª—ä½“ä¸ç›´æ¥å¼•ç”¨æ¨¡å—å†…éƒ¨ï¼Œç”±æ¨¡å—å®Œæˆå¯¼å…¥+æ’ç‰ˆï¼‰
-    Me.Hide
-    modAutoImportNest.AutoImportNestWithParams _
-        Trim$(txtCSV), _
-        Trim$(txtCustomer), _
-        Trim$(cmbMaterial), _
-        CBool(chkRunNest.Value)
-    Unload Me
-End Sub
-
-
-' ==============================================================================
-' å–æ¶ˆæŒ‰é’®
-' ==============================================================================
-Private Sub cmdCancel_Click()
-    Cancelled = True
-    Unload Me
-End Sub
+```
+©°©¤ ×Ô¶¯»¯Éú²úÅÅ°æ ©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©´
+©¦  CSV ÎÄ¼ş: [txtCSV      ] [...] ©¦
+©¦            [cmdOK] [cmdCancel]  ©¦
+©¸©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¼
 ```
 
-## è¯´æ˜
+## ¹¦ÄÜ
 
-- åˆ›å»ºåä¿å­˜ï¼Œ`modAutoImportNest` è¿è¡Œæ—¶ä¼š**è‡ªåŠ¨æ£€æµ‹**å¹¶ä½¿ç”¨è¯¥çª—ä½“
-- æœªåˆ›å»ºçª—ä½“æ—¶è‡ªåŠ¨å›é€€ InputBoxï¼ˆç°æœ‰åŠŸèƒ½ä¸å—å½±å“ï¼‰
-- åæœŸå¢å¼ºï¼šåœ¨çª—ä½“ä¸­åŠ æ§ä»¶ï¼Œåœ¨ `cmdOK_Click` ä¸­èµ‹å€¼ç»™è¾“å‡ºå±æ€§å³å¯
+- µã»÷"..." ¡ú ÏµÍ³ÎÄ¼şÑ¡Ôñ¶Ô»°¿òÑ¡ CSV
+- È·¶¨ ¡ú µ÷ `modAutoImportNest.AutoImportNestWithParams`£¨µ¼Èë + ÅÅ°æ£©
+- ¼ÇÒäÉÏ´ÎÂ·¾¶£¨×¢²á±í£©
