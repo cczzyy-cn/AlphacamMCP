@@ -190,6 +190,7 @@ Private Function SplitCSVLine(ByVal sLine As String) As Variant
             Else
                 f = f & c
             End If
+        End If
     Next
     v(idx) = f
     ReDim Preserve v(0 To idx)
