@@ -15,6 +15,7 @@ Option Explicit
 ' 主入口（CCC 功能菜单触发）
 ' ============================================================================
 Public Sub m_AutoImportNest()
+    MsgBox "AutoImportNest 已调用", vbInformation
     '
     Dim sCSVPath As String
     Dim sJobName As String
