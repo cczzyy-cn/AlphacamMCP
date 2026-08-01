@@ -204,37 +204,31 @@ End Function
 ' 文件选择对话框
 ' ============================================================================
 Private Function ShowOpenFile(ByVal sDir As String, ByVal sFilter As String) As String
-    Dim sFolder As String
-    Dim sName As String
-    Dim sFull As String
+    Dim sLast As String
+    Dim sInput As String
     
-    ' 读取记忆的目录和文件名
-    sFolder = GetSetting("CCC", "AutoImportNest", "LastFolder", sDir)
-    sName = GetSetting("CCC", "AutoImportNest", "LastFile", "")
+    ' 读取记忆的完整路径
+    sLast = GetSetting("CCC", "AutoImportNest", "LastPath", sDir & "\7-10中林SPC婷兰灰.csv")
     
-    ' 目录输入框（带记忆）
-    sFolder = InputBox("请输入目录:" & vbCrLf & _
-                       "示例: C:\Users\C\Desktop\2026优化表", _
-                       "自动化生产排版 - 目录", sFolder)
-    If sFolder = "" Then Exit Function
-    If Right$(sFolder, 1) <> "\" Then sFolder = sFolder & "\"
+    ' 单个输入框：完整路径（带记忆）
+    sInput = InputBox("请输入 CSV 文件完整路径:" & vbCrLf & vbCrLf & _
+                      "可以只输入文件名（使用记忆的目录）:" & vbCrLf & _
+                      "  " & sDir & vbCrLf & vbCrLf & _
+                      "或输入完整路径:", _
+                      "自动化生产排版", sLast)
+    If sInput = "" Then Exit Function
     
-    ' 文件名输入框（带记忆）
-    sName = InputBox("请输入 CSV 文件名:" & vbCrLf & _
-                     "目录: " & sFolder, _
-                     "自动化生产排版 - 文件", sName)
-    If sName = "" Then Exit Function
-    
-    ' 拼接完整路径
-    If InStr(sName, "\") = 0 And InStr(sName, "/") = 0 Then
-        sFull = sFolder & sName
-    Else
-        sFull = sName
+    ' 如果只输入文件名，拼接记忆目录
+    If InStr(sInput, "\") = 0 And InStr(sInput, "/") = 0 Then
+        ' 从记忆路径提取目录
+        Dim sFolder As String
+        sFolder = Left$(sLast, InStrRev(sLast, "\"))
+        If sFolder = "" Then sFolder = sDir & "\"
+        sInput = sFolder & sInput
     End If
     
     ' 保存记忆
-    SaveSetting "CCC", "AutoImportNest", "LastFolder", sFolder
-    SaveSetting "CCC", "AutoImportNest", "LastFile", sName
+    SaveSetting "CCC", "AutoImportNest", "LastPath", sInput
     
-    ShowOpenFile = sFull
+    ShowOpenFile = sInput
 End Function
