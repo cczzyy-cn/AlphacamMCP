@@ -1014,7 +1014,6 @@ class AlphaCAM:
         Retries briefly to allow the VBE object model to become ready
         (e.g. right after AlphaCAM start or when the VBA IDE is busy).
         """
-        self._dismiss_popups()  # clear any blocking dialog before touching VBE
         import time as _time
         last_proj = None
         for _attempt in range(3):
