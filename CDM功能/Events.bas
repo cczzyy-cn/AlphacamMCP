@@ -2853,3 +2853,7 @@ On Error Resume Next
 
 End Sub
 
+' menu wrapper for AutoImportNest
+Public Function m_AutoImportNest()
+    AutoImportNest
+End Function
