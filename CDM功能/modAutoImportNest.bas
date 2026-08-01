@@ -106,23 +106,23 @@ Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) A
         
         ' 确保门型和材料存在，获取门型实际 StyleNumber
         Dim lngStyleNum As Long
-        Dim sUserStyle As String
-        Dim sUserVar As String
-        Dim sUserDesc As String
-        lngStyleNum = glng_EnsureStyle(sTp, sUserStyle, sUserVar, sUserDesc)
+        lngStyleNum = glng_EnsureStyle(sTp)
         glng_EnsureMaterial sMat
         
-        ' 插入明细（使用门型实际 StyleNumber，930 时附带用户样式参数）
+        ' 插入明细（INSERT...SELECT 从 AD_DOOR_TYPES 复制用户样式参数含 UserValue_0~6）
         gdb_CDM.Execute "INSERT INTO AD_ORDER_DETAILS " & _
             "(OrderID,TypeName,StyleName,StyleNumber,Quantity,Width,Length," & _
             "Material,ProductionComment,CSV_CustomerName,CSV_OrderNumber,CSV_ItemNumber," & _
-            "CustomField1,CustomField2,UserVariableString,UserDescriptionString) VALUES (" & _
-            lngOrderID & ",'" & gs_FixSQL(sTp) & "','" & gs_FixSQL(sTp) & "'," & lngStyleNum & "," & _
+            "CustomField1,CustomField2,UserVariableString,UserDescriptionString," & _
+            "UserValue_0,UserValue_1,UserValue_2,UserValue_3,UserValue_4,UserValue_5,UserValue_6) " & _
+            "SELECT " & lngOrderID & ",'" & gs_FixSQL(sTp) & "','" & gs_FixSQL(sTp) & "'," & lngStyleNum & "," & _
             q & "," & w & "," & h & ",'" & gs_FixSQL(sMat) & "'," & _
             "'" & gs_FixSQL(sRm) & "','" & gs_FixSQL(sCu) & "'," & _
             "'" & gs_FixSQL(sRf) & "','" & gs_FixSQL(sRf) & "'," & _
             "'" & gs_FixSQL(sC1) & "','" & gs_FixSQL(sC2) & "'," & _
-            "'" & gs_FixSQL(sUserVar) & "','" & gs_FixSQL(sUserDesc) & "')"
+            "dt.UserVariableString,dt.UserDescriptionString," & _
+            "dt.UserValue_0,dt.UserValue_1,dt.UserValue_2,dt.UserValue_3,dt.UserValue_4,dt.UserValue_5,dt.UserValue_6 " & _
+            "FROM AD_DOOR_TYPES dt WHERE dt.TypeID='" & gs_FixSQL(sTp) & "'"
         lngOK = lngOK + 1
 NextLine:
     Loop
@@ -144,14 +144,14 @@ Private Function glng_CreateOrder(ByVal sName As String, ByVal lngCustID As Long
     If lngRet > 0 Then Set rst = gdb_CDM.Execute("SELECT @@IDENTITY AS NewID"): glng_CreateOrder = rst.Fields("NewID"): rst.Close
 End Function
 
-Private Function glng_EnsureStyle(ByVal sName As String, ByRef sUserStyle As String, ByRef sUserVar As String, ByRef sUserDesc As String) As Long
+Private Function glng_EnsureStyle(ByVal sName As String) As Long
     Dim rst As ADODB.Recordset, lngRet As Long
     If sName = "" Then
         glng_EnsureStyle = 900
         Exit Function
     End If
     Set rst = New ADODB.Recordset
-    rst.Open "SELECT * FROM AD_DOOR_TYPES WHERE TypeID='" & gs_FixSQL(sName) & "'", gdb_CDM, adOpenForwardOnly, adLockReadOnly
+    rst.Open "SELECT TypeID,UserStyle FROM AD_DOOR_TYPES WHERE TypeID='" & gs_FixSQL(sName) & "'", gdb_CDM, adOpenForwardOnly, adLockReadOnly
     If rst.BOF And rst.EOF Then
         ' 新门型：创建为 900 标准镶板门
         rst.Close
@@ -159,13 +159,8 @@ Private Function glng_EnsureStyle(ByVal sName As String, ByRef sUserStyle As Str
         glng_EnsureStyle = 900
     Else
         ' 已存在门型：使用其 UserStyle 判断 StyleNumber
-        Dim bUserStyle As Boolean
-        bUserStyle = CBool(rst.Fields("UserStyle"))
-        If bUserStyle Then
+        If CBool(rst.Fields("UserStyle")) Then
             glng_EnsureStyle = 930
-            sUserStyle = gvar_CheckNull(rst.Fields("UserStyleName"))
-            sUserVar = gvar_CheckNull(rst.Fields("UserVariableString"))
-            sUserDesc = gvar_CheckNull(rst.Fields("UserDescriptionString"))
         Else
             glng_EnsureStyle = 900
         End If
