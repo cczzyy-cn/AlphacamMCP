@@ -118,14 +118,17 @@ Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) A
         gdb_CDM.Execute "INSERT INTO AD_ORDER_DETAILS " & _
             "(OrderID,TypeName,StyleName,StyleNumber,Quantity,Width,Length," & _
             "Material,ProductionComment,CSV_CustomerName,CSV_OrderNumber,CSV_ItemNumber," & _
-            "CustomField1,CustomField2,ComponentGrouping,UserVariableString,UserDescriptionString," & _
+            "CustomField1,CustomField2,ComponentGrouping,CornerRadius,RotationMethod,RotationAngle," & _
+            "IgnoreOuterGeometry,ByPassNest,UserVariableString,UserDescriptionString," & _
             "UserValue_0,UserValue_1,UserValue_2,UserValue_3,UserValue_4,UserValue_5,UserValue_6) " & _
             "SELECT " & lngOrderID & ",'" & gs_FixSQL(sTp) & "','" & gs_FixSQL(sUsrStyle) & "'," & lngStyleNum & "," & _
             q & "," & w & "," & h & ",'" & gs_FixSQL(sMat) & "'," & _
             "'" & gs_FixSQL(sRm) & "','" & gs_FixSQL(sCu) & "'," & _
             "'" & gs_FixSQL(sRf) & "','" & gs_FixSQL(sGrp) & "'," & _
             "'" & gs_FixSQL(sC1) & "','" & gs_FixSQL(sC2) & "'," & _
-            "" & Val(sGrp) & "," & _
+            Val(sGrp) & "," & _
+            "dt.CornerRadius,dt.RotationMethod,dt.RotationAngle," & _
+            "dt.IgnoreOuterGeometry,dt.ByPassNest," & _
             "dt.UserVariableString,dt.UserDescriptionString," & _
             "dt.UserValue_0,dt.UserValue_1,dt.UserValue_2,dt.UserValue_3,dt.UserValue_4,dt.UserValue_5,dt.UserValue_6 " & _
             "FROM AD_DOOR_TYPES dt WHERE dt.TypeID='" & gs_FixSQL(sTp) & "'"
