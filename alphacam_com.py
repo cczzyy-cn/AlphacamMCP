@@ -249,6 +249,16 @@ class AlphaCAM:
             if self._visible != self._orig_visible:
                 self._app.Visible = self._visible
 
+            # ── 实例可用性验证 + 窗口激活 ────────────────────────────────
+            # 若 COM 附加到非前台/最小化/旧实例，VBE 访问可能失败。
+            # 用户已授权：连接后若窗口不可见则激活并还原它（不动大小/位置）。
+            if not self._validate_instance():
+                logger.warning(
+                    "Connected instance validation failed; attempting window activate"
+                )
+                self._activate_window()
+                self._validate_instance()
+
             self._set_state(ConnectionState.CONNECTED)
         except Exception as exc:
             self._app = None
@@ -256,6 +266,69 @@ class AlphaCAM:
             raise AlphaCAMNotRunning(
                 f"Cannot connect to AlphaCAM ({self._prog_id}): {exc}"
             ) from exc
+
+    def _validate_instance(self) -> bool:
+        """Validate the connected instance is usable (name readable, VBE accessible)."""
+        try:
+            name = self._safe_get(self._app, "Name", "")
+            if not name:
+                return False
+            # Probe VBE access (read-only, no modification)
+            try:
+                vbe = self._app.VBE
+                proj = vbe.ActiveVBProject
+                if proj is None:
+                    _ = vbe.VBProjects.Count
+            except Exception:
+                logger.warning("VBE object model not accessible on connected instance")
+            return True
+        except Exception:
+            return False
+
+    def _activate_window(self) -> bool:
+        """Bring the AlphaCAM main window to the foreground and restore it.
+
+        User-authorized: only activates/restores the window; never changes
+        its size or position (Width/Height/Left/Top untouched).
+        """
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+
+            include = ("3d 5-", "alphacam", "alpha cam")
+            exclude = (
+                "visual studio code", "code -", "readme", "markdown", ".md",
+                "chrome", "edge", "firefox", "explorer", "terminal",
+                "cmd.exe", "powershell", "notepad",
+            )
+
+            found = []
+
+            @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+            def enum_cb(hwnd, _lparam):
+                length = user32.GetWindowTextLengthW(hwnd)
+                if length > 0:
+                    buf = ctypes.create_unicode_buffer(length + 1)
+                    user32.GetWindowTextW(hwnd, buf, length + 1)
+                    low = buf.value.lower()
+                    if user32.IsWindowVisible(hwnd) and \
+                       any(k in low for k in include) and \
+                       not any(e in low for e in exclude):
+                        found.append((hwnd, buf.value))
+                return True
+
+            user32.EnumWindows(enum_cb, 0)
+            if not found:
+                logger.warning("AlphaCAM main window not found for activation")
+                return False
+            hwnd = found[0][0]
+            user32.ShowWindow(hwnd, 1)  # SW_NORMAL (restore)
+            user32.SetForegroundWindow(hwnd)
+            logger.info("AlphaCAM window activated (hwnd=%s)", hwnd)
+            return True
+        except Exception as exc:
+            logger.warning("Window activation failed: %s", exc)
+            return False
 
     def _reconnect(self) -> bool:
         """Attempt to reconnect with exponential backoff.
@@ -936,10 +1009,18 @@ class AlphaCAM:
     # ---- VBA module management -----------------------------------------
 
     def _get_vba_project(self) -> Any:
-        """Get the target VBA project: ActiveVBProject if available, else CDM project, else first project."""
-        vbe = self._app.VBE
-        proj = vbe.ActiveVBProject
-        if proj is None:
+        """Get the target VBA project: ActiveVBProject if available, else CDM project, else first project.
+
+        Retries briefly to allow the VBE object model to become ready
+        (e.g. right after AlphaCAM start or when the VBA IDE is busy).
+        """
+        import time as _time
+        last_proj = None
+        for _attempt in range(3):
+            vbe = self._app.VBE
+            proj = vbe.ActiveVBProject
+            if proj is not None:
+                return proj
             # Try to find CDM project by name
             try:
                 for p in vbe.VBProjects:
@@ -953,7 +1034,9 @@ class AlphaCAM:
                     return vbe.VBProjects(1)
             except Exception:
                 pass
-        return proj
+            last_proj = proj
+            _time.sleep(0.5)
+        return last_proj
 
     def list_vba_modules(self) -> list[dict]:
         """List all VBA modules (standard modules, forms, classes) in the active project."""
