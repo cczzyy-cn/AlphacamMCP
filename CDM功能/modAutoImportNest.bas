@@ -123,7 +123,7 @@ Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) A
             "SELECT " & lngOrderID & ",'" & gs_FixSQL(sTp) & "','" & gs_FixSQL(sUsrStyle) & "'," & lngStyleNum & "," & _
             q & "," & w & "," & h & ",'" & gs_FixSQL(sMat) & "'," & _
             "'" & gs_FixSQL(sRm) & "','" & gs_FixSQL(sCu) & "'," & _
-            "'" & gs_FixSQL(sRf) & "','" & gs_FixSQL(sRf) & "'," & _
+            "'" & gs_FixSQL(sRf) & "','" & gs_FixSQL(sGrp) & "'," & _
             "'" & gs_FixSQL(sC1) & "','" & gs_FixSQL(sC2) & "'," & _
             "" & Val(sGrp) & "," & _
             "dt.UserVariableString,dt.UserDescriptionString," & _
