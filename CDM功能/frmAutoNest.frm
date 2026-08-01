@@ -1,13 +1,13 @@
 VERSION 5.00
 Begin VB.UserForm frmAutoNest
-   Caption         =   "è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ"
+   Caption         =   "×Ô¶¯»¯Éú²úÅÅ°æ"
    ClientHeight    =   3390
    ClientLeft      =   120
    ClientTop       =   465
    ClientWidth     =   5700
    StartUpPosition =   1  'CenterOwner
    Begin VB.CommandButton cmdCancel
-      Caption         =   "å–æ¶ˆ(&C)"
+      Caption         =   "È¡Ïû(&C)"
       Height          =   375
       Left            =   3960
       TabIndex        =   8
@@ -15,7 +15,7 @@ Begin VB.UserForm frmAutoNest
       Width           =   1215
    End
    Begin VB.CommandButton cmdOK
-      Caption         =   "ç¡®å®š(&O)"
+      Caption         =   "È·¶¨(&O)"
       Default         =   -1  'True
       Height          =   375
       Left            =   2640
@@ -24,7 +24,7 @@ Begin VB.UserForm frmAutoNest
       Width           =   1215
    End
    Begin VB.CheckBox chkRunNest
-      Caption         =   "å¯¼å…¥åæ‰§è¡Œæ‰¹é‡ç”Ÿäº§+æ’ç‰ˆ"
+      Caption         =   "µ¼ÈëºóÖ´ĞĞÅúÁ¿Éú²ú+ÅÅ°æ"
       Height          =   255
       Left            =   360
       TabIndex        =   6
@@ -62,7 +62,7 @@ Begin VB.UserForm frmAutoNest
       Width           =   315
    End
    Begin VB.Label lblCustomer
-      Caption         =   "å®¢æˆ·å:"
+      Caption         =   "¿Í»§Ãû:"
       Height          =   255
       Left            =   360
       TabIndex        =   5
@@ -70,7 +70,7 @@ Begin VB.UserForm frmAutoNest
       Width           =   1095
    End
    Begin VB.Label lblMaterial
-      Caption         =   "ææ–™:"
+      Caption         =   "²ÄÁÏ:"
       Height          =   255
       Left            =   360
       TabIndex        =   3
@@ -78,7 +78,7 @@ Begin VB.UserForm frmAutoNest
       Width           =   1095
    End
    Begin VB.Label lblCSV
-      Caption         =   "CSV æ–‡ä»¶:"
+      Caption         =   "CSV ÎÄ¼ş:"
       Height          =   255
       Left            =   360
       TabIndex        =   9
@@ -95,26 +95,26 @@ Attribute VB_Exposed = False
 Option Explicit
 
 ' ==============================================================================
-' è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ â€” å‚æ•°çª—ä½“
+' ×Ô¶¯»¯Éú²úÅÅ°æ ¡ª ²ÎÊı´°Ìå
 ' ==============================================================================
-' æä¾›å‚æ•°è¾“å…¥ï¼Œæ–¹ä¾¿åæœŸæ·»åŠ å¢å¼ºåŠŸèƒ½ï¼ˆææ–™/å®¢æˆ·/é€‰é¡¹ç­‰ï¼‰
-' ç”± modAutoImportNest.AutoImportNest è°ƒç”¨
+' Ìá¹©²ÎÊıÊäÈë£¬·½±ãºóÆÚÌí¼ÓÔöÇ¿¹¦ÄÜ£¨²ÄÁÏ/¿Í»§/Ñ¡ÏîµÈ£©
+' ÓÉ modAutoImportNest.AutoImportNest µ÷ÓÃ
 ' ==============================================================================
 
-' è¾“å‡ºå‚æ•°ï¼ˆç”±è°ƒç”¨æ¨¡å—è¯»å–ï¼‰
+' Êä³ö²ÎÊı£¨ÓÉµ÷ÓÃÄ£¿é¶ÁÈ¡£©
 Public CSVPath As String
 Public CustomerName As String
 Public MaterialName As String
 Public RunNest As Boolean
 Public Cancelled As Boolean
 
-' é»˜è®¤å€¼
-Private Const DEF_FOLDER As String = "C:\Users\C\Desktop\2026ä¼˜åŒ–è¡¨\"
-Private Const DEF_CUSTOMER As String = "è‡ªåŠ¨åŒ–ç”Ÿäº§"
+' Ä¬ÈÏÖµ
+Private Const DEF_FOLDER As String = "C:\Users\C\Desktop\2026ÓÅ»¯±í\"
+Private Const DEF_CUSTOMER As String = "×Ô¶¯»¯Éú²ú"
 
 
 ' ==============================================================================
-' çª—ä½“åˆå§‹åŒ– â€” åŠ è½½è®°å¿†å€¼
+' ´°Ìå³õÊ¼»¯ ¡ª ¼ÓÔØ¼ÇÒäÖµ
 ' ==============================================================================
 Private Sub UserForm_Initialize()
     Dim sLast As String
@@ -123,16 +123,16 @@ Private Sub UserForm_Initialize()
     
     Cancelled = True
     
-    ' CSV è·¯å¾„ï¼ˆè®°å¿†ï¼‰
-    sLast = GetSetting("CCC", "AutoImportNest", "LastPath", DEF_FOLDER & "7-10ä¸­æ—SPCå©·å…°ç°.csv")
+    ' CSV Â·¾¶£¨¼ÇÒä£©
+    sLast = GetSetting("CCC", "AutoImportNest", "LastPath", DEF_FOLDER & "7-10ÖĞÁÖSPCæÃÀ¼»Ò.csv")
     txtCSV = sLast
     
-    ' å®¢æˆ·åï¼ˆè®°å¿†ï¼‰
+    ' ¿Í»§Ãû£¨¼ÇÒä£©
     txtCustomer = GetSetting("CCC", "AutoImportNest", "Customer", DEF_CUSTOMER)
     
-    ' ææ–™åˆ—è¡¨ï¼ˆä» AD_MATERIALS åŠ è½½ï¼Œæ–¹ä¾¿æ‰©å±•ï¼‰
+    ' ²ÄÁÏÁĞ±í£¨´Ó AD_MATERIALS ¼ÓÔØ£¬·½±ãÀ©Õ¹£©
     cmbMaterial.Clear
-    cmbMaterial.AddItem ""          ' ç©º = ä½¿ç”¨é»˜è®¤"å¼€æ–™æœº3000mm"
+    cmbMaterial.AddItem ""          ' ¿Õ = Ê¹ÓÃÄ¬ÈÏ"¿ªÁÏ»ú3000mm"
     On Error Resume Next
     Set conn = CreateObject("ADODB.Connection")
     conn.Open "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=D:\2016\LICOMDAT\CDM Data\CDM.mdb"
@@ -145,36 +145,36 @@ Private Sub UserForm_Initialize()
     conn.Close
     On Error GoTo 0
     
-    ' ææ–™è®°å¿†
+    ' ²ÄÁÏ¼ÇÒä
     cmbMaterial = GetSetting("CCC", "AutoImportNest", "Material", "")
 End Sub
 
 
 ' ==============================================================================
-' æµè§ˆæŒ‰é’® â€” é€‰æ‹© CSV æ–‡ä»¶ï¼ˆé¢„ç•™ï¼ŒåæœŸå¯æ¥ CFileDialogï¼‰
+' ä¯ÀÀ°´Å¥ ¡ª Ñ¡Ôñ CSV ÎÄ¼ş£¨Ô¤Áô£¬ºóÆÚ¿É½Ó CFileDialog£©
 ' ==============================================================================
 Private Sub cmdBrowse_Click()
-    ' ç®€å•è¾“å…¥æ¡†é€‰æ‹©ï¼›åæœŸå¯æ›¿æ¢ä¸º GetOpenFileName API
+    ' ¼òµ¥ÊäÈë¿òÑ¡Ôñ£»ºóÆÚ¿ÉÌæ»»Îª GetOpenFileName API
     Dim sInput As String
-    sInput = InputBox("è¯·è¾“å…¥ CSV æ–‡ä»¶å®Œæ•´è·¯å¾„:", "é€‰æ‹© CSV", txtCSV)
+    sInput = InputBox("ÇëÊäÈë CSV ÎÄ¼şÍêÕûÂ·¾¶:", "Ñ¡Ôñ CSV", txtCSV)
     If sInput <> "" Then txtCSV = sInput
 End Sub
 
 
 ' ==============================================================================
-' ç¡®å®šæŒ‰é’®
+' È·¶¨°´Å¥
 ' ==============================================================================
 Private Sub cmdOK_Click()
     If Trim$(txtCSV) = "" Then
-        MsgBox "è¯·é€‰æ‹© CSV æ–‡ä»¶", vbExclamation, "è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ"
+        MsgBox "ÇëÑ¡Ôñ CSV ÎÄ¼ş", vbExclamation, "×Ô¶¯»¯Éú²úÅÅ°æ"
         Exit Sub
     End If
     If Dir(Trim$(txtCSV)) = "" Then
-        MsgBox "æ–‡ä»¶ä¸å­˜åœ¨:" & vbCrLf & Trim$(txtCSV), vbExclamation, "è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ"
+        MsgBox "ÎÄ¼ş²»´æÔÚ:" & vbCrLf & Trim$(txtCSV), vbExclamation, "×Ô¶¯»¯Éú²úÅÅ°æ"
         Exit Sub
     End If
     
-    ' èµ‹å€¼è¾“å‡ºå‚æ•°
+    ' ¸³ÖµÊä³ö²ÎÊı
     CSVPath = Trim$(txtCSV)
     CustomerName = Trim$(txtCustomer)
     If CustomerName = "" Then CustomerName = DEF_CUSTOMER
@@ -182,7 +182,7 @@ Private Sub cmdOK_Click()
     RunNest = CBool(chkRunNest.Value)
     Cancelled = False
     
-    ' ä¿å­˜è®°å¿†
+    ' ±£´æ¼ÇÒä
     SaveSetting "CCC", "AutoImportNest", "LastPath", CSVPath
     SaveSetting "CCC", "AutoImportNest", "Customer", CustomerName
     SaveSetting "CCC", "AutoImportNest", "Material", MaterialName
@@ -192,7 +192,7 @@ End Sub
 
 
 ' ==============================================================================
-' å–æ¶ˆæŒ‰é’®
+' È¡Ïû°´Å¥
 ' ==============================================================================
 Private Sub cmdCancel_Click()
     Cancelled = True
