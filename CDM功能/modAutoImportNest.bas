@@ -125,7 +125,7 @@ Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) A
             "'" & gs_FixSQL(sRm) & "','" & gs_FixSQL(sCu) & "'," & _
             "'" & gs_FixSQL(sRf) & "','" & gs_FixSQL(sRf) & "'," & _
             "'" & gs_FixSQL(sC1) & "','" & gs_FixSQL(sC2) & "'," & _
-            "'" & gs_FixSQL(sGrp) & "'," & _
+            "" & Val(sGrp) & "," & _
             "dt.UserVariableString,dt.UserDescriptionString," & _
             "dt.UserValue_0,dt.UserValue_1,dt.UserValue_2,dt.UserValue_3,dt.UserValue_4,dt.UserValue_5,dt.UserValue_6 " & _
             "FROM AD_DOOR_TYPES dt WHERE dt.TypeID='" & gs_FixSQL(sTp) & "'"
