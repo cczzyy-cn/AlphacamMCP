@@ -21,8 +21,7 @@
 | `DOCUMENTATION_INDEX.md` | AlphaCAM 全部 33 个 .chm 文档的索引目录（含分组和转换状态） |
 | `chm/` | .chm 文档目录（含指向安装目录的符号链接 + 已转换的 _html 子目录） |
 | `CCC功能/` | VBA 插件合集目录（依边界裁剪、全排版刀具偏移、排版刀具排序） |
-| `CDM功能/` | CDM 自动化模块（`modAutoImportNest.bas` 一键导入+排版，`Events.bas` 菜单注册） |
-| `AI工作流程/` | CDM 源码分析（Make/Events/frmNTCW）+ 自动化方案文档 |
+| `CDM功能/` | CDM 自动化模块（`modAutoImportNest.bas` 一键导入+排版、`Events.bas` 菜单注册、`Make.bas` 原源码、`CDM分析报告.md` 分析文档） |
 | `软件工作流程.md` | AI 操作手册：CSV 导入 → 批量生产 → 排版的完整工作流 |
 | `open_vba_editor.py` | 自动激活/最大化 AlphaCAM 窗口并打开 VBA 编辑器（Alt+F11） |
 | `RevNest_source/` | RevNest 反向排版 v1.2 插件完整源码（从 AlphaCAM 提取） |
