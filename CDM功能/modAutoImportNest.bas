@@ -72,7 +72,9 @@ Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) A
     On Error GoTo EH
     
     ' 创建订单
-    lngOrderID = glng_CreateOrder(sJobName, 1)
+        Dim lngCustID As Long
+    lngCustID = glng_EnsureCustomer("自动化生产")
+    lngOrderID = glng_CreateOrder(sJobName, lngCustID)
     If lngOrderID <= 0 Then GoTo CleanUp
     
     ' 检查文件是否存在
@@ -139,6 +141,22 @@ EH:
     MsgBox "第 " & lngRow & " 行错误: " & Err.Description, vbExclamation
 CleanUp:
     Close #iFile
+End Function
+
+Private Function glng_EnsureCustomer(ByVal sName As String) As Long
+    Dim rst As ADODB.Recordset, lngRet As Long
+    Set rst = New ADODB.Recordset
+    rst.Open "SELECT CustomerID FROM AD_CUSTOMERS WHERE Name='" & gs_FixSQL(sName) & "'", gdb_CDM, adOpenForwardOnly, adLockReadOnly
+    If rst.BOF And rst.EOF Then
+        rst.Close
+        gdb_CDM.Execute "INSERT INTO AD_CUSTOMERS (Name) VALUES ('" & gs_FixSQL(sName) & "')", lngRet
+        Set rst = gdb_CDM.Execute("SELECT @@IDENTITY AS NewID")
+        glng_EnsureCustomer = rst.Fields("NewID")
+        rst.Close
+    Else
+        glng_EnsureCustomer = rst.Fields("CustomerID")
+        rst.Close
+    End If
 End Function
 
 Private Function glng_CreateOrder(ByVal sName As String, ByVal lngCustID As Long) As Long
