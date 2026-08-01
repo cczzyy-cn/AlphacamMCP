@@ -23,7 +23,7 @@
 | CommandButton | cmdOK | 按钮 | "确定(&O)" |
 | CommandButton | cmdCancel | 按钮 | "取消(&C)" |
 
-5. 双击窗体空白处打开代码窗口，**全选删除默认代码**，粘贴下方全部代码
+5. 双击窗体空白处打开代码窗口，**全选删除默认代码**，粘贴 [`frmAutoNest.txt`](frmAutoNest.txt) 中的全部代码（与 CCC功能/frmToolOffset.txt 同格式）
 6. 编译保存（Ctrl+S）
 
 ## 窗体代码（全部）
