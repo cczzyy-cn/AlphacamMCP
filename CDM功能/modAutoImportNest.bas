@@ -143,26 +143,17 @@ End Function
 
 Private Function glng_CreateOrder(ByVal sName As String, ByVal lngCustID As Long) As Long
     Dim rst As ADODB.Recordset, lngRet As Long
-    Dim iAns As VbMsgBoxResult
-    
-    ' 检查是否存在相同订单名
+    ' 检查是否存在相同订单名，存在则直接取消
     Set rst = New ADODB.Recordset
     rst.Open "SELECT OrderID FROM AD_ORDERS WHERE JobName='" & gs_FixSQL(sName) & "'", gdb_CDM, adOpenForwardOnly, adLockReadOnly
     If Not (rst.BOF And rst.EOF) Then
-        ' 订单名已存在
-        iAns = MsgBox("订单名已存在: " & sName & vbCrLf & vbCrLf & _
-                      "是: 继续创建同名新订单" & vbCrLf & _
-                      "否: 取消导入", _
-                      vbYesNo + vbQuestion, "自动化生产排版")
-        If iAns = vbNo Then
-            rst.Close
-            glng_CreateOrder = -1   ' 取消
-            Exit Function
-        End If
+        rst.Close
+        MsgBox "订单名已存在，导入已取消: " & sName, _
+               vbExclamation, "自动化生产排版"
+        glng_CreateOrder = -1   ' 取消
+        Exit Function
     End If
     rst.Close
-    
-    ' 创建订单
     gdb_CDM.Execute "INSERT INTO AD_ORDERS (JobName,CustomerID,OrderDate) VALUES ('" & gs_FixSQL(sName) & "'," & lngCustID & ",Date())", lngRet
     If lngRet > 0 Then Set rst = gdb_CDM.Execute("SELECT @@IDENTITY AS NewID"): glng_CreateOrder = rst.Fields("NewID"): rst.Close
 End Function
