@@ -256,31 +256,38 @@ End Function
 ' 文件选择对话框
 ' ============================================================================
 Private Function ShowOpenFile(ByVal sDir As String, ByVal sFilter As String) As String
-    Dim sLast As String
-    Dim sInput As String
+    Dim frm As Object
+    Dim sResult As String
     
-    ' 读取记忆的完整路径
-    sLast = GetSetting("CCC", "AutoImportNest", "LastPath", sDir & "\7-10中林SPC婷兰灰.csv")
+    ' 优先使用 frmAutoNest 窗体（若已导入）；否则回退 InputBox
+    On Error Resume Next
+    Set frm = frmAutoNest
+    On Error GoTo 0
     
-    ' 单个输入框：完整路径（带记忆）
-    sInput = InputBox("请输入 CSV 文件完整路径:" & vbCrLf & vbCrLf & _
-                      "可以只输入文件名（使用记忆的目录）:" & vbCrLf & _
-                      "  " & sDir & vbCrLf & vbCrLf & _
-                      "或输入完整路径:", _
-                      "自动化生产排版", sLast)
-    If sInput = "" Then Exit Function
-    
-    ' 如果只输入文件名，拼接记忆目录
-    If InStr(sInput, "\") = 0 And InStr(sInput, "/") = 0 Then
-        ' 从记忆路径提取目录
-        Dim sFolder As String
-        sFolder = Left$(sLast, InStrRev(sLast, "\"))
-        If sFolder = "" Then sFolder = sDir & "\"
-        sInput = sFolder & sInput
+    If frm Is Nothing Then
+        ' 窗体未导入，回退到简单 InputBox
+        Dim sLast As String, sInput As String
+        sLast = GetSetting("CCC", "AutoImportNest", "LastPath", sDir & "\7-10中林SPC婷兰灰.csv")
+        sInput = InputBox("请输入 CSV 文件完整路径:" & vbCrLf & vbCrLf & _
+                          "可只输入文件名（用记忆目录）:" & vbCrLf & _
+                          "  " & sDir & vbCrLf & vbCrLf & _
+                          "或完整路径:", _
+                          "自动化生产排版", sLast)
+        If sInput = "" Then Exit Function
+        If InStr(sInput, "\") = 0 And InStr(sInput, "/") = 0 Then
+            Dim sFolder As String
+            sFolder = Left$(sLast, InStrRev(sLast, "\"))
+            If sFolder = "" Then sFolder = sDir & "\"
+            sInput = sFolder & sInput
+        End If
+        SaveSetting "CCC", "AutoImportNest", "LastPath", sInput
+        ShowOpenFile = sInput
+        Exit Function
     End If
     
-    ' 保存记忆
-    SaveSetting "CCC", "AutoImportNest", "LastPath", sInput
-    
-    ShowOpenFile = sInput
+    ' 使用窗体
+    Load frmAutoNest
+    frmAutoNest.Show
+    If frmAutoNest.Cancelled Then Exit Function
+    ShowOpenFile = frmAutoNest.CSVPath
 End Function
