@@ -1,91 +1,85 @@
-# AI工作流程 — CDM 自动化工件
+# CDM功能 — CDM 橱柜门自动化
+
+AlphaCAM CDM（Cabinet Door Manufacturing）自动化模块源码与文档。
 
 ## 文件说明
 
-| 文件 | 来源 | 说明 |
-|------|------|------|
-| `BatchImport.bas` | 项目 `CDM功能/` | CSV 导入→创建订单（自定义模块，已实现） |
-| `BatchProcess.bas` | 项目 `CDM功能/` | 批量生产生成几何（自定义模块，已实现） |
-| `CDM右键菜单事件位置.txt` | CDM.arb 源码分析 | frmNTCW 中右键菜单对应的事件处理位置说明 |
+| 文件 | 说明 |
+|------|------|
+| `modAutoImportNest.bas` | ⭐ **自动化生产排版模块**：弹窗选 CSV → 导入门板数据 → `g_Make_Master` 批量生产+排版+NC 输出 |
+| `Events.bas` | CDM 工程菜单注册（含"自动化生产排版"按钮 + `m_AutoImportNest` 包装函数） |
+| `Make.bas` | CDM 原始 Make 模块源码备份（7926 行，加工引擎） |
+| `CDM分析报告.md` | CDM 完整源码分析（模块结构、数据库表、调用链） |
+| `README.md` | 本文档 |
 
-## 完整工作流
+## 自动化生产排版（modAutoImportNest）
+
+### 使用方式
+
+```
+AlphaCAM 菜单 → CDM → 自动化生产排版
+```
+
+### 完整流程
+
+```
+1. 弹窗输入 CSV 文件完整路径（带记忆，上次路径自动填充）
+2. 客户名"自动化生产"（不存在自动创建）
+3. 创建订单（订单名已存在 → 直接取消并提示）
+4. 逐行导入门板明细：
+   ├── 门型已存在 → 用其 UserStyle 判断 StyleNumber
+   │     ├── UserStyle=True  → 930（用户自定义门型）
+   │     │    复制 UserStyleName + UserVariableString + UserValue_0~6
+   │     │    （否则宏调用失败："无法连接用户定义的宏"）
+   │     └── UserStyle=False → 900（标准镶板门）
+   └── 新门型 → 自动创建为 900 标准镶板门
+5. 材料不存在 → 自动创建（默认"开料机3000mm" 18×1220×3000）
+6. 调用 g_Make_Master(OrderID) → 批量生产 + 排版 + NC
+```
+
+### CSV 字段映射（1-based 列号）
+
+| CSV 列 | 0-based | 数据库字段 | 说明 |
+|--------|:-------:|-----------|------|
+| 列1 造型名称 | 0 | `TypeName` / `StyleName`(回退) | 门板类型 |
+| 列2 宽 | 1 | `Width` | |
+| 列3 高 | 2 | `Length` | |
+| 列4 数量 | 3 | `Quantity` | |
+| 列5 颜色 | 4 | `CSV_ItemNumber` + `ComponentGrouping`(Val) | 颜色文本；组编号转数字 |
+| 列6 客户名 | 5 | `CSV_CustomerName` | |
+| 列8 开启方向 | 7 | `CustomField1` | |
+| 列9 终端地址 | 8 | `CustomField2` | |
+| 列10 板件码 | 9 | `CSV_OrderNumber` | 订单号 |
+| 列12 备注 | 11 | `ProductionComment` | |
+| 列13 材料 | 12 | `Material` | 空时用默认"开料机3000mm" |
+
+### 关键技术点
+
+| 要点 | 说明 |
+|------|------|
+| **930 门型宏参数** | `AD_ORDER_DETAILS.StyleName` 必须 = `AD_DOOR_TYPES.UserStyleName`（宏项目名，如 `AD_OnePanelSquare`），否则 `gbln_ProjectExists` 找不到宏报错 |
+| **UserValue_0~6** | INSERT...SELECT 从 `AD_DOOR_TYPES` 直接复制，供 `App.Run` 传参给宏 |
+| **ComponentGrouping 类型** | Long 整数，CSV 颜色文本需 `Val()` 转换（文本→0） |
+| **订单重名** | 已存在则直接取消导入（不弹窗询问） |
+| **材料默认** | "开料机3000mm"：18mm 厚、1220×3000mm 板 |
+
+### 安装方式
 
 ```python
-# ═══════════════════════════════════════════════════════
-# 三步完全自动化
-# ═══════════════════════════════════════════════════════
+# 通过 MCP 安装到 CDM 工程
+code = open("CDM功能/modAutoImportNest.bas", encoding="gbk").read()
+install_vba_module(module_name="modAutoImportNest", code=code)
 
-# 第 1 步：安装模块（仅首次）
-code = open("CDM功能/BatchImport.bas").read()
-install_vba_module(module_name="BatchImport", code=code)
-code = open("CDM功能/BatchProcess.bas").read()
-install_vba_module(module_name="BatchProcess", code=code)
-
-# 第 2 步：导入 CSV → 创建订单
-run_vba_macro(
-    macro_name="CDM.BatchImport.Run",
-    params=["C:\\Users\\C\\Desktop\\2026优化表\\7-10中林SPC婷兰灰.csv",
-            "7-10中林SPC婷兰灰"],
-)
-
-# 第 3 步：批量生产
-run_vba_macro(
-    macro_name="CDM.BatchProcess.RunByName",
-    params=["7-10中林SPC婷兰灰"],
-)
-
-# 排序 + NC 输出
-run_vba_macro(macro_name="CDM.m_OrderToolPaths")
-select_post(post_name="T3香蕉弯")
-output_nc(file_path="D:\\output\\7-10中林SPC婷兰灰.nc")
+# Events.bas 已含菜单注册（m_AutoImportNest 包装函数），若菜单缺失需覆盖导入
+code = open("CDM功能/Events.bas", encoding="gbk").read()
+install_vba_module(module_name="Events", code=code)
 ```
 
-## 原始 CDM 右键菜单代码位置
+> 若 `install_vba_module` 报"工程已被保护"，需先在 VBA 编辑器确认工程未锁定，
+> 或先 `delete_vba_module` 删除同名旧模块再安装。
 
-CDM 主界面 frmNTCW（132KB VBA 窗体代码）中：
-- 右键菜单事件在 **窗体中段**（代码截断部分，约 60KB-99KB 区域）
-- 处理函数名未知（无法完整读取）
-- 替代方案：使用上述自定义模块实现相同功能
+## 数据库结构速查
 
----
+核心表：`AD_ORDERS`（订单）、`AD_ORDER_DETAILS`（门板明细）、`AD_DOOR_TYPES`（门型）、`AD_DOOR_PATHS`（刀路）、`AD_MATERIALS`（材料）。
 
-## BatchImport 导入字段映射
-
-与 CDM 原版 CSV 导入配置一致（1-based 列号）：
-
-| CDM 字段 | 1-based 列号 | 0-based 索引 | CSV 实际列名 |
-|---------|:-----------:|:-----------:|-------------|
-| 门板类型 | 列1 | 0 | 造型名称 |
-| 宽 | 列2 | 1 | 宽度 |
-| 高 | 列3 | 2 | 高度 |
-| 数量 | 列4 | 3 | 数量 |
-| 组编号 | 列5 | 4 | 颜色 |
-| 客户名 | 列6 | 5 | 客户名称 |
-| 订单号 | 列10 | 9 | 板件码 |
-| 生产注释 | 列12 | 11 | 备注 |
-| **材料** | **列13 (M列)** | **12** | **(空 → 默认材料)** |
-
-### 材料处理
-
-- **来源列**：第13列（M列），0-based 索引 `COL_MATERIAL = 12`
-- **默认材料**：当 CSV 中第13列为空时，使用 `"开料机3000mm"`（18×1220×3000mm）
-- **自动创建**：材料名在 AD_MATERIALS 中不存在时自动创建
-
-### 常量定义（BatchImport.bas）
-
-```vb
-Private Const COL_STYLE_NAME    As Integer = 0   ' 列1: 门板类型
-Private Const COL_WIDTH         As Integer = 1   ' 列2: 宽
-Private Const COL_HEIGHT        As Integer = 2   ' 列3: 高
-Private Const COL_QUANTITY      As Integer = 3   ' 列4: 数量
-Private Const COL_GROUP_ID      As Integer = 4   ' 列5: 组编号
-Private Const COL_CUSTOMER      As Integer = 5   ' 列6: 客户名
-Private Const COL_ORDER_REF     As Integer = 9   ' 列10: 订单号
-Private Const COL_REMARK        As Integer = 11  ' 列12: 生产注释
-Private Const COL_MATERIAL      As Integer = 12  ' 列13: 材料
-
-Private Const DEF_MATERIAL_NAME As String = "开料机3000mm"
-Private Const DEF_MATERIAL_THK  As Double = 18
-Private Const DEF_MATERIAL_W    As Double = 1220
-Private Const DEF_MATERIAL_L    As Double = 3000
-```
+详见 `CDM分析报告.md` 第三节。

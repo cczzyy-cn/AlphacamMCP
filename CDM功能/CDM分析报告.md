@@ -1,6 +1,6 @@
 # CDM 模块源码分析报告
 
-> 基于 AI工作流程/ 目录中的完整源码分析生成
+> 基于 CDM功能/ 目录中的完整源码分析生成
 > CDM.arb 版本 3.0 | 数据库版本 1.3 | CDM2016R1
 
 ---
@@ -239,56 +239,57 @@ ProcessWaste 系列                         InsertFiller
 
 | 表 | 状态 |
 |----|------|
-| AD_MATERIALS | ✅ 已有 14 种材料 |
-| AD_DOOR_TYPES | ❌ 空 (需要 BatchImport 自动创建) |
-| AD_DOOR_PATHS | ❌ 空 (需在 CDM UI 中预配) |
-| AD_ORDERS | ❌ 空 (通过 BatchImport 写入) |
-| AD_ORDER_DETAILS | ❌ 空 (通过 BatchImport 写入) |
+| AD_MATERIALS | ✅ 已有 14 种材料（含 SPC 类） |
+| AD_DOOR_TYPES | ✅ 已有大量门型（PETA 系列等，UserStyle=True） |
+| AD_DOOR_PATHS | ✅ 已有刀路（通过 CDM UI 配置） |
+| AD_ORDERS | 由 modAutoImportNest 写入 |
+| AD_ORDER_DETAILS | 由 modAutoImportNest 写入 |
 
 ---
 
 ## 四、与自定义模块的关系
 
-### 4.1 BatchImport.bas (已完成)
+### 4.1 modAutoImportNest.bas（当前方案）
+
+`modAutoImportNest.bas` 是最终自动化模块，替代早期 BatchImport/BatchProcess：
 
 ```vb
-Public Sub Run(CSVPath, JobName)
-    ' 1. gbln_ConnectToDB → 连接数据库
-    ' 2. 解析 CSV 文件 (14列)
-    ' 3. glng_GetOrCreateCustomer → 获取/创建客户
-    ' 4. glng_CreateOrder → INSERT INTO AD_ORDERS
-    ' 5. 逐行: InsertOrderDetail → INSERT INTO AD_ORDER_DETAILS
-    '    ├── glng_GetOrCreateStyle → INSERT INTO AD_DOOR_TYPES
-    '    └── glng_EnsureMaterial → INSERT INTO AD_MATERIALS
+Public Sub AutoImportNest()
+    ' 1. ShowOpenFile → 弹窗输入 CSV 路径（带记忆）
+    ' 2. glng_EnsureCustomer("自动化生产") → 客户
+    ' 3. glng_CreateOrder → 订单（重名直接取消）
+    ' 4. 逐行解析 CSV → INSERT...SELECT 写入 AD_ORDER_DETAILS
+    '    ├── glng_EnsureStyle → 门型（900/930）
+    '    └── glng_EnsureMaterial → 材料（默认开料机3000mm）
+    ' 5. Call g_Make_Master(OrderID) → 批量生产+排版+NC
 End Sub
 ```
 
-⚠️ **需修复**：`glng_GetOrCreateStyle` 中 `StyleNumber` 应为 `900`（不是 `1`）
+**930 用户样式门型（如平板PETA）关键处理**：
 
-### 4.2 BatchProcess.bas (已完成)
+| 字段 | 值 | 原因 |
+|------|-----|------|
+| `StyleName` | = `AD_DOOR_TYPES.UserStyleName` | `CDoor.UserStyleName` 从该字段读，`gbln_ProjectExists` 用它找宏项目 |
+| `UserVariableString` | 从门型表复制 | 宏几何参数 |
+| `UserValue_0~6` | 从门型表复制 | `App.Run` 传参给宏 |
+| `ComponentGrouping` | `Val()` 转数字 | Long 字段，颜色文本→0 |
+| `CSV_ItemNumber` | = 颜色（列5） | 不再与订单号重复 |
 
-```vb
-Public Sub RunByName(JobName)
-    ' 1. 查找 OrderID
-    ' 2. 读取 AD_ORDER_DETAILS 门板数据
-    ' 3. 对每个门板: App.New + CreateRectangle + SaveAs .amd
-    ' 注: 跳过 CDM 加工引擎，仅生成几何
-End Sub
-```
+### 4.2 CSV 字段映射（最终版）
 
-### 4.3 推荐完整工作流
-
-```python
-# 1. 安装模块（首次）
-install_vba_module("BatchImport", open("CDM功能/BatchImport.bas").read())
-install_vba_module("BatchProcess", open("CDM功能/BatchProcess.bas").read())
-
-# 2. 导入 CSV → 创建订单
-run_vba_macro("CDM.BatchImport.Run", [...csv..., ...jobname...])
-
-# 3. 直接调用 CDM 加工引擎（推荐，替代 BatchProcess）
-run_vba_line("g_Make_Master(" & orderID & ")")
-```
+| CSV 列 | 0-based | 数据库字段 |
+|--------|:-------:|-----------|
+| 列1 造型名称 | 0 | TypeName / StyleName(回退) |
+| 列2 宽 | 1 | Width |
+| 列3 高 | 2 | Length |
+| 列4 数量 | 3 | Quantity |
+| 列5 颜色 | 4 | CSV_ItemNumber + ComponentGrouping(Val) |
+| 列6 客户名 | 5 | CSV_CustomerName |
+| 列8 开启方向 | 7 | CustomField1 |
+| 列9 终端地址 | 8 | CustomField2 |
+| 列10 板件码 | 9 | CSV_OrderNumber |
+| 列12 备注 | 11 | ProductionComment |
+| 列13 材料 | 12 | Material（空→默认开料机3000mm） |
 
 ---
 
@@ -300,4 +301,5 @@ run_vba_line("g_Make_Master(" & orderID & ")")
 | Database 模块受保护 | `gbln_ConnectToDB` 等核心函数无法读取 |
 | Functions 模块受保护 | `gs_FixSQL`、`gvar_CheckNull` 等工具函数无法读取 |
 | frmNTCW 非主界面 | 只是门型创建向导，不是三面板主界面 |
-| StyleNumber=1 错误 | BatchImport 应设 900 而非 1 |
+| VBE 依赖 | 模块安装需 VBE 可访问（VBA 编辑器关闭状态，弹窗自动关闭） |
+| 930 门型宏依赖 | 需宏项目文件在 `D:\2016\LICOMDAT\图库\` 下（AD_OnePanelSquare 等） |
