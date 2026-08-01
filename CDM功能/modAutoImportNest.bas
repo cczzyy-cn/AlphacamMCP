@@ -204,12 +204,37 @@ End Function
 ' 文件选择对话框
 ' ============================================================================
 Private Function ShowOpenFile(ByVal sDir As String, ByVal sFilter As String) As String
+    Dim sFolder As String
     Dim sName As String
-    sName = InputBox("请输入 CSV 文件名:" & vbCrLf & "目录: " & sDir, "自动化生产排版", "7-10中林SPC婷兰灰.csv")
+    Dim sFull As String
+    
+    ' 读取记忆的目录和文件名
+    sFolder = GetSetting("CCC", "AutoImportNest", "LastFolder", sDir)
+    sName = GetSetting("CCC", "AutoImportNest", "LastFile", "")
+    
+    ' 目录输入框（带记忆）
+    sFolder = InputBox("请输入目录:" & vbCrLf & _
+                       "示例: C:\Users\C\Desktop\2026优化表", _
+                       "自动化生产排版 - 目录", sFolder)
+    If sFolder = "" Then Exit Function
+    If Right$(sFolder, 1) <> "\" Then sFolder = sFolder & "\"
+    
+    ' 文件名输入框（带记忆）
+    sName = InputBox("请输入 CSV 文件名:" & vbCrLf & _
+                     "目录: " & sFolder, _
+                     "自动化生产排版 - 文件", sName)
     If sName = "" Then Exit Function
+    
+    ' 拼接完整路径
     If InStr(sName, "\") = 0 And InStr(sName, "/") = 0 Then
-        ShowOpenFile = sDir & sName
+        sFull = sFolder & sName
     Else
-        ShowOpenFile = sName
+        sFull = sName
     End If
+    
+    ' 保存记忆
+    SaveSetting "CCC", "AutoImportNest", "LastFolder", sFolder
+    SaveSetting "CCC", "AutoImportNest", "LastFile", sName
+    
+    ShowOpenFile = sFull
 End Function
