@@ -1011,9 +1011,10 @@ class AlphaCAM:
     def _dismiss_popups(self) -> int:
         """Close modal popup/dialog windows (e.g. MsgBox) that block AlphaCAM.
 
-        Enumerates windows belonging to Acam.exe; any *visible* window that
-        is not the AlphaCAM main window is treated as a popup and sent
-        WM_CLOSE. Returns the number of popups closed.
+        SAFETY: only windows whose title matches known dialog keywords are
+        closed. Untitled windows and the AlphaCAM main window are NEVER
+        touched, to avoid accidentally closing the application.
+        Returns the number of popups closed.
         """
         import ctypes
         user32 = ctypes.windll.user32
@@ -1038,6 +1039,12 @@ class AlphaCAM:
         if not pids:
             return 0
 
+        # Dialog keywords: closing only these avoids killing the main window
+        dialog_keywords = (
+            "error", "错误", "warning", "警告", "confirm", "确认",
+            "question", "message", "消息", "visual basic", "vb",
+            "alphadoor", "alpha door", "cdm", "exclamation", "提示",
+        )
         main_keywords = ("3d 5-", "alphacam", "alpha cam")
         closed = [0]
 
@@ -1050,16 +1057,19 @@ class AlphaCAM:
             if not user32.IsWindowVisible(hwnd):
                 return True
             length = user32.GetWindowTextLengthW(hwnd)
-            title = ""
-            if length > 0:
-                buf = ctypes.create_unicode_buffer(length + 1)
-                user32.GetWindowTextW(hwnd, buf, length + 1)
-                title = buf.value.lower()
-            # Skip the main AlphaCAM window; close everything else visible
-            if title and any(k in title for k in main_keywords):
+            if length == 0:
+                # Untitled windows are never auto-closed (may be the app frame)
                 return True
-            user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
-            closed[0] += 1
+            buf = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buf, length + 1)
+            title = buf.value.lower()
+            # Never close the main AlphaCAM window
+            if any(k in title for k in main_keywords):
+                return True
+            # Close only if the title looks like a dialog/popup
+            if any(k in title for k in dialog_keywords):
+                user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
+                closed[0] += 1
             return True
 
         user32.EnumWindows(enum_cb, 0)
