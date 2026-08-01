@@ -110,20 +110,19 @@ Private Sub cmdOK_Click()
         Exit Sub
     End If
     
-    ' 赋值输出参数
-    CSVPath = Trim$(txtCSV)
-    CustomerName = Trim$(txtCustomer)
-    If CustomerName = "" Then CustomerName = DEF_CUSTOMER
-    MaterialName = Trim$(cmbMaterial)
-    RunNest = CBool(chkRunNest.Value)
-    Cancelled = False
-    
     ' 保存记忆
-    SaveSetting "CCC", "AutoImportNest", "LastPath", CSVPath
-    SaveSetting "CCC", "AutoImportNest", "Customer", CustomerName
-    SaveSetting "CCC", "AutoImportNest", "Material", MaterialName
+    SaveSetting "CCC", "AutoImportNest", "LastPath", Trim$(txtCSV)
+    SaveSetting "CCC", "AutoImportNest", "Customer", Trim$(txtCustomer)
+    SaveSetting "CCC", "AutoImportNest", "Material", Trim$(cmbMaterial)
     
+    ' 调用模块带参入口（窗体不直接引用模块内部，由模块完成导入+排版）
     Me.Hide
+    modAutoImportNest.AutoImportNestWithParams _
+        Trim$(txtCSV), _
+        Trim$(txtCustomer), _
+        Trim$(cmbMaterial), _
+        CBool(chkRunNest.Value)
+    Unload Me
 End Sub
 
 

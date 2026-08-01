@@ -65,6 +65,42 @@ End Sub
 ' ============================================================================
 ' 导入 CSV → 创建订单，返回 OrderID
 ' ============================================================================
+Public Sub AutoImportNestWithParams(ByVal sCSVPath As String, _
+                                  ByVal sCustomerName As String, _
+                                  ByVal sMaterialName As String, _
+                                  ByVal bRunNest As Boolean)
+    ' 由 frmAutoNest 窗体调用的带参入口
+    Dim sJobName As String, sTemp As String
+    On Error GoTo EH
+    sTemp = sCSVPath
+    Do While InStr(sTemp, "\") > 0: sTemp = Mid$(sTemp, InStr(sTemp, "\") + 1): Loop
+    Do While InStr(sTemp, "/") > 0: sTemp = Mid$(sTemp, InStr(sTemp, "/") + 1): Loop
+    If LCase(Right$(sTemp, 4)) = ".csv" Then sJobName = Left$(sTemp, Len(sTemp) - 4) Else sJobName = sTemp
+    
+    If Not gbln_ConnectToDB() Then MsgBox "无法连接 CDM 数据库", vbCritical: Exit Sub
+    Dim lngOrderID As Long
+    lngOrderID = ImportCSV(sCSVPath, sJobName)
+    If lngOrderID = -1 Then Exit Sub
+    If lngOrderID <= 0 Then Exit Sub
+    If bRunNest Then
+        Frame.ShowProgressBox "自动化生产排版", "正在执行批量生产 + 排版 ..."
+        DoEvents
+        Call g_Make_Master(CStr(lngOrderID))
+        Frame.CloseProgressBox
+        If CBool(GetSetting("LICOM AlphaDOOR", "Nest Parameters", "Nest Completed", 0)) Then
+            MsgBox "自动化生产排版完成！" & vbCrLf & "订单: " & sJobName, vbInformation
+        Else
+            MsgBox "生产排版可能未完全成功", vbExclamation
+        End If
+    Else
+        MsgBox "CSV 导入完成！订单: " & sJobName, vbInformation
+    End If
+    Exit Sub
+EH:
+    Frame.CloseProgressBox
+    MsgBox "错误: " & Err.Description, vbCritical
+End Sub
+
 Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) As Long
     '
     Dim lngOrderID As Long, lngRow As Long, lngOK As Long
@@ -256,38 +292,20 @@ End Function
 ' 文件选择对话框
 ' ============================================================================
 Private Function ShowOpenFile(ByVal sDir As String, ByVal sFilter As String) As String
-    Dim frm As Object
-    Dim sResult As String
-    
-    ' 优先使用 frmAutoNest 窗体（若已导入）；否则回退 InputBox
-    On Error Resume Next
-    Set frm = frmAutoNest
-    On Error GoTo 0
-    
-    If frm Is Nothing Then
-        ' 窗体未导入，回退到简单 InputBox
-        Dim sLast As String, sInput As String
-        sLast = GetSetting("CCC", "AutoImportNest", "LastPath", sDir & "\7-10中林SPC婷兰灰.csv")
-        sInput = InputBox("请输入 CSV 文件完整路径:" & vbCrLf & vbCrLf & _
-                          "可只输入文件名（用记忆目录）:" & vbCrLf & _
-                          "  " & sDir & vbCrLf & vbCrLf & _
-                          "或完整路径:", _
-                          "自动化生产排版", sLast)
-        If sInput = "" Then Exit Function
-        If InStr(sInput, "\") = 0 And InStr(sInput, "/") = 0 Then
-            Dim sFolder As String
-            sFolder = Left$(sLast, InStrRev(sLast, "\"))
-            If sFolder = "" Then sFolder = sDir & "\"
-            sInput = sFolder & sInput
-        End If
-        SaveSetting "CCC", "AutoImportNest", "LastPath", sInput
-        ShowOpenFile = sInput
-        Exit Function
+    Dim sLast As String, sInput As String
+    sLast = GetSetting("CCC", "AutoImportNest", "LastPath", sDir & "\7-10中林SPC婷兰灰.csv")
+    sInput = InputBox("请输入 CSV 文件完整路径:" & vbCrLf & vbCrLf & _
+                      "可只输入文件名（用记忆目录）:" & vbCrLf & _
+                      "  " & sDir & vbCrLf & vbCrLf & _
+                      "或完整路径:", _
+                      "自动化生产排版", sLast)
+    If sInput = "" Then Exit Function
+    If InStr(sInput, "\") = 0 And InStr(sInput, "/") = 0 Then
+        Dim sFolder As String
+        sFolder = Left$(sLast, InStrRev(sLast, "\"))
+        If sFolder = "" Then sFolder = sDir & "\"
+        sInput = sFolder & sInput
     End If
-    
-    ' 使用窗体
-    Load frmAutoNest
-    frmAutoNest.Show
-    If frmAutoNest.Cancelled Then Exit Function
-    ShowOpenFile = frmAutoNest.CSVPath
+    SaveSetting "CCC", "AutoImportNest", "LastPath", sInput
+    ShowOpenFile = sInput
 End Function
