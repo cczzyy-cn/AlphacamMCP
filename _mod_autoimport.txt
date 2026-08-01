@@ -1,17 +1,21 @@
 Option Explicit
 
 ' ==============================================================================
-' ×Ô¶¯»¯Éú²úÅÅ°æ ¡ª µ¯´°Ñ¡CSV ¡ú µ¼Èë ¡ú ÅúÁ¿Éú²ú ¡ú ÅÅ°æ£¨CDM ¹¤³ÌÄÚ£©
+' è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ â€” å¼¹çª—é€‰CSV â†’ å¯¼å…¥ â†’ æ‰¹é‡ç”Ÿäº§ â†’ æ’ç‰ˆï¼ˆCDM å·¥ç¨‹å†…ï¼‰
 ' ==============================================================================
-' °²×°: ÔÚ CDM ¹¤³ÌµÄ VBA ±à¼­Æ÷ÖĞµ¼Èë´ËÎÄ¼ş
-' ÓÃ·¨: AlphaCAM ²Ëµ¥ ¡ú CCC¹¦ÄÜ ¡ú ×Ô¶¯»¯Éú²úÅÅ°æ
-' ËµÃ÷: ÓÉ CCC ¹¦ÄÜ²Ëµ¥´¥·¢£¬´úÂëÔÚ CDM ¹¤³ÌÖĞÖ´ĞĞÒÔÖ±½Óµ÷ÓÃ g_Make_Master
+' å®‰è£…: åœ¨ CDM å·¥ç¨‹çš„ VBA ç¼–è¾‘å™¨ä¸­å¯¼å…¥æ­¤æ–‡ä»¶
+' ç”¨æ³•: AlphaCAM èœå• â†’ CCCåŠŸèƒ½ â†’ è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ
+' è¯´æ˜: ç”± CCC åŠŸèƒ½èœå•è§¦å‘ï¼Œä»£ç åœ¨ CDM å·¥ç¨‹ä¸­æ‰§è¡Œä»¥ç›´æ¥è°ƒç”¨ g_Make_Master
 ' ==============================================================================
 
+' API æ–‡ä»¶é€‰æ‹©å¯¹è¯æ¡†
+
+
 ' ============================================================================
-' Ö÷Èë¿Ú£¨CCC ¹¦ÄÜ²Ëµ¥´¥·¢£©
+' ä¸»å…¥å£ï¼ˆCCC åŠŸèƒ½èœå•è§¦å‘ï¼‰
 ' ============================================================================
 Public Sub AutoImportNest()
+    MsgBox "AutoImportNest å·²è°ƒç”¨", vbInformation
     '
     Dim sCSVPath As String
     Dim sJobName As String
@@ -19,49 +23,49 @@ Public Sub AutoImportNest()
     
     On Error GoTo EH
     
-    ' ©¤©¤ 1. Ñ¡Ôñ CSV ÎÄ¼ş ©¤©¤
-    sCSVPath = ShowOpenFile("C:\Users\C\Desktop\2026ÓÅ»¯±í", "CSV ÎÄ¼ş|*.csv|ËùÓĞÎÄ¼ş|*.*")
+    ' â”€â”€ 1. é€‰æ‹© CSV æ–‡ä»¶ â”€â”€
+    sCSVPath = ShowOpenFile("C:\Users\C\Desktop\2026ä¼˜åŒ–è¡¨", "CSV æ–‡ä»¶|*.csv|æ‰€æœ‰æ–‡ä»¶|*.*")
     If sCSVPath = "" Then Exit Sub
     
-    ' È¡ÎÄ¼şÃû×÷Îª¶©µ¥Ãû
+    ' å–æ–‡ä»¶åä½œä¸ºè®¢å•å
     sTemp = sCSVPath
     Do While InStr(sTemp, "\") > 0: sTemp = Mid$(sTemp, InStr(sTemp, "\") + 1): Loop
     Do While InStr(sTemp, "/") > 0: sTemp = Mid$(sTemp, InStr(sTemp, "/") + 1): Loop
     If LCase(Right$(sTemp, 4)) = ".csv" Then sJobName = Left$(sTemp, Len(sTemp) - 4) Else sJobName = sTemp
     
-    ' ©¤©¤ 2. Á¬½Ó DB ²¢µ¼Èë CSV ©¤©¤
+    ' â”€â”€ 2. è¿æ¥ DB å¹¶å¯¼å…¥ CSV â”€â”€
     If Not gbln_ConnectToDB() Then
-        MsgBox "ÎŞ·¨Á¬½Ó CDM Êı¾İ¿â", vbCritical: Exit Sub
+        MsgBox "æ— æ³•è¿æ¥ CDM æ•°æ®åº“", vbCritical: Exit Sub
     End If
     
     Dim lngOrderID As Long
     lngOrderID = ImportCSV(sCSVPath, sJobName)
     If lngOrderID <= 0 Then Exit Sub
     
-    ' ©¤©¤ 3. µ÷ÓÃ g_Make_Master ÅúÁ¿Éú²ú+ÅÅ°æ ©¤©¤
-    Frame.ShowProgressBox "×Ô¶¯»¯Éú²úÅÅ°æ", "ÕıÔÚÖ´ĞĞÅúÁ¿Éú²ú + ÅÅ°æ ..."
+    ' â”€â”€ 3. è°ƒç”¨ g_Make_Master æ‰¹é‡ç”Ÿäº§+æ’ç‰ˆ â”€â”€
+    Frame.ShowProgressBox "è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ", "æ­£åœ¨æ‰§è¡Œæ‰¹é‡ç”Ÿäº§ + æ’ç‰ˆ ..."
     DoEvents
     Call g_Make_Master(CStr(lngOrderID))
     Frame.CloseProgressBox
     
-    ' ©¤©¤ 4. Íê³É ©¤©¤
+    ' â”€â”€ 4. å®Œæˆ â”€â”€
     Dim bOK As Boolean
     bOK = CBool(GetSetting("LICOM AlphaDOOR", "Nest Parameters", "Nest Completed", 0))
     If bOK Then
-        MsgBox "×Ô¶¯»¯Éú²úÅÅ°æÍê³É£¡" & vbCrLf & "¶©µ¥: " & sJobName, vbInformation
+        MsgBox "è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆå®Œæˆï¼" & vbCrLf & "è®¢å•: " & sJobName, vbInformation
     Else
-        MsgBox "Éú²úÅÅ°æ¿ÉÄÜÎ´ÍêÈ«³É¹¦£¬Çë¼ì²é AlphaCAM ½á¹û¡£", vbExclamation
+        MsgBox "ç”Ÿäº§æ’ç‰ˆå¯èƒ½æœªå®Œå…¨æˆåŠŸï¼Œè¯·æ£€æŸ¥ AlphaCAM ç»“æœã€‚", vbExclamation
     End If
     Exit Sub
     
 EH:
     Frame.CloseProgressBox
-    MsgBox "´íÎó: " & Err.Description, vbCritical
+    MsgBox "é”™è¯¯: " & Err.Description, vbCritical
 End Sub
 
 
 ' ============================================================================
-' µ¼Èë CSV ¡ú ´´½¨¶©µ¥£¬·µ»Ø OrderID
+' å¯¼å…¥ CSV â†’ åˆ›å»ºè®¢å•ï¼Œè¿”å› OrderID
 ' ============================================================================
 Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) As Long
     '
@@ -70,18 +74,18 @@ Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) A
     
     On Error GoTo EH
     
-    ' ´´½¨¶©µ¥
+    ' åˆ›å»ºè®¢å•
     lngOrderID = glng_CreateOrder(sJobName, 1)
     If lngOrderID <= 0 Then GoTo CleanUp
     
-    ' ¼ì²éÎÄ¼şÊÇ·ñ´æÔÚ
+    ' æ£€æŸ¥æ–‡ä»¶æ˜¯å¦å­˜åœ¨
     If Dir(sCSVPath) = "" Then
-        MsgBox "ÎÄ¼ş²»´æÔÚ:" & vbCrLf & sCSVPath, vbExclamation, "×Ô¶¯»¯Éú²úÅÅ°æ"
+        MsgBox "æ–‡ä»¶ä¸å­˜åœ¨:" & vbCrLf & sCSVPath, vbExclamation, "è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ"
         ImportCSV = 0
         Exit Function
     End If
     
-    ' ¶ÁÈ¡ CSV
+    ' è¯»å– CSV
     iFile = FreeFile
     Open sCSVPath For Input As #iFile
     If Not EOF(iFile) Then Line Input #iFile, sLine
@@ -98,31 +102,26 @@ Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) A
         
         sTp = Trim$(GetF(vF, 0, "")): w = Val(GetF(vF, 1, "0"))
         h = Val(GetF(vF, 2, "0")): q = Val(GetF(vF, 3, "1"))
-        sMat = Trim$(GetF(vF, 12, "")): If sMat = "" Then sMat = "¿ªÁÏ»ú3000mm"
+        sMat = Trim$(GetF(vF, 12, "")): If sMat = "" Then sMat = "å¼€æ–™æœº3000mm"
         sCu = Trim$(GetF(vF, 5, "")): sRf = Trim$(GetF(vF, 9, ""))
         sRm = Trim$(GetF(vF, 11, "")): sC1 = Trim$(GetF(vF, 7, "")): sC2 = Trim$(GetF(vF, 8, ""))
         If w <= 0 Or h <= 0 Then GoTo NextLine
         If q <= 0 Then q = 1
         
-        ' È·±£ÃÅĞÍºÍ²ÄÁÏ´æÔÚ£¬»ñÈ¡ÃÅĞÍÊµ¼Ê StyleNumber
-        Dim lngStyleNum As Long
-        Dim sUserStyle As String
-        Dim sUserVar As String
-        Dim sUserDesc As String
-        lngStyleNum = glng_EnsureStyle(sTp, sUserStyle, sUserVar, sUserDesc)
+        ' ç¡®ä¿é—¨å‹å’Œææ–™å­˜åœ¨
+        glng_EnsureStyle sTp
         glng_EnsureMaterial sMat
         
-        ' ²åÈëÃ÷Ï¸£¨Ê¹ÓÃÃÅĞÍÊµ¼Ê StyleNumber£¬930 Ê±¸½´øÓÃ»§ÑùÊ½²ÎÊı£©
+        ' æ’å…¥æ˜ç»†
         gdb_CDM.Execute "INSERT INTO AD_ORDER_DETAILS " & _
             "(OrderID,TypeName,StyleName,StyleNumber,Quantity,Width,Length," & _
             "Material,ProductionComment,CSV_CustomerName,CSV_OrderNumber,CSV_ItemNumber," & _
-            "CustomField1,CustomField2,UserVariableString,UserDescriptionString) VALUES (" & _
-            lngOrderID & ",'" & gs_FixSQL(sTp) & "','" & gs_FixSQL(sTp) & "'," & lngStyleNum & "," & _
+            "CustomField1,CustomField2) VALUES (" & _
+            lngOrderID & ",'" & gs_FixSQL(sTp) & "','" & gs_FixSQL(sTp) & "',900," & _
             q & "," & w & "," & h & ",'" & gs_FixSQL(sMat) & "'," & _
             "'" & gs_FixSQL(sRm) & "','" & gs_FixSQL(sCu) & "'," & _
             "'" & gs_FixSQL(sRf) & "','" & gs_FixSQL(sRf) & "'," & _
-            "'" & gs_FixSQL(sC1) & "','" & gs_FixSQL(sC2) & "'," & _
-            "'" & gs_FixSQL(sUserVar) & "','" & gs_FixSQL(sUserDesc) & "')"
+            "'" & gs_FixSQL(sC1) & "','" & gs_FixSQL(sC2) & "')"
         lngOK = lngOK + 1
 NextLine:
     Loop
@@ -133,7 +132,7 @@ NextLine:
     
 EH:
     ImportCSV = 0
-    MsgBox "µÚ " & lngRow & " ĞĞ´íÎó: " & Err.Description, vbExclamation
+    MsgBox "ç¬¬ " & lngRow & " è¡Œé”™è¯¯: " & Err.Description, vbExclamation
 CleanUp:
     Close #iFile
 End Function
@@ -144,34 +143,14 @@ Private Function glng_CreateOrder(ByVal sName As String, ByVal lngCustID As Long
     If lngRet > 0 Then Set rst = gdb_CDM.Execute("SELECT @@IDENTITY AS NewID"): glng_CreateOrder = rst.Fields("NewID"): rst.Close
 End Function
 
-Private Function glng_EnsureStyle(ByVal sName As String, ByRef sUserStyle As String, ByRef sUserVar As String, ByRef sUserDesc As String) As Long
+Private Sub glng_EnsureStyle(ByVal sName As String)
     Dim rst As ADODB.Recordset, lngRet As Long
-    If sName = "" Then
-        glng_EnsureStyle = 900
-        Exit Function
-    End If
+    If sName = "" Then Exit Sub
     Set rst = New ADODB.Recordset
-    rst.Open "SELECT * FROM AD_DOOR_TYPES WHERE TypeID='" & gs_FixSQL(sName) & "'", gdb_CDM, adOpenForwardOnly, adLockReadOnly
-    If rst.BOF And rst.EOF Then
-        ' ĞÂÃÅĞÍ£º´´½¨Îª 900 ±ê×¼Ïâ°åÃÅ
-        rst.Close
-        gdb_CDM.Execute "INSERT INTO AD_DOOR_TYPES (TypeID,UserStyle,UserStyleName,Width,Length) VALUES ('" & gs_FixSQL(sName) & "',False,'',900,900)", lngRet
-        glng_EnsureStyle = 900
-    Else
-        ' ÒÑ´æÔÚÃÅĞÍ£ºÊ¹ÓÃÆä UserStyle ÅĞ¶Ï StyleNumber
-        Dim bUserStyle As Boolean
-        bUserStyle = CBool(rst.Fields("UserStyle"))
-        If bUserStyle Then
-            glng_EnsureStyle = 930
-            sUserStyle = gvar_CheckNull(rst.Fields("UserStyleName"))
-            sUserVar = gvar_CheckNull(rst.Fields("UserVariableString"))
-            sUserDesc = gvar_CheckNull(rst.Fields("UserDescriptionString"))
-        Else
-            glng_EnsureStyle = 900
-        End If
-        rst.Close
-    End If
-End Function
+    rst.Open "SELECT PK FROM AD_DOOR_TYPES WHERE TypeID='" & gs_FixSQL(sName) & "'", gdb_CDM, adOpenForwardOnly, adLockReadOnly
+    If rst.BOF And rst.EOF Then rst.Close: gdb_CDM.Execute "INSERT INTO AD_DOOR_TYPES (TypeID,StyleNumber) VALUES ('" & gs_FixSQL(sName) & "',900)", lngRet
+    rst.Close
+End Sub
 
 Private Sub glng_EnsureMaterial(ByVal sName As String)
     Dim rst As ADODB.Recordset, lngRet As Long
@@ -183,7 +162,7 @@ Private Sub glng_EnsureMaterial(ByVal sName As String)
 End Sub
 
 ' ============================================================================
-' CSV ½âÎö
+' CSV è§£æ
 ' ============================================================================
 Private Function SplitCSVLine(ByVal sLine As String) As Variant
     Dim v() As String, idx As Long, i As Long, f As String, bQ As Boolean
@@ -223,33 +202,33 @@ Private Function GetF(ByRef v As Variant, ByVal i As Integer, ByVal d As String)
 End Function
 
 ' ============================================================================
-' ÎÄ¼şÑ¡Ôñ¶Ô»°¿ò
+' æ–‡ä»¶é€‰æ‹©å¯¹è¯æ¡†
 ' ============================================================================
 Private Function ShowOpenFile(ByVal sDir As String, ByVal sFilter As String) As String
     Dim sLast As String
     Dim sInput As String
     
-    ' ¶ÁÈ¡¼ÇÒäµÄÍêÕûÂ·¾¶
-    sLast = GetSetting("CCC", "AutoImportNest", "LastPath", sDir & "\7-10ÖĞÁÖSPCæÃÀ¼»Ò.csv")
+    ' è¯»å–è®°å¿†çš„å®Œæ•´è·¯å¾„
+    sLast = GetSetting("CCC", "AutoImportNest", "LastPath", sDir & "\7-10ä¸­æ—SPCå©·å…°ç°.csv")
     
-    ' µ¥¸öÊäÈë¿ò£ºÍêÕûÂ·¾¶£¨´ø¼ÇÒä£©
-    sInput = InputBox("ÇëÊäÈë CSV ÎÄ¼şÍêÕûÂ·¾¶:" & vbCrLf & vbCrLf & _
-                      "¿ÉÒÔÖ»ÊäÈëÎÄ¼şÃû£¨Ê¹ÓÃ¼ÇÒäµÄÄ¿Â¼£©:" & vbCrLf & _
+    ' å•ä¸ªè¾“å…¥æ¡†ï¼šå®Œæ•´è·¯å¾„ï¼ˆå¸¦è®°å¿†ï¼‰
+    sInput = InputBox("è¯·è¾“å…¥ CSV æ–‡ä»¶å®Œæ•´è·¯å¾„:" & vbCrLf & vbCrLf & _
+                      "å¯ä»¥åªè¾“å…¥æ–‡ä»¶åï¼ˆä½¿ç”¨è®°å¿†çš„ç›®å½•ï¼‰:" & vbCrLf & _
                       "  " & sDir & vbCrLf & vbCrLf & _
-                      "»òÊäÈëÍêÕûÂ·¾¶:", _
-                      "×Ô¶¯»¯Éú²úÅÅ°æ", sLast)
+                      "æˆ–è¾“å…¥å®Œæ•´è·¯å¾„:", _
+                      "è‡ªåŠ¨åŒ–ç”Ÿäº§æ’ç‰ˆ", sLast)
     If sInput = "" Then Exit Function
     
-    ' Èç¹ûÖ»ÊäÈëÎÄ¼şÃû£¬Æ´½Ó¼ÇÒäÄ¿Â¼
+    ' å¦‚æœåªè¾“å…¥æ–‡ä»¶åï¼Œæ‹¼æ¥è®°å¿†ç›®å½•
     If InStr(sInput, "\") = 0 And InStr(sInput, "/") = 0 Then
-        ' ´Ó¼ÇÒäÂ·¾¶ÌáÈ¡Ä¿Â¼
+        ' ä»è®°å¿†è·¯å¾„æå–ç›®å½•
         Dim sFolder As String
         sFolder = Left$(sLast, InStrRev(sLast, "\"))
         If sFolder = "" Then sFolder = sDir & "\"
         sInput = sFolder & sInput
     End If
     
-    ' ±£´æ¼ÇÒä
+    ' ä¿å­˜è®°å¿†
     SaveSetting "CCC", "AutoImportNest", "LastPath", sInput
     
     ShowOpenFile = sInput
