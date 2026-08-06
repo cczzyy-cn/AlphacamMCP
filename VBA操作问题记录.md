@@ -1,0 +1,288 @@
+# AlphaCAM VBA 操作问题记录
+
+记录通过 COM 自动化（`win32com` + `aroutaps.Application`）操作 AlphaCAM 2016 R1 内置 VBA 时遇到的各种问题、根因与解决方案。
+适用对象：`AdoorMain` 门样式宏（`AdoorEvents` 模块）、CDM 门板项目、一般 AlphaCAM VBA 脚本。
+
+---
+
+## 1. 连接与实例
+
+### 1.1 ProgID 是 `aroutaps.Application`，不是 `AlphaCAM.Application`
+
+**现象：** `win32com.client.GetActiveObject('AlphaCAM.Application')` 报
+`com_error: (-2147221005, '无效的类字符串', ...)`。
+
+**根因：** AlphaCAM 2016 的 COM ProgID 是 `aroutaps.Application`。
+
+**解决：**
+
+```python
+app = win32com.client.GetActiveObject('aroutaps.Application')   # 连接已运行实例
+# 或 app = win32com.client.Dispatch('aroutaps.Application')     # 启动/连接
+```
+
+### 1.2 多个 AlphaCAM 进程 → 连错实例
+
+**现象：** 同一台机器开了多个 `Acam.exe`（任务管理器可见多个进程），`GetActiveObject`
+返回的实例可能不是期望的那个；A 实例能访问 VBE、B 实例能画图，两边状态不一致。
+
+**判断方法：**
+
+```powershell
+Get-Process -Name Acam | Select-Object Id, MainWindowTitle
+```
+
+VBA 编辑器打开的实例其窗口标题类似
+`Microsoft Visual Basic for Applications - C:\...项目名 - [模块名 (代码)]`。
+
+**解决：** 先确认目标实例再操作。MCP bridge 与独立 Python 脚本各自 `GetActiveObject`
+可能连到不同实例——出现"bridge 读不到模块 / 脚本画不了图"等诡异现象时，优先怀疑实例错位。
+
+### 1.3 `VBE` / `VBComponents` 访问失败（`'NoneType' object has no attribute 'VBComponents'`）
+
+**现象：** MCP 工具 `list_vba_modules` 报
+`Failed to list VBA modules: 'NoneType' object has no attribute 'VBComponents'`；
+`run_vba_line` 同样失败。
+
+**根因：** bridge 连接实例的 `app.VBE.ActiveVBProject` 返回 `None`（该实例的 VBA 环境
+未初始化，或连错了实例）。**不等于**模块不存在。
+
+**解决：**
+- 直接脚本化访问：`vbe = app.VBE; proj = vbe.ActiveVBProject`，遍历 `proj.VBComponents`。
+- 模块通常就在 `ActiveVBProject`（VBA 编辑器当前打开的项目）里，无需遍历全部项目。
+- 若遍历 `vbe.VBProjects` 遇"工程已被保护"（CDM 等），跳过该项目的组件访问即可。
+
+### 1.4 CDM 项目受保护
+
+**现象：** 遍历 `vbe.VBProjects` 时访问 `CDM` 及其派生 add-in 项目的 `VBComponents`
+抛错：`该工程已被保护，不能执行操作`（VbLR6.chm, 50289）。
+
+**解决：** 这不是故障。门板样式宏（`AdoorMain`）在用户自己打开的**活动项目**里
+（`ActiveVBProject`），不是 CDM 项目；逐个项目访问时用 try/except 跳过受保护项目。
+
+---
+
+## 2. 宏调用（`Application.Run`）
+
+### 2.1 宏名必须是 `Project.Module.Macro` 完整格式
+
+**现象：** `app.Run('AdoorEvents.Sindeg')`、`app.Run('Sindeg')` 都失败（E_FAIL），
+带完整项目名后成功。
+
+**解决：**
+
+```python
+proj = app.VBE.ActiveVBProject
+res = app.Run(proj.Name + '.AdoorEvents.Sindeg', 30.0)   # → 0.5
+```
+
+### 2.2 新插入的宏无法通过 `Run` 调用（"未找到所需的有效名称"）
+
+**现象：** 往模块里 `InsertLines` / `AddFromString` 一个新 `Sub`，随后
+`app.Run('项目.模块.新宏')` 报
+`(-2147352567, '发生意外。', (0, 'APC.ApcHost.7', '未能找到所需的有效名称。', ...))`；
+而模块里**已存在**的宏运行正常。
+
+**根因：** AlphaCAM 2016 的 `Application.Run` 基于项目加载/编译时的宏名表，
+**运行时动态添加的宏不会被解析到**。这是平台限制，不是代码错误。
+
+**影响与对策：**
+- 不影响实际使用：`AdoorMain` 等项目加载时就存在的宏，修改其**代码体**后运行的是新代码（见 2.3）。
+- 想验证新代码，用"已有宏换体"技巧（见 5.1），或直接修改已存在宏再改回。
+
+### 2.3 修改已存在宏的代码体 → 运行时立即生效
+
+**验证方法：** 临时把 `Sindeg` 函数体改为 `Sindeg = 42`，`Run` 后返回 `42.0`；
+改回原样返回 `0.5`。
+
+**结论：** `Run` 调用时按**当前模块代码**编译执行，修改 `AdoorMain` 等已有宏的
+函数体无需重新加载项目即生效。
+
+### 2.4 `Run` 报 E_FAIL（`0x80004005`）通用错误
+
+**现象：** `(-2147352567, '发生意外。', (0, None, None, None, 0, -2147467259), None)`。
+
+**排查顺序：**
+1. 宏名格式是否 `Project.Module.Macro`（最常见）。
+2. 模块是否被破坏（残留游离代码 / 语法错误导致项目编译失败，见 3.4、5.3）。
+3. 是否新插入的宏（见 2.2）。
+
+---
+
+## 3. 模块代码读写（CodeModule）
+
+### 3.1 读取：`Lines(1, CountOfLines)` 行尾是 CRLF
+
+```python
+n = cm.CountOfLines
+code = cm.Lines(1, n)          # 行分隔符为 \r\n，最后一行后无分隔符
+line = cm.Lines(ln, 1)         # 取单行（不含行尾符）
+```
+
+### 3.2 写入：`DeleteLines` 全量替换 + `AddFromString`
+
+推荐全量替换（避免残留）：
+
+```python
+cm.DeleteLines(1, cm.CountOfLines)
+cm.AddFromString(code)         # 行尾 CRLF 或 LF 均可，VBA 自动规范化
+```
+
+实测 CRLF 与 LF 行尾的 `AddFromString` 行为一致，均按内容行数计行。
+
+### 3.3 Python 文本模式写入 → `\r\r\n` 污染（重要）
+
+**现象：** COM 读出的代码行尾是 `\r\n`；用 Python `open(path, 'w')`（默认文本模式）
+写入时 `\n → \r\n`，文件里变成 `\r\r\n`（双 CR）。之后读回做字符串匹配/替换全部落空。
+
+**解决：**
+
+```python
+# 写备份时禁用二次转换
+with open(path, 'w', encoding='utf-8', newline='') as fh:
+    fh.write(code)
+
+# 从文件读回时统一规范化行尾
+import re
+code = re.sub(r'\r\r\n|\r\n|\r', '\n', open(path, encoding='utf-8').read())
+```
+
+**教训：** 字符串模式匹配（`str.count`/`replace`）前，先确认行尾；报"pattern not
+found"时第一反应检查 `\r`。
+
+### 3.4 删除宏必须删整个块，不能只删两行
+
+**现象：** 清理测试宏时用 `DeleteLines(ln, 2)`（Sub 头 + 下一行），宏体全部残留，
+模块里堆满无头的游离代码（`Set f = ...`、`With ... End With` 在模块级非法）→
+项目编译失败，后续一切 `Run` 都报"未找到所需的有效名称"。
+
+**解决：** 定位 `Sub` 声明行到对应 `End Sub`，整块删除：
+
+```python
+start = <找到 'Public Sub Xxx' 的行>
+end = start
+while cm.Lines(end, 1).strip() != 'End Sub':
+    end += 1
+cm.DeleteLines(start, end - start + 1)
+```
+
+或用"整模块重写"（3.2）兜底，彻底清除残留。
+
+---
+
+## 4. VBA 语言陷阱
+
+### 4.1 `Dim` 不能写在循环体/条件块内
+
+**现象：** `Dim ta As Path` 写在 `For` 循环内、`Dim nc As Collection` 写在 `If` 块内，
+AlphaCAM 报"声明重复"编译错误。
+
+**根因：** VBA 把所有 `Dim` 提升到过程级，同名变量出现在不同块中会被误判重复声明。
+
+**解决：** 所有 `Dim` 集中在过程顶部；块内只保留赋值（去掉 `Dim` 关键字）。
+
+### 4.2 `MsgBox` 会阻塞自动化
+
+**现象：** 宏里 `MsgBox` 弹窗后 MCP/COM 调用挂起等待用户点击，表现为"卡住"。
+
+**解决：**
+- 验证用代码内不要 `MsgBox`；需要输出信息时写文件（见 5.2）。
+- 真出现弹窗：关掉后重试（错误提示里也常见这句）。
+
+### 4.3 浮点"等于"判断
+
+`L0orR1 = 0` 这类判断：`L0orR1` 是用户变量直接赋值时无计算误差，`= 0` 可用；
+若值经过运算，用 `Abs(L0orR1) < 0.0000001` 更稳。
+
+---
+
+## 5. 验证技巧（无法直接调 `AdoorMain` 时）
+
+### 5.1 已有宏换体测试
+
+新插入的宏不能 `Run`（见 2.2），但**已有宏**（如 `Sindeg`）运行的是当前代码体。
+临时替换其函数体为测试逻辑 → `Run` → 检查结果 → 恢复原函数体。
+
+已验证可用于：
+- 触发目标代码的编译（测试体调用了 `MirrorX`、FastGeometry 等，编译错会直接暴露）。
+- 在真实 `App.ActiveDrawing` + `CreateFastGeometry` 环境跑通几何构建逻辑。
+- 验证 `Path.Group` 赋值/读回、`GetNextGroupNumberForGeometries` 等。
+
+### 5.2 用文件输出代替 MsgBox
+
+```vba
+Open "C:\path\out.txt" For Output As #1
+Print #1, "value=" & x
+Close #1
+```
+
+脚本侧运行宏后读取文件内容比对，不阻塞。
+
+### 5.3 编译验证
+
+没有公开的 VBE 编译 API；可靠做法是 `Run` 一个**已存在**的宏（如 `Sindeg`）——
+运行前 VBA 会编译，若模块有语法错误会抛错。模块被破坏时连这个也会失败，
+先用 3.2 整模块重写恢复。
+
+---
+
+## 6. 门板宏常见操作要点
+
+### 6.1 路径分组
+
+```vba
+Dim GroupNumber1 As Integer
+Dim GroupNumber2 As Integer
+GroupNumber1 = App.ActiveDrawing.GetNextGroupNumberForGeometries
+GroupNumber2 = GroupNumber1 + 1
+Geo1.Group = GroupNumber1   ' 第一个图形 → 组1
+Geo2.Group = GroupNumber2   ' 第二、三个图形 → 组2
+Geo3.Group = GroupNumber2
+```
+
+组号用 `GetNextGroupNumberForGeometries` 动态取，避免覆盖已有组。
+
+### 6.2 关于宽度中心轴镜像（`L0orR1 = 0` 时）
+
+- 镜像 = 所有 X 坐标映射为 `width - X`。
+- `FastGeometry.KnownArc` 的第二参数是 `CW`（True=顺时针），**镜像后必须取反**，
+  否则圆弧凸侧反向。
+
+```vba
+.KnownArc R2, Not mirror, MirrorX(W + R2, width, mirror), length - H - R2
+.KnownArc R1, mirror,     MirrorX(width - R1, width, mirror), length - H + R1
+```
+
+- `Path.Group` 属性可读写；镜像不改变路径 bbox 与周长，可用作验证特征。
+
+---
+
+## 7. 其他环境问题
+
+### 7.1 Bash heredoc 里嵌大段 VBA/Python 会卡住
+
+超长 heredoc（内含 Python 三重引号字符串）会导致 MCP 桥输入缓冲截断、工具卡死。
+**解决：** 脚本先 `write_file` 落盘，再 `python script.py` 执行（本项目一直采用此方式）。
+
+### 7.2 测试几何清理
+
+验证宏创建的几何可用 `App.ActiveDrawing` 相关方法或 MCP `delete_all_geometries`
+清理；COM 直接 `Run` 的宏创建的几何有时不持久化（无文档事务上下文），
+运行后检查 `get_drawing_info` 的 `geo_count` 确认。
+
+---
+
+## 附：速查表
+
+| 问题 | 一句话答案 |
+|---|---|
+| ProgID 是什么 | `aroutaps.Application` |
+| 宏名格式 | `项目名.模块名.宏名` |
+| 新宏 Run 不了 | 平台宏名表限制，改已有宏的代码体 |
+| 模块读出的行尾 | `\r\n`；Python 写文件用 `newline=''` |
+| `AddFromString` 行尾 | CRLF / LF 均可 |
+| 删宏怎么删 | 定位到 `End Sub` 整块删 |
+| `Dim` 放哪 | 过程顶部，勿放循环/条件块内 |
+| MsgBox | 会阻塞，验证用写文件 |
+| 圆弧镜像 | CW 参数取反 |
+| 项目受保护 | CDM 等，跳过即可 |
