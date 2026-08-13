@@ -13,51 +13,11 @@ Option Explicit
 ' 主入口（CCC 功能菜单触发）
 ' ============================================================================
 Public Sub AutoImportNest()
-    '
-    Dim sCSVPath As String
-    Dim sJobName As String
-    Dim sTemp    As String
-    
+    ' 菜单入口：弹出 frmAutoNest 窗体（选 CSV → 导入 → 排版）
     On Error GoTo EH
-    
-    ' ── 1. 选择 CSV 文件 ──
-    sCSVPath = ShowOpenFile("C:\Users\C\Desktop\2026优化表", "CSV 文件|*.csv|所有文件|*.*")
-    If sCSVPath = "" Then Exit Sub
-    
-    ' 取文件名作为订单名
-    sTemp = sCSVPath
-    Do While InStr(sTemp, "\") > 0: sTemp = Mid$(sTemp, InStr(sTemp, "\") + 1): Loop
-    Do While InStr(sTemp, "/") > 0: sTemp = Mid$(sTemp, InStr(sTemp, "/") + 1): Loop
-    If LCase(Right$(sTemp, 4)) = ".csv" Then sJobName = Left$(sTemp, Len(sTemp) - 4) Else sJobName = sTemp
-    
-    ' ── 2. 连接 DB 并导入 CSV ──
-    If Not gbln_ConnectToDB() Then
-        MsgBox "无法连接 CDM 数据库", vbCritical: Exit Sub
-    End If
-    
-    Dim lngOrderID As Long
-    lngOrderID = ImportCSV(sCSVPath, sJobName)
-    If lngOrderID = -1 Then Exit Sub   ' 用户取消（订单名重复）
-    If lngOrderID <= 0 Then Exit Sub
-    
-    ' ── 3. 调用 g_Make_Master 批量生产+排版 ──
-    Frame.ShowProgressBox "自动化生产排版", "正在执行批量生产 + 排版 ..."
-    DoEvents
-    Call g_Make_Master(CStr(lngOrderID))
-    Frame.CloseProgressBox
-    
-    ' ── 4. 完成 ──
-    Dim bOK As Boolean
-    bOK = CBool(GetSetting("LICOM AlphaDOOR", "Nest Parameters", "Nest Completed", 0))
-    If bOK Then
-        MsgBox "自动化生产排版完成！" & vbCrLf & "订单: " & sJobName, vbInformation
-    Else
-        MsgBox "生产排版可能未完全成功，请检查 AlphaCAM 结果。", vbExclamation
-    End If
+    frmAutoNest.Show
     Exit Sub
-    
 EH:
-    Frame.CloseProgressBox
     MsgBox "错误: " & Err.Description, vbCritical
 End Sub
 
@@ -70,7 +30,7 @@ Public Sub AutoImportNestWithParams(ByVal sCSVPath As String, _
                                   ByVal sMaterialName As String, _
                                   ByVal bRunNest As Boolean)
     ' 由 frmAutoNest 窗体调用的带参入口
-    Dim sJobName As String, sTemp As String
+    Dim sJobName As String, sTemp As String, lngOrderID As Long
     On Error GoTo EH
     sTemp = sCSVPath
     Do While InStr(sTemp, "\") > 0: sTemp = Mid$(sTemp, InStr(sTemp, "\") + 1): Loop
@@ -78,8 +38,7 @@ Public Sub AutoImportNestWithParams(ByVal sCSVPath As String, _
     If LCase(Right$(sTemp, 4)) = ".csv" Then sJobName = Left$(sTemp, Len(sTemp) - 4) Else sJobName = sTemp
     
     If Not gbln_ConnectToDB() Then MsgBox "无法连接 CDM 数据库", vbCritical: Exit Sub
-    Dim lngOrderID As Long
-    lngOrderID = ImportCSV(sCSVPath, sJobName)
+    lngOrderID = ImportCSV(sCSVPath, sJobName, sCustomerName, sMaterialName)
     If lngOrderID = -1 Then Exit Sub
     If lngOrderID <= 0 Then Exit Sub
     If bRunNest Then
@@ -101,16 +60,25 @@ EH:
     MsgBox "错误: " & Err.Description, vbCritical
 End Sub
 
-Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) As Long
+Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String, _
+                           Optional ByVal sCustomerName As String = "自动化生产", _
+                           Optional ByVal sDefaultMaterial As String = "开料机3000mm") As Long
     '
     Dim lngOrderID As Long, lngRow As Long, lngOK As Long
     Dim sLine As String, vF As Variant, iFile As Integer
+    Dim lngCustID As Long
+    Dim sTp As String, w As Double, h As Double, q As Long
+    Dim sMat As String, sCu As String, sRf As String, sRm As String
+    Dim sC1 As String, sC2 As String, sGrp As String
+    Dim lngStyleNum As Long, sUsrStyle As String
+    Dim lngFail As Long, lngIns As Long
+    If sCustomerName = "" Then sCustomerName = "自动化生产"
+    If sDefaultMaterial = "" Then sDefaultMaterial = "开料机3000mm"
     
     On Error GoTo EH
     
     ' 创建订单
-        Dim lngCustID As Long
-    lngCustID = glng_EnsureCustomer("自动化生产")
+    lngCustID = glng_EnsureCustomer(sCustomerName)
     lngOrderID = glng_CreateOrder(sJobName, lngCustID)
     If lngOrderID <= 0 Then GoTo CleanUp
     
@@ -132,21 +100,15 @@ Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) A
         vF = SplitCSVLine(sLine)
         If UBound(vF) < 3 Then GoTo NextLine
         
-        Dim sTp As String, w As Double, h As Double, q As Long
-        Dim sMat As String, sCu As String, sRf As String, sRm As String
-        Dim sC1 As String, sC2 As String, sGrp As String
-        
         sGrp = Trim$(GetF(vF, 4, "")): sTp = Trim$(GetF(vF, 0, "")): w = Val(GetF(vF, 1, "0"))
         h = Val(GetF(vF, 2, "0")): q = Val(GetF(vF, 3, "1"))
-        sMat = Trim$(GetF(vF, 12, "")): If sMat = "" Then sMat = "开料机3000mm"
+        sMat = Trim$(GetF(vF, 12, "")): If sMat = "" Then sMat = sDefaultMaterial
         sCu = Trim$(GetF(vF, 5, "")): sRf = Trim$(GetF(vF, 9, ""))
         sRm = Trim$(GetF(vF, 11, "")): sC1 = Trim$(GetF(vF, 7, "")): sC2 = Trim$(GetF(vF, 8, ""))
         If w <= 0 Or h <= 0 Then GoTo NextLine
         If q <= 0 Then q = 1
         
         ' 确保门型和材料存在，获取门型实际 StyleNumber 和用户样式名
-        Dim lngStyleNum As Long
-        Dim sUsrStyle As String
         lngStyleNum = glng_EnsureStyle(sTp, sUsrStyle)
         glng_EnsureMaterial sMat
         
@@ -167,11 +129,16 @@ Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String) A
             "dt.IgnoreOuterGeometry,dt.ByPassNest," & _
             "dt.UserVariableString,dt.UserDescriptionString," & _
             "dt.UserValue_0,dt.UserValue_1,dt.UserValue_2,dt.UserValue_3,dt.UserValue_4,dt.UserValue_5,dt.UserValue_6 " & _
-            "FROM AD_DOOR_TYPES dt WHERE dt.TypeID='" & gs_FixSQL(sTp) & "'"
-        lngOK = lngOK + 1
+            "FROM AD_DOOR_TYPES dt WHERE dt.TypeID='" & gs_FixSQL(sTp) & "'", lngIns
+        If lngIns > 0 Then lngOK = lngOK + 1 Else lngFail = lngFail + 1
 NextLine:
     Loop
     Close #iFile
+    
+    If lngFail > 0 Then
+        MsgBox "有 " & lngFail & " 行门板明细未能插入（门型参数缺失），已跳过。", _
+               vbExclamation, "自动化生产排版"
+    End If
     
     ImportCSV = lngOrderID
     GoTo CleanUp
@@ -253,9 +220,10 @@ End Sub
 ' ============================================================================
 Private Function SplitCSVLine(ByVal sLine As String) As Variant
     Dim v() As String, idx As Long, i As Long, f As String, bQ As Boolean
+    Dim c As String
     ReDim v(0 To 20)
     For i = 1 To Len(sLine)
-        Dim c As String: c = Mid$(sLine, i, 1)
+        c = Mid$(sLine, i, 1)
         If bQ Then
             If c = """" Then
                 If i < Len(sLine) And Mid$(sLine, i + 1, 1) = """" Then
@@ -271,6 +239,7 @@ Private Function SplitCSVLine(ByVal sLine As String) As Variant
             If c = """" Then
                 bQ = True
             ElseIf c = "," Then
+                If idx > UBound(v) Then ReDim Preserve v(0 To idx * 2)
                 v(idx) = f
                 idx = idx + 1
                 f = ""
@@ -279,6 +248,7 @@ Private Function SplitCSVLine(ByVal sLine As String) As Variant
             End If
         End If
     Next
+    If idx > UBound(v) Then ReDim Preserve v(0 To idx)
     v(idx) = f
     ReDim Preserve v(0 To idx)
     SplitCSVLine = v
@@ -288,24 +258,3 @@ Private Function GetF(ByRef v As Variant, ByVal i As Integer, ByVal d As String)
     If i >= 0 And i <= UBound(v) Then GetF = v(i) Else GetF = d
 End Function
 
-' ============================================================================
-' 文件选择对话框
-' ============================================================================
-Private Function ShowOpenFile(ByVal sDir As String, ByVal sFilter As String) As String
-    Dim sLast As String, sInput As String
-    sLast = GetSetting("CCC", "AutoImportNest", "LastPath", sDir & "\7-10中林SPC婷兰灰.csv")
-    sInput = InputBox("请输入 CSV 文件完整路径:" & vbCrLf & vbCrLf & _
-                      "可只输入文件名（用记忆目录）:" & vbCrLf & _
-                      "  " & sDir & vbCrLf & vbCrLf & _
-                      "或完整路径:", _
-                      "自动化生产排版", sLast)
-    If sInput = "" Then Exit Function
-    If InStr(sInput, "\") = 0 And InStr(sInput, "/") = 0 Then
-        Dim sFolder As String
-        sFolder = Left$(sLast, InStrRev(sLast, "\"))
-        If sFolder = "" Then sFolder = sDir & "\"
-        sInput = sFolder & sInput
-    End If
-    SaveSetting "CCC", "AutoImportNest", "LastPath", sInput
-    ShowOpenFile = sInput
-End Function

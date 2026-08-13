@@ -1,3 +1,5 @@
+Option Explicit
+
 Private Declare PtrSafe Function FindWindow Lib "user32" Alias "FindWindowA" (ByVal lpClassName As String, ByVal lpWindowName As String) As Long
 Private Declare PtrSafe Function GetWindowLong Lib "user32" Alias "GetWindowLongA" (ByVal hWnd As Long, ByVal nIndex As Long) As Long
 Private Declare PtrSafe Function SetWindowLong Lib "user32" Alias "SetWindowLongA" (ByVal hWnd As Long, ByVal nIndex As Long, ByVal dwNewLong As Long) As Long
@@ -35,8 +37,6 @@ Private Type OPENFILENAME
 End Type
 Private Const OFN_FILEMUSTEXIST As Long = &H1000
 Private Const OFN_HIDEREADONLY As Long = &H4
-
-Option Explicit
 
 ' ==============================================================================
 ' 自动化生产排版 — CSV 文件选择窗体

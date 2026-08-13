@@ -6,7 +6,8 @@ AlphaCAM CDM（Cabinet Door Manufacturing）自动化模块源码与文档。
 
 | 文件 | 说明 |
 |------|------|
-| `modAutoImportNest.bas` | ⭐ **自动化生产排版模块**：弹窗选 CSV → 导入门板数据 → `g_Make_Master` 批量生产+排版+NC 输出 |
+| `modAutoImportNest.bas` | ⭐ **自动化生产排版模块**：导入门板数据 → `g_Make_Master` 批量生产+排版+NC 输出；含菜单入口 `AutoImportNest`（弹 `frmAutoNest` 窗体）与带参入口 `AutoImportNestWithParams` |
+| `frmAutoNest.txt` | ⭐ **自动化生产排版窗体**（代码文本）：CSV 路径记忆回填 + 系统文件对话框 + 确定/取消（AlphaCAM 不支持导入 .frm，需手动创建，见 `frmAutoNest_手动创建.md`） |
 | `Events.bas` | CDM 工程菜单注册（含"自动化生产排版"按钮 + `m_AutoImportNest` 包装函数） |
 | `Make.bas` | CDM 原始 Make 模块源码备份（7926 行，加工引擎） |
 | `CDM分析报告.md` | CDM 完整源码分析（模块结构、数据库表、调用链） |
@@ -17,14 +18,18 @@ AlphaCAM CDM（Cabinet Door Manufacturing）自动化模块源码与文档。
 ### 使用方式
 
 ```
-AlphaCAM 菜单 → CDM → 自动化生产排版
+AlphaCAM 菜单 → CCC功能 → 自动化生产排版   （弹出 frmAutoNest 窗体）
 ```
+
+- 菜单项绑定 `Events.bas` 的 `m_AutoImportNest` → `modAutoImportNest.AutoImportNest`（弹出 `frmAutoNest` 窗体）
+- 窗体"确定"→ `AutoImportNestWithParams(路径, "自动化生产", 材料, True)`（导入 + 排版）
 
 ### 完整流程
 
 ```
-1. 弹窗输入 CSV 文件完整路径（带记忆，上次路径自动填充）
-2. 客户名"自动化生产"（不存在自动创建）
+1. 弹出 frmAutoNest 窗体：CSV 路径记忆回填（注册表 CCC\AutoImportNest\LastPath），
+   可点"..."用系统文件对话框选择，或直接输入路径
+2. 确定 → 客户名"自动化生产"（不存在自动创建）
 3. 创建订单（订单名已存在 → 直接取消并提示）
 4. 逐行导入门板明细：
    ├── 门型已存在 → 用其 UserStyle 判断 StyleNumber
@@ -74,6 +79,10 @@ install_vba_module(module_name="modAutoImportNest", code=code)
 code = open("CDM功能/Events.bas", encoding="gbk").read()
 install_vba_module(module_name="Events", code=code)
 ```
+
+> **frmAutoNest 窗体**：AlphaCAM VBA 不支持导入 .frm 设计文件，需按
+> `frmAutoNest_手动创建.md` 手动创建窗体与 5 个控件，再粘贴 `frmAutoNest.txt` 代码
+> （窗体代码若更新，在 VBA 编辑器中整体替换代码窗口内容即可）。
 
 > 若 `install_vba_module` 报"工程已被保护"，需先在 VBA 编辑器确认工程未锁定，
 > 或先 `delete_vba_module` 删除同名旧模块再安装。
