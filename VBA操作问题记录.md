@@ -52,13 +52,17 @@ VBA 编辑器打开的实例其窗口标题类似
 - 模块通常就在 `ActiveVBProject`（VBA 编辑器当前打开的项目）里，无需遍历全部项目。
 - 若遍历 `vbe.VBProjects` 遇"工程已被保护"（CDM 等），跳过该项目的组件访问即可。
 
-### 1.4 CDM 项目受保护
+### 1.4 CDM 项目"受保护"与"可读"
 
-**现象：** 遍历 `vbe.VBProjects` 时访问 `CDM` 及其派生 add-in 项目的 `VBComponents`
-抛错：`该工程已被保护，不能执行操作`（VbLR6.chm, 50289）。
+**现象：** 遍历 `vbe.VBProjects` 时访问 `CDM` 项目的 `VBComponents` 抛错：
+`该工程已被保护，不能执行操作`（VbLR6.chm, 50289）——但**有时又能读**。
 
-**解决：** 这不是故障。门板样式宏（`AdoorMain`）在用户自己打开的**活动项目**里
-（`ActiveVBProject`），不是 CDM 项目；逐个项目访问时用 try/except 跳过受保护项目。
+**处理：**
+- 逐项目访问一律用 try/except 跳过受保护项目（`'CDM' in p.Name` 时先试探）。
+- CDM 项目解锁后可直接读源码：`Make`（门板生成主逻辑，7926 行）、`UserStyleTestMain`
+  （用户样式测试）、`CDoor`、`COuterToolpath`、`CPathData`、`CUserStyle`、`Database` 等。
+- 注意 `ActiveVBProject` 会随 VBA 编辑器当前选中项目变化——定位模块要遍历所有项目，
+  不要假设活动项目。
 
 ---
 
@@ -194,6 +198,34 @@ AlphaCAM 报"声明重复"编译错误。
 `L0orR1 = 0` 这类判断：`L0orR1` 是用户变量直接赋值时无计算误差，`= 0` 可用；
 若值经过运算，用 `Abs(L0orR1) < 0.0000001` 更稳。
 
+### 4.4 错误处理器里 `On Error GoTo 0` 会清空 `Err`
+
+**现象：** 宏出错进 `EH:` 后先 `On Error Resume Next` 再 `On Error GoTo 0`，
+最后 `Print Err.Number` 输出 `0`（错误信息丢失）。
+
+**根因：** `On Error GoTo 0` 会清除当前 `Err` 对象。
+
+**解决：** 进入 EH 立即把错误保存到变量，再处理文件/清理：
+
+```vba
+EH:
+   Dim en As Long, ed As String
+   en = Err.Number: ed = Err.Description
+   On Error Resume Next
+   Close #1
+   Open "C:\path\out.txt" For Output As #1
+   Print #1, "ERR " & en & " | " & ed
+   Close #1
+```
+
+### 4.5 `Drawing` 没有 `Count` 属性
+
+**现象：** 用 `App.ActiveDrawing.Count` 取几何数报 438（对象不支持属性/方法）；
+`Toolpaths.Count` 正常。
+
+**解决：** 几何数用 `GetFirstGeo()` 遍历计数（参考 `get_all_geometries` 实现），
+刀路数用 `Drawing.Toolpaths.Count`。
+
 ---
 
 ## 5. 验证技巧（无法直接调 `AdoorMain` 时）
@@ -218,29 +250,47 @@ Close #1
 
 脚本侧运行宏后读取文件内容比对，不阻塞。
 
+**坑：`Open` 后未 `Close` → 文件被 AlphaCAM 进程锁定（WinError 32），删不掉。**
+宏里每次 `Open` 必须配 `Close`；被锁后用一个空宏执行无参 `Close`（关闭所有文件号）
+释放句柄，再删除文件。
+
 ### 5.3 编译验证
 
 没有公开的 VBE 编译 API；可靠做法是 `Run` 一个**已存在**的宏（如 `Sindeg`）——
 运行前 VBA 会编译，若模块有语法错误会抛错。模块被破坏时连这个也会失败，
 先用 3.2 整模块重写恢复。
 
+### 5.4 定位"哪一行出错"：逐步记录法
+
+用 `On Error Resume Next` + 每步后把 `Err.Number` 追加到文件（`For Append`），
+一次运行就能定位到具体失败调用，避免"错误被 EH 覆盖"：
+
+```vba
+On Error Resume Next
+App.SelectTool ...
+Open "out.txt" For Append As #1
+Print #1, "step2 err=" & Err.Number
+Close #1
+Err.Clear
+...下一调用...
+```
+
 ---
 
 ## 6. 门板宏常见操作要点
 
-### 6.1 路径分组
+### 6.1 路径分组：与门类型刀路关联时必须用**固定组号**
+
+`GetNextGroupNumberForGeometries` 返回动态组号（取决于生成时绘图已有组），
+**不稳定**——而门类型刀路（`AD_DOOR_PATHS.GroupID`）是固定值，动态组号会导致
+刀路关联不上（刀路丢失/落到错误几何）。
 
 ```vba
-Dim GroupNumber1 As Integer
-Dim GroupNumber2 As Integer
-GroupNumber1 = App.ActiveDrawing.GetNextGroupNumberForGeometries
-GroupNumber2 = GroupNumber1 + 1
-Geo1.Group = GroupNumber1   ' 第一个图形 → 组1
-Geo2.Group = GroupNumber2   ' 第二、三个图形 → 组2
-Geo3.Group = GroupNumber2
+Geo1.Group = 1   ' 固定组号，与 AD_DOOR_PATHS.GroupID 一一对应
+Geo2.Group = 2
 ```
 
-组号用 `GetNextGroupNumberForGeometries` 动态取，避免覆盖已有组。
+方案 A 经验：宏返回的每个几何设固定组 → 刀路按组落在正确几何上。
 
 ### 6.2 关于宽度中心轴镜像（`L0orR1 = 0` 时）
 
@@ -254,6 +304,25 @@ Geo3.Group = GroupNumber2
 ```
 
 - `Path.Group` 属性可读写；镜像不改变路径 bbox 与周长，可用作验证特征。
+
+### 6.3 `Path.Offset` 的 Left/Right 是**相对行进方向**，不是绝对的内/外（重要）
+
+**现象：** 同一段代码 `Geo.Offset(B, -1)`（`acamRIGHT`）在 `L0R1=0` 时是内偏移，
+`L0R1=1`（镜像梯形，路径方向反转）时变成**外偏移**，图形跑到外面。
+
+**根因：** `Offset(Distance, Side)` 的 `acamLEFT(1)/acamRIGHT(-1)` 相对**路径行进方向**。
+路径方向（CW/CCW）由顶点顺序决定，镜像图形方向会反转（用 Shoelace 公式可算有向面积验证）：
+- CW 路径：Right = 内侧；
+- CCW（镜像）路径：Right = 外侧。
+
+**解决：** 偏移侧随路径方向切换：
+
+```vba
+If L0R1 = 0 Then OffsSide = -1 Else OffsSide = 1   ' 方向随 L0R1 镜像而反转
+Set Offs = Geo1.Offset(B, OffsSide)
+```
+
+**验证特征：** 内偏移路径的 bbox 完全在原始路径 bbox 内，且周长更短。
 
 ---
 
@@ -272,6 +341,86 @@ Geo3.Group = GroupNumber2
 
 ---
 
+## 8. AlphaDOOR（CDM）门板机制与数据库（本项目核心）
+
+### 8.1 门板构成
+
+CDM 生成门板 = **外部几何**（宽高矩形，CDM 自动创建）+ **样式几何**（运行门样式宏
+`AdoorMain` 返回的 `PathsToReturn`）+ **门类型刀路**（`AD_DOOR_PATHS` 记录，生成时
+应用到对应几何）。
+
+### 8.2 原轮廓矩形（外部几何）生成过程
+
+`CDM` 项目 `Make` 模块 `mbln_Style_Make_930`（约 7692 行起）：
+
+```vba
+If Not .IgnoreOuterGeometry Then
+    '..create the door perimeter
+    Set pthOut = ActiveDrawing.CreateRectangle(0, 0, RequiredData.Width, RequiredData.Length)
+    Set dll = CreateObject("StdAlpha.ShareClass")
+    dll.jc pthOut, RequiredData.UserVariables(46), ...(49)   ' 用户变量46-49参与矩形造型
+    dll.diamond pthOut, .CornerRadius                        ' 四角圆角
+    pthOut.Group = 0                                         ' 矩形组号 = 0
+    lngGeoNumber = lngGeoNumber + 1
+    pthOut.Attribute(DEF_ATT_GEOMETRY_NUMBER) = CStr(lngGeoNumber)  ' 几何编号 = 1
+    Call m_SetDetailAttributes(Door, pthOut)
+End If
+```
+
+- 矩形 **Group = 0**，几何编号属性 = **1**（注释 "first outside pass should always be 1"）。
+- `IgnoreOuterGeometry` 是门类型属性对话框的复选框（`&IgnoreOuterGeometry`，
+  与 Width/Length/CornerRadius 同级，见 `UserStyleTestMain.gbln_CreateINI` 生成的 .ini 格式）。
+
+### 8.3 刀路 ↔ 几何关联机制（`Make.mbln_MakeMachining`，4824 行起）
+
+```vba
+If .GroupID <> 0 Then
+    Set pthsToCut = mpths_PathsInGroup(ActiveDrawing.Geometries, .GroupID)
+    ' 按 Group 号选几何
+Else
+    ' GroupID=0：按"几何编号属性"选几何（函数名有误导性，实为
+    ' pthPath.Attribute(DEF_ATT_GEOMETRY_NUMBER) = .PathOffsetFrom）
+    If Not Door.IgnoreOuterGeometry Then
+        Set pthsToCut = mpths_PathsNotInGroup(ActiveDrawing.Geometries, .PathOffsetFrom)
+    Else
+        Set pthsToCut = Nothing   ' ← IgnoreOuterGeometry=True 时 GroupID=0 刀路被强制跳过！
+    End If
+End If
+```
+
+**结论（本项目方案 A 的依据）：**
+- `GroupID ≠ 0` 的刀路按组关联宏返回的几何 → **全部刀路应设非 0 GroupID**；
+- `GroupID = 0` 的刀路关联外部几何（矩形），且勾选 `IgnoreOuterGeometry` 后会被跳过；
+- 要让刀具落在自定义图形上：宏几何设固定组（如梯形=1、内偏移=2），并把
+  `AD_DOOR_PATHS.GroupID` 改成对应组号。
+
+### 8.4 读取 CDM.mdb（门类型/刀路数据库）
+
+- 64 位 Python 无 ACE/Jet OLEDB 驱动（`未找到提供程序`）；**用 32 位 AlphaCAM VBA +
+  DAO 后期绑定**读取：
+
+```vba
+Set dbe = CreateObject("DAO.DBEngine.36")
+Set db = dbe.OpenDatabase("D:\2016\LICOMDAT\CDM Data\CDM.mdb", True, True)  ' 只读
+```
+
+- 关键表：`AD_DOOR_TYPES`（门类型：TypeID/Width/Length/CornerRadius/
+  `IgnoreOuterGeometry`/UserVariableString...）、`AD_DOOR_PATHS`（刀路：
+  PathNumber/`GroupID`/`PathOffsetFrom`/`PathOffsetSide`/`PathOffsetValue`/
+  MachiningMethod/ToolName...）、`AD_USER_STYLES`（样式宏 .arb 路径）。
+- **Jet DAO 的 `LIKE` 通配符默认是 `*` 不是 `%`**（ANSI-89 SQL）：
+  `WHERE UserStyleName LIKE '*梯形*'`，用 `%` 匹配不到。
+- 输出文件用 GBK 编码写（VBA `Print` 按系统 ANSI 代码页），Python 侧 `decode('gbk')` 读。
+
+### 8.5 直接改数据库的风险
+
+- CDM 运行时会用**内存中的门类型数据**覆盖数据库（用户改过 UI 后写回），
+  直接 `UPDATE AD_DOOR_TYPES/AD_DOOR_PATHS` 可能被覆盖——UI 操作更可靠；
+- 改库前**必须备份**（复制 `CDM.mdb`，1.2GB）；
+- 改库后需重启 AlphaDOOR / 重新打开门类型才生效。
+
+---
+
 ## 附：速查表
 
 | 问题 | 一句话答案 |
@@ -284,5 +433,13 @@ Geo3.Group = GroupNumber2
 | 删宏怎么删 | 定位到 `End Sub` 整块删 |
 | `Dim` 放哪 | 过程顶部，勿放循环/条件块内 |
 | MsgBox | 会阻塞，验证用写文件 |
+| Open 后文件被锁 | 宏里忘 `Close`；空宏执行无参 `Close` 释放 |
+| EH 里 Err 变 0 | `On Error GoTo 0` 清空 Err，先存变量再处理 |
+| Drawing 几何数 | 无 `Count` 属性，用 `GetFirstGeo()` 遍历 |
 | 圆弧镜像 | CW 参数取反 |
-| 项目受保护 | CDM 等，跳过即可 |
+| Offset 内/外 | Left/Right 相对行进方向；镜像路径要换侧 |
+| 刀路落错几何 | 宏几何用固定组号，与 `AD_DOOR_PATHS.GroupID` 对应 |
+| 矩形上的刀路消失 | GroupID=0 刀路在 IgnoreOuterGeometry=True 时被跳过 |
+| 原轮廓矩形在哪 | `Make.mbln_Style_Make_930`：CreateRectangle + Group=0 + 几何编号1 |
+| 读 CDM.mdb | AlphaCAM VBA + `DAO.DBEngine.36`（32位）；Jet LIKE 用 `*` |
+| 项目受保护 | CDM 等，跳过即可；解锁后可读 `Make`/`UserStyleTestMain` |
