@@ -259,6 +259,18 @@ class AlphaCAM:
                 self._activate_window()
                 self._validate_instance()
 
+            # ── 多实例交叉校验 ─────────────────────────────────────────
+            # COM GetActiveObject 在多 Acam.exe 并存时可能附加到旧/无窗口实例；
+            # 用 Frame.WindowHandle 与可见主窗口对比，不一致时告警。
+            try:
+                if not self.validate_instance_window():
+                    logger.warning(
+                        "Connected COM instance does not match the visible main window "
+                        "(possible multi-instance); operations may target a stale instance"
+                    )
+            except Exception:
+                pass
+
             self._set_state(ConnectionState.CONNECTED)
         except Exception as exc:
             self._app = None
@@ -290,38 +302,17 @@ class AlphaCAM:
 
         User-authorized: only activates/restores the window; never changes
         its size or position (Width/Height/Left/Top untouched).
+        Window identification: class ``AlphaCAM_3DMILL`` preferred (PID-verified),
+        title-keyword fallback (multi-instance safe).
         """
         try:
             import ctypes
             user32 = ctypes.windll.user32
-
-            include = ("3d 5-", "alphacam", "alpha cam")
-            exclude = (
-                "visual studio code", "code -", "readme", "markdown", ".md",
-                "chrome", "edge", "firefox", "explorer", "terminal",
-                "cmd.exe", "powershell", "notepad",
-            )
-
-            found = []
-
-            @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
-            def enum_cb(hwnd, _lparam):
-                length = user32.GetWindowTextLengthW(hwnd)
-                if length > 0:
-                    buf = ctypes.create_unicode_buffer(length + 1)
-                    user32.GetWindowTextW(hwnd, buf, length + 1)
-                    low = buf.value.lower()
-                    if user32.IsWindowVisible(hwnd) and \
-                       any(k in low for k in include) and \
-                       not any(e in low for e in exclude):
-                        found.append((hwnd, buf.value))
-                return True
-
-            user32.EnumWindows(enum_cb, 0)
-            if not found:
+            main = self._find_main_window()
+            if main is None:
                 logger.warning("AlphaCAM main window not found for activation")
                 return False
-            hwnd = found[0][0]
+            hwnd = main["hwnd"]
             user32.ShowWindow(hwnd, 1)  # SW_NORMAL (restore)
             user32.SetForegroundWindow(hwnd)
             logger.info("AlphaCAM window activated (hwnd=%s)", hwnd)
@@ -329,6 +320,168 @@ class AlphaCAM:
         except Exception as exc:
             logger.warning("Window activation failed: %s", exc)
             return False
+
+    # ---- window / process diagnostics & management ----------------------
+    # (read-only unless explicitly calling close_acam_dialogs)
+
+    def _enum_acam_windows(self) -> list[dict]:
+        """Read-only: enumerate visible windows belonging to Acam.exe processes.
+
+        Each item: ``{hwnd, pid, class, title}``. PID-verified so unrelated
+        apps with similar titles are excluded.
+        """
+        import ctypes
+        import subprocess
+        user32 = ctypes.windll.user32
+
+        pids = set()
+        out = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq Acam.exe", "/FO", "CSV", "/NH"],
+            capture_output=True, text=True,
+        ).stdout
+        for line in out.strip().splitlines():
+            if "Acam.exe" in line:
+                try:
+                    pids.add(int(line.split(",")[1].strip('"')))
+                except (IndexError, ValueError):
+                    pass
+        if not pids:
+            return []
+
+        found = []
+
+        @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+        def enum_cb(hwnd, _lparam):
+            pid = ctypes.c_ulong()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value not in pids or not user32.IsWindowVisible(hwnd):
+                return True
+            cls = ctypes.create_unicode_buffer(256)
+            user32.GetClassNameW(hwnd, cls, 256)
+            length = user32.GetWindowTextLengthW(hwnd)
+            title = ""
+            if length > 0:
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                title = buf.value
+            found.append({"hwnd": hwnd, "pid": pid.value, "class": cls.value, "title": title})
+            return True
+
+        user32.EnumWindows(enum_cb, 0)
+        return found
+
+    def get_acam_windows(self) -> list[dict]:
+        """Read-only: visible windows of Acam.exe processes (diagnostics)."""
+        return self._enum_acam_windows()
+
+    def get_acam_processes(self) -> list[dict]:
+        """Read-only: Acam.exe processes (pid / session / memory)."""
+        import subprocess
+        procs = []
+        out = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq Acam.exe", "/FO", "CSV", "/NH"],
+            capture_output=True, text=True,
+        ).stdout
+        for line in out.strip().splitlines():
+            if "Acam.exe" in line:
+                parts = [p.strip('"') for p in line.split(",")]
+                procs.append({"pid": int(parts[1]), "session": parts[2], "mem_kb": parts[4]})
+        return procs
+
+    def _find_main_window(self) -> dict | None:
+        """Find the AlphaCAM main window among Acam.exe windows.
+
+        Strategy: class ``AlphaCAM_3DMILL`` (strong signal) first, then
+        title-keyword fallback. All candidates are PID-verified.
+        """
+        wins = self._enum_acam_windows()
+        for w in wins:
+            if w["class"] == "AlphaCAM_3DMILL":
+                return w
+        include = ("3d 5-", "alphacam", "alpha cam")
+        exclude = (
+            "visual studio code", "code -", "readme", "markdown", ".md",
+            "chrome", "edge", "firefox", "explorer", "terminal",
+            "cmd.exe", "powershell", "notepad", "visual basic", "宏",
+        )
+        for w in wins:
+            low = w["title"].lower()
+            if any(k in low for k in include) and not any(e in low for e in exclude):
+                return w
+        return None
+
+    def validate_instance_window(self) -> bool:
+        """Cross-check the connected COM instance against the visible main window.
+
+        Reads ``App.Frame.WindowHandle`` and compares with the enumerated main
+        window hwnd. Returns False when they mismatch (e.g. multi-instance,
+        connected to a windowless/old instance) — callers should warn.
+        """
+        try:
+            h = self._safe_get(self._app.Frame, "WindowHandle", None)
+        except Exception:
+            h = None
+        main = self._find_main_window()
+        ok = h is not None and main is not None and int(h) == main["hwnd"]
+        if not ok and main is not None:
+            logger.warning(
+                "COM instance window mismatch: Frame.WindowHandle=%s, main hwnd=%s",
+                h, main["hwnd"],
+            )
+        return ok
+
+    def close_acam_dialogs(self, force: bool = False) -> list[dict]:
+        """Close standard dialog windows (#32770) belonging to Acam.exe.
+
+        Safe by default: only targets ``#32770`` (standard dialog class), never
+        the main window (``AlphaCAM_3DMILL``) or the VBE editor. Returns the
+        list of closed windows. ``force`` also closes non-standard dialog classes.
+        """
+        import ctypes
+        user32 = ctypes.windll.user32
+        closed = []
+        for w in self._enum_acam_windows():
+            cls = w["class"]
+            if cls == "#32770" or (force and cls not in ("AlphaCAM_3DMILL", "wndclass_desked_gsk")):
+                if user32.PostMessageW(w["hwnd"], 0x0010, 0, 0):  # WM_CLOSE
+                    closed.append(w)
+                    logger.info("Closed dialog: hwnd=%s class=%s title=%s", w["hwnd"], cls, w["title"])
+        return closed
+
+    def detect_error_dialogs(self) -> list[dict]:
+        """Read-only: detect open dialog windows (#32770) of Acam.exe and read
+        their full content (message text + button labels) via child controls.
+
+        Useful to "listen" to AlphaCAM error/alert popups that COM calls
+        cannot see. Returns ``[{hwnd, pid, title, texts}]``.
+        """
+        import ctypes
+        user32 = ctypes.windll.user32
+        result = []
+        for w in self._enum_acam_windows():
+            if w["class"] != "#32770":
+                continue
+            texts = []
+
+            @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+            def child_cb(hwnd, _lparam):
+                length = user32.GetWindowTextLengthW(hwnd)
+                if length > 0:
+                    buf = ctypes.create_unicode_buffer(length + 1)
+                    user32.GetWindowTextW(hwnd, buf, length + 1)
+                    t = buf.value.strip()
+                    if t:
+                        texts.append(t)
+                return True
+
+            user32.EnumChildWindows(w["hwnd"], child_cb, 0)
+            result.append({
+                "hwnd": w["hwnd"],
+                "pid": w["pid"],
+                "title": w["title"],
+                "texts": texts,
+            })
+        return result
 
     def _reconnect(self) -> bool:
         """Attempt to reconnect with exponential backoff.
@@ -1110,14 +1263,21 @@ class AlphaCAM:
         Creates a temp module, adds the code, runs it, then removes the module.
         """
         import uuid
-        temp_name = f"_MCP_TEMP_{uuid.uuid4().hex[:8]}"
+        # 注意：VBA 模块名必须以字母开头，"_MCP_TEMP_..." 以下划线开头会
+        # 导致 Name 赋值失败（模块保持默认名"模块N"），Run 找不到且清理残留
+        temp_name = f"MCP_TEMP_{uuid.uuid4().hex[:8]}"
         try:
             proj = self._get_vba_project()
             module = proj.VBComponents.Add(1)
             module.Name = temp_name
-            full_code = f"Public Sub _MCP_Run()\n{code_line}\nEnd Sub"
+            # 注意：VBA 模块名/过程名必须以字母开头。
+            # 旧代码用 "_MCP_TEMP_..." 模块名（Name 赋值失败→残留"模块N"）
+            # 和 "_MCP_Run" 过程名（编译错误"VBA 在编译时遇到错误"）。
+            full_code = f"Public Sub MCPRun()\n{code_line}\nEnd Sub"
             module.CodeModule.AddFromString(full_code)
-            self._app.Run(f"{temp_name}._MCP_Run")
+            # AlphaCAM App.Run 需要完整 "Project.Module.Procedure" 宏名，
+            # 缺工程前缀会 E_FAIL
+            self._app.Run(f"{proj.Name}.{temp_name}.MCPRun")
             # Cleanup
             proj.VBComponents.Remove(module)
             return {"status": "ok", "code": code_line}
@@ -1131,6 +1291,80 @@ class AlphaCAM:
             except Exception:
                 pass
             raise AlphaCAMError(f"VBA line execution failed: {exc}. Please close any popup/dialog in AlphaCAM (e.g. an error MsgBox) and retry.") from exc
+
+    def run_vba_capture(self, code_line: str) -> dict:
+        """Execute a VBA code line with structured error capture.
+
+        Injects a temp module whose ``MCPCapRun`` wraps ``code_line`` in
+        ``On Error`` handling, writing ``OK`` or ``ERR|<number>|<description>``
+        to a temp file, then returns a structured dict. Handles both VBA
+        runtime errors (captured) and VBA compile/launch failures (raised).
+        """
+        import os
+        import tempfile
+        import uuid
+
+        temp_name = f"MCPCap_{uuid.uuid4().hex[:8]}"  # 必须以字母开头
+        dump = os.path.join(tempfile.gettempdir(), f"mcpcap_{uuid.uuid4().hex[:8]}.txt")
+        vba_dump = dump.replace("\\", "\\\\")
+
+        code = (
+            "Public Sub MCPCapRun()\n"
+            "    Dim en As Long, ed As String\n"
+            "    On Error GoTo EH\n"
+            f"    {code_line}\n"
+            f'    Open "{vba_dump}" For Output As #1\n'
+            '    Print #1, "OK"\n'
+            "    Close #1\n"
+            "    Exit Sub\n"
+            "EH:\n"
+            "    ' \u5148\u4fdd\u5b58 Err\uff0c\u518d\u5904\u7406\uff08On Error Resume Next \u4f1a\u6e05\u7a7a Err\uff09\n"
+            "    en = Err.Number: ed = Err.Description\n"
+            "    On Error Resume Next\n"
+            f'    Open "{vba_dump}" For Output As #1\n'
+            '    Print #1, "ERR|" & en & "|" & ed\n'
+            "    Close #1\n"
+            "End Sub\n"
+        )
+
+        proj = self._get_vba_project()
+        module = None
+        try:
+            module = proj.VBComponents.Add(1)
+            module.Name = temp_name
+            module.CodeModule.AddFromString(code)
+            self._app.Run(f"{proj.Name}.{temp_name}.MCPCapRun")
+        except Exception as exc:
+            raise AlphaCAMError(f"VBA capture failed: {exc}") from exc
+        finally:
+            if module is not None:
+                try:
+                    proj.VBComponents.Remove(module)
+                except Exception:
+                    pass
+
+        if os.path.exists(dump):
+            try:
+                content = open(dump, encoding="utf-8", errors="replace").read().strip()
+            finally:
+                try:
+                    os.remove(dump)
+                except OSError:
+                    pass
+            if content.startswith("OK"):
+                result = content[len("OK"):].strip()
+                return {"ok": True, "result": result or None}
+            if content.startswith("ERR|"):
+                parts = content.split("|", 2)
+                return {
+                    "ok": False,
+                    "vba_err": {
+                        "number": parts[1] if len(parts) > 1 else "",
+                        "description": parts[2] if len(parts) > 2 else "",
+                    },
+                }
+            return {"ok": False, "error": f"unexpected capture output: {content}"}
+        return {"ok": False, "error": "no capture output file"}
 
     def load_addin(self, file_name: str) -> dict:
         """Load an add-in DLL or VBA project file."""

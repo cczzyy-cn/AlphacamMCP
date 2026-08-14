@@ -113,6 +113,26 @@ res = app.Run(proj.Name + '.AdoorEvents.Sindeg', 30.0)   # → 0.5
 
 ---
 
+### 2.5 新装模块 Run 报"VBA 在编译时遇到错误"（APC.ApcHost.7）→ 过程名下划线开头
+
+**现象：** `install_vba_module` 添加成功，但 `Run("CDM.模块名.过程名")` 报：
+```
+(-2147352567, '发生意外。', (0, 'APC.ApcHost.7', 'VBA 在编译时遇到错误。\r\n', None, 0, -2147467259), None)
+```
+与 2.4 的 E_FAIL 不同，**错误来源是 `APC.ApcHost.7`**，且宏名格式、工程编译均正常。
+
+**根因：** 临时模块里过程名 `Public Sub _MCP_Run()` **以下划线开头**——VBA 标识符（模块名/过程名/变量名）**必须以字母开头**，下划线开头是编译错误。工程内已有宏不受影响（不重新编译），只有新模块编译时暴露。
+
+**解决：** 过程名改字母开头（如 `MCPRun`）。**模块名同理**：`module.Name = "_MCP_TEMP_xxx"` 会赋值失败，模块保持默认名"模块N"，且按原名清理找不到 → 每次失败残留一个"模块N"。
+
+**配套教训（alphacam_com.py `run_vba_line` 连环 bug，已修复）：**
+1. 模块名 `_MCP_TEMP_...` 下划线开头 → Name 赋值失败 → 残留"模块N"（改 `MCP_TEMP_...`）
+2. 过程名 `_MCP_Run` 下划线开头 → "VBA 在编译时遇到错误"（改 `MCPRun`）
+3. 宏名缺工程前缀 `Project.Module.Macro` → E_FAIL（见 2.1，加 `proj.Name & "."`）
+
+**验证：** 修复后连续 5 次 `run_vba_line` 成功、零残留（组件数恢复原始值）。
+
+---
 ## 3. 模块代码读写（CodeModule）
 
 ### 3.1 读取：`Lines(1, CountOfLines)` 行尾是 CRLF
@@ -228,6 +248,18 @@ EH:
 
 ---
 
+### 4.6 VBA 模块名/过程名必须以字母开头（下划线开头非法）
+
+**规则：** VBA 标识符（模块名、过程名、变量名、常量名）**必须以字母开头**（A-Z/a-z），后跟字母/数字/下划线；**下划线开头（如 `_MCP_Run`、`_MCP_TEMP_`）编译错误**。
+
+**实际影响（自动化场景）：**
+- `VBComponents.Add(1)` 后 `module.Name = "_xxx"` 会静默失败（不抛错），模块保持默认名"模块N"
+- 代码里写 `Public Sub _xxx()` → 编译错误"VBA 在编译时遇到错误"
+- 生成动态模块/过程名时：**统一字母开头**，如 `MCP_TEMP_<hex>` / `MCPRun`
+
+**排查线索：** 新增模块才报编译错误、已有模块正常 → 先查动态生成的模块名/过程名是否符合标识符规则。
+
+---
 ## 5. 验证技巧（无法直接调 `AdoorMain` 时）
 
 ### 5.1 已有宏换体测试
@@ -341,6 +373,19 @@ Set Offs = Geo1.Offset(B, OffsSide)
 
 ---
 
+### 7.3 窗体存在损坏控件（读属性报"无效参数"）
+
+**现象：** 遍历 `Designer.Controls` 时，某个控件读 `Name` 即报：
+```
+(-2147352567, '发生意外。', (0, 'Forms.Form.1', '无效参数。', 'fm20.hlp', 0, -2147024809), None)
+```
+但该控件**不影响工程编译与运行**（VBA 宏列表正常、宏可执行）。
+
+**原因：** 手动创建窗体时残留的损坏/无类型控件（可能是 OLE 控件库丢失或设计器异常对象）。
+
+**处理：** 可忽略；如需清理，用 `Controls.Remove` 按序号删除，删除前确认不是被代码引用的控件（代码只按 `Name` 引用，未知控件未被引用可安全删除）。
+
+---
 ## 8. AlphaDOOR（CDM）门板机制与数据库（本项目核心）
 
 ### 8.1 门板构成
@@ -443,3 +488,9 @@ Set db = dbe.OpenDatabase("D:\2016\LICOMDAT\CDM Data\CDM.mdb", True, True)  ' �
 | 原轮廓矩形在哪 | `Make.mbln_Style_Make_930`：CreateRectangle + Group=0 + 几何编号1 |
 | 读 CDM.mdb | AlphaCAM VBA + `DAO.DBEngine.36`（32位）；Jet LIKE 用 `*` |
 | 项目受保护 | CDM 等，跳过即可；解锁后可读 `Make`/`UserStyleTestMain` |
+| Run 报"编译时遇到错误" | `APC.ApcHost.7`；动态生成的**模块名/过程名以下划线开头**（必须字母开头） |
+| 新模块残留"模块N" | `module.Name` 赋值失败（下划线开头模块名非法），且清理按原名找不到 |
+
+
+
+

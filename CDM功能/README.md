@@ -22,9 +22,10 @@ AlphaCAM 菜单 → CCC功能 → 自动化生产排版   （弹出 frmAutoNest 
 ```
 
 - 菜单项绑定 `Events.bas` 的 `m_AutoImportNest` → `modAutoImportNest.AutoImportNest`（弹出 `frmAutoNest` 窗体）
-- 窗体"确定"→ `AutoImportNestWithParams(路径, "自动化生产", 材料, bRunNest)`：
+- 窗体"确定"→ `AutoImportNestWithParams(路径, "自动化生产", 材料, bRunNest, bOverwrite)`：
   - 不勾选"只导入订单，不生产排版" → `bRunNest=True`（导入 + 排版）
   - 勾选 → `bRunNest=False`（仅导入订单，跳过排版）
+  - 勾选"强制覆盖重名订单" → `bOverwrite=True`：订单名已存在时删除原订单相关数据（`AD_ORDER_DETAILS`、`AD_REPORT_DATA`、`AD_ORDERS`）后重新导入
 
 ### 完整流程
 
@@ -67,7 +68,7 @@ AlphaCAM 菜单 → CCC功能 → 自动化生产排版   （弹出 frmAutoNest 
 | **930 门型宏参数** | `AD_ORDER_DETAILS.StyleName` 必须 = `AD_DOOR_TYPES.UserStyleName`（宏项目名，如 `AD_OnePanelSquare`），否则 `gbln_ProjectExists` 找不到宏报错 |
 | **UserValue_0~6** | INSERT...SELECT 从 `AD_DOOR_TYPES` 直接复制，供 `App.Run` 传参给宏 |
 | **ComponentGrouping 类型** | Long 整数，CSV 颜色文本需 `Val()` 转换（文本→0） |
-| **订单重名** | 已存在则直接取消导入（不弹窗询问） |
+| **订单重名** | 默认直接取消导入（不弹窗询问）；勾选窗体"强制覆盖重名订单"则删除原订单明细/报表后重建 |
 | **材料默认** | "开料机3000mm"：18mm 厚、1220×3000mm 板 |
 
 ### 安装方式
@@ -83,7 +84,7 @@ install_vba_module(module_name="Events", code=code)
 ```
 
 > **frmAutoNest 窗体**：AlphaCAM VBA 不支持导入 .frm 设计文件，需按
-> `frmAutoNest_手动创建.md` 手动创建窗体与 6 个控件（含"只导入订单"勾选框），
+> `frmAutoNest_手动创建.md` 手动创建窗体与 8 个控件（含"只导入订单"/"强制覆盖重名订单"勾选框与"重新生成标签"按钮），
 > 再粘贴 `frmAutoNest.txt` 代码（窗体代码若更新，在 VBA 编辑器中整体替换代码窗口内容即可）。
 
 > 若 `install_vba_module` 报"工程已被保护"，需先在 VBA 编辑器确认工程未锁定，

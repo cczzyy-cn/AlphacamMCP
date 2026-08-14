@@ -85,7 +85,7 @@ CDM 工程中已安装 `modAutoImportNest` 模块与 `frmAutoNest` 窗体，实�
 ```
 
 - 菜单触发：`m_AutoImportNest` → `AutoImportNest()`（弹 `frmAutoNest` 窗体）；窗体"确定"→ `AutoImportNestWithParams(路径, "自动化生产", 材料, bRunNest)`
-- 窗体含 6 控件：`lblCSV`/`txtCSV`/`cmdBrowse`/`chkOnlyImport`（只导入勾选框）/`cmdOK`/`cmdCancel`；AlphaCAM 不支持导入 `.frm`，窗体需手动创建一次（见 `CDM功能/frmAutoNest_手动创建.md`）
+- 窗体含 8 控件：`lblCSV`/`txtCSV`/`cmdBrowse`/`chkOnlyImport`（只导入勾选框）/`chkOverwrite`（强制覆盖重名订单勾选框）/`cmdRegenLabel`（重新生成标签）/`cmdOK`/`cmdCancel`；AlphaCAM 不支持导入 `.frm`，窗体需手动创建一次（见 `CDM功能/frmAutoNest_手动创建.md`）
 - 930 用户样式门型（如平板PETA）需复制 `StyleName=UserStyleName` + `UserValue_0~6`，否则报"无法连接用户定义的宏"
 - VBA 工程自动定位：ActiveVBProject → CDM 工程 → 首个工程（`_get_vba_project()`）
 

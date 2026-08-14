@@ -104,10 +104,20 @@ Private Sub cmdOK_Click()
     SaveSetting "CCC", "AutoImportNest", "LastPath", Trim$(txtCSV)
     
     ' 调用模块带参入口（勾选“只导入订单”则跳过排版）
-    Me.Hide
+    ' g_Make_Master 内部 g_UnLoadAllForms 会卸载所有窗体，完成后重新显示，可连续导入多个订单
     modAutoImportNest.AutoImportNestWithParams _
-        Trim$(txtCSV), "自动化生产", "", Not chkOnlyImport.Value
-    Unload Me
+        Trim$(txtCSV), "自动化生产", "", Not chkOnlyImport.Value, chkOverwrite.Value
+    frmAutoNest.Show vbModeless
+End Sub
+
+Private Sub cmdRegenLabel_Click()
+    ' 重新生成门板标签 EMF（需先在 AlphaCAM 中打开排版后的嵌套图纸）
+    If ActiveDrawing Is Nothing Then
+        MsgBox "请先在 AlphaCAM 中打开排版后的嵌套图纸（含 AlphaDOOR 刀路属性）", _
+               vbExclamation, "自动化生产排版"
+        Exit Sub
+    End If
+    modAutoImportNest.g_RegenDoorLabelEMFs
 End Sub
 
 Private Sub cmdCancel_Click(): Unload Me: End Sub
