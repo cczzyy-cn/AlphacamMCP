@@ -72,19 +72,46 @@ description: 通过 MCP 协议直接实时操作 AlphaCAM 2016 R1 的桥接器�
 - 10 = 雕刻
 - 21 = 钻孔 / 22 = 啄钻 / 23 = 攻丝 / 24 = 镗孔
 
-## CDM 橱柜门自动化（modAutoImportNest）
+## CDM 橱柜门自动化（modAutoImportNest + frmAutoNest）
 
-CDM 工程中已安装 `modAutoImportNest` 模块，实现一键自动化：
+CDM 工程中已安装 `modAutoImportNest` 模块与 `frmAutoNest` 窗体，实现一键自动化：
 
 ```
-选择 CSV 文件（带记忆）→ 客户"自动化生产" → 创建订单（重名取消）
-  → 逐行导入门板明细（复制 UserStyle 参数）
-  → g_Make_Master 批量生产 + 排版 + NC 输出
+菜单 → CCC功能 → 自动化生产排版（弹出 frmAutoNest 窗体，CSV 路径记忆回填）
+  → 选择/输入 CSV → 确定
+  → 客户"自动化生产" → 创建订单（重名取消）→ 逐行导入门板明细（复制 UserStyle 参数）
+  → 勾选"只导入订单，不生产排版"？ 是→仅导入，结束
+  → 否 → g_Make_Master 批量生产 + 排版 + NC 输出
 ```
 
-- 菜单触发：AlphaCAM 菜单 → CDM → 自动化生产排版（宏 `m_AutoImportNest`）
+- 菜单触发：`m_AutoImportNest` → `AutoImportNest()`（弹 `frmAutoNest` 窗体）；窗体"确定"→ `AutoImportNestWithParams(路径, "自动化生产", 材料, bRunNest)`
+- 窗体含 6 控件：`lblCSV`/`txtCSV`/`cmdBrowse`/`chkOnlyImport`（只导入勾选框）/`cmdOK`/`cmdCancel`；AlphaCAM 不支持导入 `.frm`，窗体需手动创建一次（见 `CDM功能/frmAutoNest_手动创建.md`）
 - 930 用户样式门型（如平板PETA）需复制 `StyleName=UserStyleName` + `UserValue_0~6`，否则报"无法连接用户定义的宏"
 - VBA 工程自动定位：ActiveVBProject → CDM 工程 → 首个工程（`_get_vba_project()`）
+
+## VBA 窗体/控件编程（VBIDE）
+
+通过 COM 访问 `Application.VBE` 扩展对象模型，可**编程添加/修改窗体控件、替换窗体代码**，无需手工拖拽：
+
+```
+链路: VBE → VBProjects → VBComponents("窗体名")
+        ├─ .Designer.Controls.Add(ProgID, 名称)   ← 添加控件（Forms.CheckBox.1 / TextBox.1 / CommandButton.1 / Label.1 ...）
+        └─ .CodeModule.DeleteLines / AddFromString ← 替换代码
+```
+
+```python
+proj = com._get_vba_project()
+comp = proj.VBComponents('frmAutoNest')
+d = comp.Designer
+cb = d.Controls.Add('Forms.CheckBox.1', 'chkOnlyImport')   # 先加控件
+cb.Caption = '只导入订单，不生产排版'; cb.Left = 78; cb.Top = 54
+cm = comp.CodeModule                                        # 再改引用它的代码
+cm.DeleteLines(1, cm.CountOfLines); cm.AddFromString(code)  # 建议先备份，失败回滚
+```
+
+- **顺序关键**：先 `Controls.Add` 再更新代码，反了会编译报"找不到方法或数据成员"
+- 可读现有控件坐标（`c.Left/c.Top`）辅助定位；前提：AlphaCAM 运行中、工程未锁定
+- 受限：窗体本体需手动创建一次（.frm 无法导入），之后设计/代码全自动
 
 ## MCP 工具 vs VBA 代码 选择指南
 

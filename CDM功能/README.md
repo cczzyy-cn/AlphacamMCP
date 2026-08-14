@@ -22,7 +22,9 @@ AlphaCAM 菜单 → CCC功能 → 自动化生产排版   （弹出 frmAutoNest 
 ```
 
 - 菜单项绑定 `Events.bas` 的 `m_AutoImportNest` → `modAutoImportNest.AutoImportNest`（弹出 `frmAutoNest` 窗体）
-- 窗体"确定"→ `AutoImportNestWithParams(路径, "自动化生产", 材料, True)`（导入 + 排版）
+- 窗体"确定"→ `AutoImportNestWithParams(路径, "自动化生产", 材料, bRunNest)`：
+  - 不勾选"只导入订单，不生产排版" → `bRunNest=True`（导入 + 排版）
+  - 勾选 → `bRunNest=False`（仅导入订单，跳过排版）
 
 ### 完整流程
 
@@ -81,8 +83,8 @@ install_vba_module(module_name="Events", code=code)
 ```
 
 > **frmAutoNest 窗体**：AlphaCAM VBA 不支持导入 .frm 设计文件，需按
-> `frmAutoNest_手动创建.md` 手动创建窗体与 5 个控件，再粘贴 `frmAutoNest.txt` 代码
-> （窗体代码若更新，在 VBA 编辑器中整体替换代码窗口内容即可）。
+> `frmAutoNest_手动创建.md` 手动创建窗体与 6 个控件（含"只导入订单"勾选框），
+> 再粘贴 `frmAutoNest.txt` 代码（窗体代码若更新，在 VBA 编辑器中整体替换代码窗口内容即可）。
 
 > 若 `install_vba_module` 报"工程已被保护"，需先在 VBA 编辑器确认工程未锁定，
 > 或先 `delete_vba_module` 删除同名旧模块再安装。

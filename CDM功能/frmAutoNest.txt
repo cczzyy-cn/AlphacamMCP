@@ -103,10 +103,10 @@ Private Sub cmdOK_Click()
     ' 保存记忆
     SaveSetting "CCC", "AutoImportNest", "LastPath", Trim$(txtCSV)
     
-    ' 调用模块带参入口（导入 + 排版）
+    ' 调用模块带参入口（勾选“只导入订单”则跳过排版）
     Me.Hide
     modAutoImportNest.AutoImportNestWithParams _
-        Trim$(txtCSV), "自动化生产", "", True
+        Trim$(txtCSV), "自动化生产", "", Not chkOnlyImport.Value
     Unload Me
 End Sub
 

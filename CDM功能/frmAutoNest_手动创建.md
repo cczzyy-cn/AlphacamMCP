@@ -8,13 +8,14 @@
 1. 打开 AlphaCAM VBA 编辑器
 2. 菜单：**插入 → 用户窗体(UserForm)** → 生成 `UserForm1`
 3. 属性窗口：`(名称)` = **frmAutoNest**，`Caption` = **自动化生产排版**
-4. 从工具箱添加 **5 个控件**（名称必须完全一致）：
+4. 从工具箱添加 **6 个控件**（名称必须完全一致）：
 
 | 控件 | 名称 | 标题 | 说明 |
 |------|------|------|------|
 | Label | `lblCSV` | "CSV 文件:" | 标签 |
 | TextBox | `txtCSV` | — | CSV 路径 |
 | CommandButton | `cmdBrowse` | "..." | 浏览（文件对话框） |
+| CheckBox | `chkOnlyImport` | "只导入订单，不生产排版" | 勾选则跳过排版 |
 | CommandButton | `cmdOK` | "确定(&O)" | Default=True |
 | CommandButton | `cmdCancel` | "取消(&C)" | Cancel=True |
 
@@ -26,6 +27,7 @@
 ```
 ┌─ 自动化生产排版 ────────────────┐
 │  CSV 文件: [txtCSV      ] [...] │
+│  ☐ 只导入订单，不生产排版       │
 │            [cmdOK] [cmdCancel]  │
 └───────────────────────────────┘
 ```
@@ -33,5 +35,6 @@
 ## 功能
 
 - 点击"..." → 系统文件选择对话框选 CSV
-- 确定 → 调 `modAutoImportNest.AutoImportNestWithParams`（导入 + 排版）
+- 勾选"只导入订单，不生产排版" → 仅导入订单（`bRunNest=False`），不调用 `g_Make_Master`
+- 不勾选 → 导入 + 排版（`bRunNest=True`）
 - 记忆上次路径（注册表）

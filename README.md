@@ -246,13 +246,15 @@ pip install -r requirements.txt
 
 | 文件 | 功能 |
 |---|---|
-| `modAutoImportNest.bas` | **自动化生产排版**：弹窗选 CSV → 导入门板数据 → `g_Make_Master` 批量生产+排版 |
+| `modAutoImportNest.bas` | **自动化生产排版**：导入 CSV 门板数据 → `g_Make_Master` 批量生产+排版；菜单入口弹 `frmAutoNest` 窗体，支持"只导入订单" |
+| `frmAutoNest.txt` | 自动化生产排版窗体代码（手动创建窗体后粘贴，含"只导入订单"勾选框） |
 | `Events.bas` | CDM 工程菜单注册（含 "自动化生产排版" 按钮） |
 
 自动化流程（已在 CDM 工程中运行验证）：
 
 ```
-选择 CSV 文件（带记忆）
+菜单 → CCC功能 → 自动化生产排版（弹出 frmAutoNest 窗体，CSV 路径记忆回填）
+  → 选择/输入 CSV 文件 → 确定
   → 客户名"自动化生产"（自动创建）
   → 创建订单（重名直接取消）
   → 逐行导入门板明细
@@ -260,11 +262,51 @@ pip install -r requirements.txt
      │     930 门型（如平板PETA）→ 复制 UserStyleName + UserValue_0~6
      │     正确加载用户样式宏（AD_OnePanelSquare 等）
      └── 新门型 → 创建为 900 标准镶板门
-  → g_Make_Master 批量生产 + 排版 + NC 输出
+  → 勾选"只导入订单，不生产排版"？
+     ├── 是 → 仅导入订单，流程结束
+     └── 否 → g_Make_Master 批量生产 + 排版 + NC 输出
 ```
 
 > **关键技术点**：930 用户自定义门型的几何由 VBA 宏生成，导入时必须复制
 > `StyleName=UserStyleName`（宏项目名）和 `UserValue_0~6`（宏参数），否则报"无法连接用户定义的宏"。
+
+### 🧩 VBA 窗体/控件编程（VBIDE 对象模型）
+
+通过 COM 访问 AlphaCAM 内置 VBA **扩展对象模型（VBIDE）**，可以编程创建/修改窗体控件、
+读写窗体代码，**无需手工拖拽控件**：
+
+```
+链路: Application.VBE → VBProjects → VBComponents("窗体名")
+        ├─ .Designer            （窗体设计器 → 控件集合）
+        │     └─ .Controls.Add(ProgID, 名称)   ← 添加控件
+        └─ .CodeModule          （窗体代码）
+              ├─ .Lines / .DeleteLines / .AddFromString
+```
+
+```python
+proj = com._get_vba_project()
+comp = proj.VBComponents('frmAutoNest')
+d = comp.Designer
+
+# 添加 CheckBox 并设置属性（ProgID 来自 Microsoft Forms 2.0 库）
+cb = d.Controls.Add('Forms.CheckBox.1', 'chkOnlyImport')
+cb.Caption = '只导入订单，不生产排版'
+cb.Left = 78; cb.Top = 54; cb.Width = 200; cb.Height = 18
+
+# 替换窗体代码（先备份，失败回滚）
+cm = comp.CodeModule
+backup = cm.Lines(1, cm.CountOfLines)
+cm.DeleteLines(1, cm.CountOfLines)
+cm.AddFromString(code)
+```
+
+要点：
+
+- 常用控件 ProgID：`Forms.CheckBox.1` / `Forms.TextBox.1` / `Forms.CommandButton.1` / `Forms.Label.1` / `Forms.ListBox.1`
+- **顺序关键**：先 `Controls.Add` 添加控件，再更新引用该控件的代码；反过来会编译报"找不到方法或数据成员"
+- 可读取现有控件坐标（`c.Left` / `c.Top` / `c.Width`）来定位新控件，无需猜测布局
+- 前提：AlphaCAM 运行中、目标工程未锁定（未保护）
+- 受限：AlphaCAM VBA 不支持导入 `.frm` 设计文件，**窗体本体需先在 VBA 编辑器中手动创建一次**（之后的设计与代码均可全自动）
 
 ### RevNest 反向排版
 
