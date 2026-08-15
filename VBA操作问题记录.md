@@ -260,6 +260,34 @@ EH:
 **排查线索：** 新增模块才报编译错误、已有模块正常 → 先查动态生成的模块名/过程名是否符合标识符规则。
 
 ---
+### 4.7 `Or`/`And` 不短路：`Ni Is Nothing Or Ni.Sheets.Count` 会报错误 91
+
+**现象：** 宏运行弹出 VBA 运行时错误框"运行时错误 '91'：对象变量或 With 块变量未设置"，VBE 进入中断状态（标题显示"[正在运行]"）。
+
+**根因（两个叠加）：**
+1. **VBA 的 `Or`/`And` 不短路求值**：`If Ni Is Nothing Or Ni.Sheets.Count = 0 Then` 中，
+   即使 `Ni Is Nothing` 为 True，仍会继续求值 `Ni.Sheets.Count`——`Ni` 为 Nothing 时 `Ni.Sheets` 触发错误 91。
+   **必须分开判断**：
+   ```vba
+   If Ni Is Nothing Then Exit Sub   ' 先判 Nothing
+   If Ni.Sheets.Count = 0 Then Exit Sub
+   ```
+2. **`On Error GoTo 0` 禁用过程全部错误处理**：局部 `On Error Resume Next` 后若用
+   `On Error GoTo 0` 恢复，会**清掉过程原有的 `On Error GoTo EH`**，后续任何错误直接弹出
+   VBA 错误框（不被 EH 捕获）。恢复主错误处理要用 **`On Error GoTo EH`**，不是 `GoTo 0`。
+
+**修复模板：**
+```vba
+Set Ni = Nothing
+On Error Resume Next
+Set Ni = ActiveDrawing.GetNestInformation   ' 可能失败，吞掉
+On Error GoTo EH                            ' ← 恢复主错误处理器（勿用 GoTo 0）
+If Ni Is Nothing Then MsgBox "...": Exit Sub
+If Ni.Sheets.Count = 0 Then MsgBox "...": Exit Sub
+```
+
+---
+
 ## 5. 验证技巧（无法直接调 `AdoorMain` 时）
 
 ### 5.1 已有宏换体测试
@@ -386,6 +414,71 @@ Set Offs = Geo1.Offset(B, OffsSide)
 **处理：** 可忽略；如需清理，用 `Controls.Remove` 按序号删除，删除前确认不是被代码引用的控件（代码只按 `Name` 引用，未知控件未被引用可安全删除）。
 
 ---
+### 7.4 CDM.arb 损坏：AlphaCAM 启动报"取得选项ID失败 / 无法打开CDM / Error loading CDM Processing"
+
+**现象：** AlphaCAM 启动时弹窗：
+```
+无法打开CDM。R1\StartUp\CDM\CDM.arb
+取得选项ID失败:C:\Program Files (x86)\Vero Software\Alphacam 2016 ...
+Error loading CDM Processing.
+```
+CDM 菜单/功能全部缺失（`list_vba_modules` 只剩 57 个组件，`modAutoImportNest`/`frmAutoNest` 消失）。
+
+**根因：** `CDM.arb`（OLE 复合文档，含 VBA 工程源码+窗体+`Licom/OptionID` 配置）中 **`Licom/OptionID` 流丢失**。
+触发链：**AlphaCAM 退出/保存时把内存 VBA 工程持久化写回 `CDM.arb`**（文件大小从 4.3MB → 5.2MB，流数 264 → 333）——
+若此时进程崩溃（如 RPC 断开/宏执行中删模块），OLE 结构写入不完整 → OptionID 流丢失 → 下次启动加载失败。
+
+**诊断方法（不依赖 AlphaCAM）：**
+```python
+import olefile
+ole = olefile.OleFileIO(r'...\StartUp\CDM\CDM.arb')
+ole.exists('Licom/OptionID')          # False = 损坏（关键流）
+len(ole.listdir())                     # 与备份对比（正常 264，损坏 333）
+```
+- 关键流：`Licom/OptionID`（8 字节）、`Licom/AlphaCAM`、`vao/The VBA Project/...`（VBA 工程数据）
+- `CDM.err` 里的 `CDM.ctx` 错误（"NOT ENOUGH LINES FOR $600"）是**旧的非致命问题**，勿混淆
+
+**恢复流程（已验证）：**
+1. 备份损坏文件：`copy CDM.arb backup/CDM.arb_<日期>_broken.bak`
+2. 从完整备份恢复：`copy backup/CDM.arb.bak CDM.arb`（必须 AlphaCAM **完全关闭**，注意写权限）
+3. 重启 AlphaCAM → CDM 正常加载
+4. **重装丢失的代码**（恢复版本不含近期改动）：
+   - `install_vba_module('modAutoImportNest', 本地bas)` 
+   - `install_vba_module('Events', 本地bas)`（含菜单注册）
+   - **重建 UserForm**：`VBComponents.Add(3)` → Name → `Designer.Controls.Add` 8 个控件 → `CodeModule.AddFromString(本地txt)`
+
+**预防（重要，2026-08-15 实测补充）：**
+- ⚠️ **此环境 AlphaCAM 保存 CDM.arb 会反复丢失 `Licom/OptionID` 流**（8/14、8/15 已发生两次）：
+  反复 `install_vba_module` 触发自动保存后，某次保存 OptionID 就丢（触发条件不明确，正常保存也可能丢）
+- **恢复后立即备份**：`python backup_cdm_arb.py`（校验 OptionID，缺失会明确提示不可用）
+- **每次装完模块后检查 OptionID**：olefile 读 `Licom/OptionID`，丢了马上从最近可用备份恢复
+- 建议工作流：改动代码 → 重装 → **立即备份** → 继续；崩溃/RPC 断开后必查 CDM.arb
+- **定期备份 `StartUp\CDM\CDM.arb`**（崩溃后必查）
+- 崩溃/RPC 断开后先检查 CDM.arb 大小与 `Licom/OptionID` 流，再决定是否恢复
+- 宏执行中/对话框残留时避免 `install_vba_module`（删模块操作易触发保存崩溃）
+
+---
+
+### 7.5 加工道次窗口需调整视图后才能操作（AlphaCAM 固有现象）
+
+**现象：** 视图/屏幕状态变化后（缩放、隐藏/显示路径、宏操作视图），
+加工道次（Operations）窗口**暂时无法操作**；**手动调整一下视图（缩放/重绘）后才恢复正常**。
+
+**结论：** 这是 **AlphaCAM 固有行为**，不是代码 bug——视图状态变化后窗口需重新绑定。
+- 宏操作视图后，末尾补 `ActiveDrawing.ZoomAll`（或 `Redraw`）自动触发刷新
+- 排查时勿误判为宏引入的问题
+
+**相关教训（"重新生成标签"功能）：**
+- **不要在用户正在编辑的图上调用 `m_CreateAlphaCAMDrawingsOfSheets`**——它内部
+  `SaveAs`（覆盖文件）+ `MoveToDrawing`（搬走路径）+ `OpenDrawing`（重开图纸）
+  会破坏加工道次/刀路关联（用户实测"道次乱、刀路对不上门板"）
+- **只读生成方案（已验证）**：遍历嵌套件，`Visible=False` 临时隐藏其他件 →
+  `ZoomToBox` 到当前件 → `SaveEmfFile` → 恢复可见与视图。
+  **全程不 `SaveAs`/`MoveToDrawing`/`OpenDrawing`，用户图零修改**，
+  加工道次不受影响（仅固有"调整视图后可用"现象）
+
+---
+
 ## 8. AlphaDOOR（CDM）门板机制与数据库（本项目核心）
 
 ### 8.1 门板构成
@@ -490,6 +583,7 @@ Set db = dbe.OpenDatabase("D:\2016\LICOMDAT\CDM Data\CDM.mdb", True, True)  ' �
 | 项目受保护 | CDM 等，跳过即可；解锁后可读 `Make`/`UserStyleTestMain` |
 | Run 报"编译时遇到错误" | `APC.ApcHost.7`；动态生成的**模块名/过程名以下划线开头**（必须字母开头） |
 | 新模块残留"模块N" | `module.Name` 赋值失败（下划线开头模块名非法），且清理按原名找不到 |
+| 启动报"取得选项ID失败" | `CDM.arb` 的 `Licom/OptionID` 流丢失（崩溃损坏）；用 olefile 检查，从 backup 恢复并重装代码 |
 
 
 

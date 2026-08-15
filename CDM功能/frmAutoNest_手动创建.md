@@ -42,6 +42,12 @@
 - 不勾选 → 导入 + 排版（`bRunNest=True`）
 - 勾选"强制覆盖重名订单" → 订单名已存在时，删除原订单的 `AD_ORDER_DETAILS`、`AD_REPORT_DATA` 及订单本身后重新导入（`bOverwrite=True`）
 - 不勾选且订单重名 → 提示并取消导入（原行为）
-- 点击"重新生成标签" → 需先在 AlphaCAM 中打开排版后的嵌套图纸（手动移动门板后使用），按当前图纸位置重新生成 `<JobName>_<材料>_<板名>_<件号>.emf`（调用 `modAutoImportNest.g_RegenDoorLabelEMFs`）
+- 点击"重新生成标签" → ⚠️ **操作的是当前打开的图纸**，需先在 AlphaCAM 中打开排版档案 ARD 文件（如 `<订单>_<材料>.ard`，含嵌套信息）；否则会提示"当前图纸不是排版档案"并拒绝。手动移动/删除门板后使用：
+  1. **备份当前图纸状态与原 ARD 文件**（临时副本，保护加工道次窗口不被破坏）
+  2. 删除该订单/材料的旧件标签 EMF（清理残留）
+  3. 按当前图纸位置重新生成 `<JobName>_<材料>_<板名>_<件号>.emf`
+  4. **同步数据库**：按 `DEF_ATT_DETAIL_ID` 更新 `AD_REPORT_DATA.PressDoorImage/PressDoorCounter`，并删除已删板件的记录
+  5. **恢复用户图纸**（重开备份副本）——原 ARD 文件内容不变，加工道次窗口状态不受影响
+  （调用 `modAutoImportNest.g_RegenDoorLabelEMFs`）
 - 窗体为**非模态**（不阻塞 AlphaCAM），操作完成后**保持打开**可连续导入多个订单；点"取消"才关闭
 - 记忆上次路径（注册表）

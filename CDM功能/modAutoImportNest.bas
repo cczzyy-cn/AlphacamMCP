@@ -287,6 +287,40 @@ Public Sub g_RegenDoorLabelEMFs()
     Dim sName As String, iPos As Long
     Dim rst As ADODB.Recordset
     Dim sPath As String, sBase As String
+    Dim Ni As NestInformation
+    Dim Nsh As NestSheet, Npi As NestPartInstance
+    Dim rst2 As ADODB.Recordset
+    Dim lngOrderID2 As Long, lngCnt As Long, lngDetail As Long
+    Dim sDetailList As String, sImgPath As String, sDel As String
+    Dim psTemp As Paths, lngBG As Long
+    Dim blnGradW As Boolean, blnGradS As Boolean
+    Dim dMinX As Double, dMinY As Double, dMaxX As Double, dMaxY As Double
+    Dim colGeoColors As New Collection, colTPColors As New Collection
+    Dim iClr As Long
+    
+    ' 0. 检查当前图纸是否为排版档案（ARD 嵌套图）
+    '    注意: VBA 的 Or 不短路，Ni Is Nothing Or Ni.Sheets.Count 会在
+    '    Ni 为 Nothing 时仍求值 Ni.Sheets 而报错 91，必须分开判断;
+    '    Set 后用 On Error GoTo EH 恢复主错误处理（不能用 GoTo 0 禁用）
+    Set Ni = Nothing
+    On Error Resume Next
+    Set Ni = ActiveDrawing.GetNestInformation
+    On Error GoTo EH
+    If Ni Is Nothing Then
+        MsgBox "当前图纸不是排版档案！" & vbCrLf & vbCrLf & _
+               "请先在 AlphaCAM 中打开排版后的嵌套图纸（ARD 文件，" & vbCrLf & _
+               "如 <订单>_<材料>.ard），再点“重新生成标签”。", _
+               vbExclamation, "自动化生产排版"
+        Exit Sub
+    End If
+    If Ni.Sheets.Count = 0 Then
+        MsgBox "当前图纸不是排版档案！" & vbCrLf & vbCrLf & _
+               "请先在 AlphaCAM 中打开排版后的嵌套图纸（ARD 文件，" & vbCrLf & _
+               "如 <订单>_<材料>.ard），再点“重新生成标签”。", _
+               vbExclamation, "自动化生产排版"
+        Exit Sub
+    End If
+    Set Ni = Nothing
     
     ' 1. 初始化选项（路径/报表配置与排版时一致）
     Set clsOptions = New COptions
@@ -315,34 +349,50 @@ Public Sub g_RegenDoorLabelEMFs()
     iPos = InStr(sName, gstr_JobName)
     If iPos > 0 Then sMat = Mid$(sName, iPos + Len(gstr_JobName) + 1)
     If sMat = "" Then
-        ' 数据库回退：PressDoorImage 路径含真实材料名
+        ' 数据库回退 1：PressDoorImage 路径含真实材料名
+        ' 注意：不用 InStrRev 切目录（AlphaCAM VBA 中行为异常），
+        ' 直接在全路径中 InStr 定位 JobName 取后续一段
         On Error Resume Next
         If gbln_ConnectToDB() Then
             Set rst = gdb_CDM.Execute("SELECT TOP 1 PressDoorImage FROM AD_REPORT_DATA WHERE PressDoorImage <> '' AND INSTR(PressDoorImage, '" & gs_FixSQL(gstr_JobName) & "') > 0")
             If Not rst Is Nothing Then
                 If Not rst.EOF Then
                     sPath = rst.Fields(0)
-                    sBase = Mid$(sPath, InStrRev(sPath, "\") + 1)
-                    If InStr(sBase, ".") > 0 Then sBase = Left$(sBase, InStr(sBase, ".") - 1)
-                    iPos = InStr(sBase, gstr_JobName)
+                    iPos = InStr(sPath, gstr_JobName)
                     If iPos > 0 Then
-                        sMat = Mid$(sBase, iPos + Len(gstr_JobName) + 1)
+                        sMat = Mid$(sPath, iPos + Len(gstr_JobName) + 1)
                         If InStr(sMat, "_") > 0 Then sMat = Left$(sMat, InStr(sMat, "_") - 1)
                     End If
                 End If
                 rst.Close
             End If
         End If
-        On Error GoTo 0
+        On Error GoTo EH
+    End If
+    If sMat = "" Then
+        ' 数据库回退 2：明细表 AD_ORDER_DETAILS.Material（单材料订单最可靠）
+        On Error Resume Next
+        If gbln_ConnectToDB() Then
+            Set rst = gdb_CDM.Execute("SELECT DISTINCT Material FROM AD_ORDER_DETAILS WHERE OrderID=(SELECT OrderID FROM AD_ORDERS WHERE JobName='" & gs_FixSQL(gstr_JobName) & "')")
+            If Not rst Is Nothing Then
+                If Not rst.EOF Then
+                    sMat = rst.Fields(0)
+                    rst.MoveNext
+                    If Not rst.EOF Then sMat = ""   ' 多材料无法确定
+                End If
+                rst.Close
+            End If
+        End If
+        On Error GoTo EH
     End If
     If sMat = "" Then sMat = ActiveDrawing.Attribute(DEF_ATT_MATERIAL_NAME)
     If sMat = "" Then
-        MsgBox "无法恢复材料名（图纸名/数据库/图纸属性均为空）。", _
+        MsgBox "无法恢复材料名（图纸名/路径/明细/属性均未找到）。", _
                vbExclamation, "自动化生产排版"
         Exit Sub
     End If
     
-    ' 4. 数据库连接 + 排版区域集合（m_CreateAlphaCAMDrawingsOfSheets 依赖）
+    ' 4. 数据库连接 + 排版区域集合
     If Not gbln_ConnectToDB() Then
         MsgBox "无法连接 CDM 数据库", vbCritical: Exit Sub
     End If
@@ -351,11 +401,118 @@ Public Sub g_RegenDoorLabelEMFs()
     ' 5. 构造材料对象并重新生成 EMF
     Set Material = New CMaterial
     Material.MaterialName = sMat
-    m_CreateAlphaCAMDrawingsOfSheets Material
     
-    MsgBox "门板标签 EMF 已按当前门板位置重新生成" & vbCrLf & vbCrLf & _
+    ' 5.1 删除该订单/材料旧件标签 EMF（避免删除板件后残留）
+    On Error Resume Next
+    sDel = Dir$(gstr_EnsureBackslash(clsOptions.PathToRoot) & DEF_PATH_IMAGE & DEF_BACKSLASH & _
+                 gstr_JobName & DEF_UNDERSCORE & sMat & DEF_UNDERSCORE & "*" & DEF_EXTENSION_EMF)
+    Do While sDel <> ""
+        Kill gstr_EnsureBackslash(clsOptions.PathToRoot) & DEF_PATH_IMAGE & DEF_BACKSLASH & sDel
+        sDel = Dir$
+    Loop
+    On Error GoTo EH
+    
+    ' 5.2 逐件生成标签 EMF（纯黑内容：隐藏其他件、当前件黑色、白底；
+    '    适配黑白标签打印机（只能打印黑色内容，无浅灰/彩色依赖）；只读不改文件）
+    On Error Resume Next
+    ' 记录原色 + 隐藏废料
+    For Each p In ActiveDrawing.Geometries: colGeoColors.add p.Color: Next
+    For Each p In ActiveDrawing.ToolPaths: colTPColors.add p.Color: Next
+    For Each p In ActiveDrawing.Geometries
+        If p.Attribute(attScrapCut) = "1" Then p.Visible = False
+    Next
+    On Error GoTo EH
+    Set Ni = ActiveDrawing.GetNestInformation
+    For Each Nsh In Ni.Sheets
+        lngCnt = 0
+        For Each Npi In Nsh.Parts
+            lngCnt = lngCnt + 1
+            ' 全部显示（其余件带黑色轮廓）
+            On Error Resume Next
+            For Each p In ActiveDrawing.Geometries
+                p.Visible = True
+                p.Color = acamBLACK
+            Next
+            For Each p In ActiveDrawing.ToolPaths
+                p.Visible = True
+                p.Color = acamBLACK
+            Next
+            For Each p In Npi.Paths
+                p.Color = acamBLACK
+            Next
+            On Error GoTo EH
+            ' 当前件范围
+            Set psTemp = ActiveDrawing.CreatePathCollection
+            For Each p In Npi.Paths: psTemp.add p: Next
+            On Error Resume Next
+            psTemp.GetExtentL dMinX, dMinY, dMaxX, dMaxY
+            On Error GoTo EH
+            ActiveDrawing.ZoomToBox dMinX, dMinY, dMaxX, dMaxY, 1
+            ' 保存 EMF（与原命名一致：JobName_材料_板名_件号.emf）
+            sImgPath = gstr_EnsureBackslash(clsOptions.PathToRoot) & DEF_PATH_IMAGE & DEF_BACKSLASH & _
+                       gstr_JobName & DEF_UNDERSCORE & sMat & DEF_UNDERSCORE & Nsh.Name & DEF_UNDERSCORE & lngCnt & DEF_EXTENSION_EMF
+            On Error Resume Next
+            ActiveDrawing.SaveEmfFile sImgPath, False, False
+            On Error GoTo EH
+            ' 删除本件临时阴影（HatchPath 每件重建，须立即清理）
+            On Error Resume Next
+            If Not psHatch Is Nothing Then psHatch.Delete
+            Set psHatch = Nothing: Set pOut = Nothing
+            On Error GoTo EH
+        Next Npi
+    Next Nsh
+    ' 恢复原色与废料可见
+    On Error Resume Next
+    iClr = 1
+    For Each p In ActiveDrawing.Geometries
+        If iClr <= colGeoColors.Count Then p.Color = colGeoColors(iClr)
+        p.Visible = True
+        iClr = iClr + 1
+    Next
+    iClr = 1
+    For Each p In ActiveDrawing.ToolPaths
+        If iClr <= colTPColors.Count Then p.Color = colTPColors(iClr)
+        iClr = iClr + 1
+    Next
+    Set colGeoColors = Nothing: Set colTPColors = Nothing
+    On Error GoTo EH
+    
+    ' 5.3 同步 AD_REPORT_DATA：按 DEF_ATT_DETAIL_ID 更新标签路径/件号，删除已删板件记录
+    On Error Resume Next
+    Set rst2 = gdb_CDM.Execute("SELECT OrderID FROM AD_ORDERS WHERE JobName='" & gs_FixSQL(gstr_JobName) & "'")
+    If Not rst2 Is Nothing Then
+        If Not rst2.EOF Then lngOrderID2 = rst2.Fields("OrderID")
+        rst2.Close
+    End If
+    If lngOrderID2 > 0 Then
+        sDetailList = ""
+        Set Ni = ActiveDrawing.GetNestInformation
+        For Each Nsh In Ni.Sheets
+            For Each Npi In Nsh.Parts
+                For Each p In Npi.Paths
+                    If p.Attribute(DEF_ATT_DETAIL_ID) <> "" And p.Attribute(DEF_ATT_NEST_DOOR_COUNT) <> "" Then
+                        lngDetail = CLng(p.Attribute(DEF_ATT_DETAIL_ID))
+                        lngCnt = CLng(p.Attribute(DEF_ATT_NEST_DOOR_COUNT))
+                        sImgPath = gstr_EnsureBackslash(clsOptions.PathToRoot) & DEF_PATH_IMAGE & DEF_BACKSLASH & _
+                                   gstr_JobName & DEF_UNDERSCORE & sMat & DEF_UNDERSCORE & Nsh.Name & DEF_UNDERSCORE & lngCnt & DEF_EXTENSION_EMF
+                        gdb_CDM.Execute "UPDATE AD_REPORT_DATA SET PressDoorImage='" & gs_FixSQL(sImgPath) & "', PressDoorCounter=" & lngCnt & " WHERE DetailID=" & lngDetail
+                        If sDetailList = "" Then sDetailList = CStr(lngDetail) Else sDetailList = sDetailList & "," & lngDetail
+                        Exit For
+                    End If
+                Next p
+            Next Npi
+        Next Nsh
+        If sDetailList <> "" Then
+            gdb_CDM.Execute "DELETE FROM AD_REPORT_DATA WHERE OrderID=" & lngOrderID2 & " AND DetailID NOT IN (" & sDetailList & ")"
+        End If
+        Set Ni = Nothing
+    End If
+    On Error GoTo EH
+    
+    MsgBox "门板标签 EMF 已重新生成并同步数据库" & vbCrLf & vbCrLf & _
            "订单: " & gstr_JobName & vbCrLf & _
-           "材料: " & sMat, vbInformation, "自动化生产排版"
+           "材料: " & sMat & vbCrLf & vbCrLf & _
+           "已清理残留 EMF 并同步删除已删板件的数据库记录。", vbInformation, "自动化生产排版"
     Exit Sub
 EH:
     MsgBox "错误: " & Err.Description, vbCritical, "自动化生产排版"

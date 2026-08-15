@@ -356,5 +356,32 @@ cm.AddFromString(code)
 | 图形视图 | 可通过 `view_*` 工具缩放/平移/旋转视角，不影响实际坐标 |
 | 图层 | 通过 `create_layer` 创建和命名图层，支持 RGB 颜色设置 |
 
+## 日常维护
+
+### 🗄️ 备份 CDM.arb（推荐定期执行）
+
+`CDM.arb` 是 AlphaCAM 的 CDM 插件资源包（OLE 复合文档），**包含全部 VBA 工程源码、窗体与 `Licom/OptionID` 配置**。
+AlphaCAM 退出/保存时把内存 VBA 工程写回该文件，**若期间崩溃可能损坏**（`OptionID` 流丢失 →
+下次启动报"取得选项ID失败 / 无法打开CDM / Error loading CDM Processing"，CDM 功能全丢）。
+
+一键备份：
+
+```bash
+python backup_cdm_arb.py             # 备份到 backup/CDM.arb_<时间戳>.bak
+python backup_cdm_arb.py --keep 10   # 只保留最近 10 份
+```
+
+脚本自动：复制 `StartUp\CDM\CDM.arb` → `backup/`，用 olefile 校验 `Licom/OptionID` 流完整性，
+AlphaCAM 运行中会警告（内存最新改动可能未落盘）。
+
+**崩溃后快速恢复**：
+1. 关闭 AlphaCAM
+2. 从最近可用的备份恢复：`copy backup\CDM.arb_xxx.bak <StartUp>\CDM\CDM.arb`
+3. 重启 AlphaCAM；若恢复版本不含近期代码，用 `install_vba_module` 重装
+   `CDM功能/modAutoImportNest.bas` + `CDM功能/Events.bas`，并按
+   `CDM功能/frmAutoNest_手动创建.md` 重建 `frmAutoNest` 窗体（详见 `VBA操作问题记录.md` §7.4）
+
+> 已存档版本：`backup/CDM.arb_20260814_ok.bak`（8/14 含全部自动化功能 + OptionID 完好的可用版）
+
 - GitHub: https://github.com/cczzyy-cn/AlphacamMCP
 - 问题反馈: https://github.com/cczzyy-cn/AlphacamMCP/issues
