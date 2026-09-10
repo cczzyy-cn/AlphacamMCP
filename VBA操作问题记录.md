@@ -457,6 +457,61 @@ len(ole.listdir())                     # 与备份对比（正常 264，损坏 3
 - 崩溃/RPC 断开后先检查 CDM.arb 大小与 `Licom/OptionID` 流，再决定是否恢复
 - 宏执行中/对话框残留时避免 `install_vba_module`（删模块操作易触发保存崩溃）
 
+**2026-09-10 实测补充：三组反直觉证据 + 退出保存本身可修复**
+
+① **mtime 冻结 ≠ 没被写过。** 损坏期间 `CDM.arb` 被 AlphaCAM 以**写方式独占持有**：
+```powershell
+Get-FileHash CDM.arb   # 报 "being used by another process"，根本读不了
+Get-Item CDM.arb       # LastWriteTime 停在最后一次 flush
+```
+该文件随后**内容确实变了**（`OptionID` 消失），但 mtime 一直没动。
+→ **不能用 mtime 判断"是否被改过 / 是否已保存"**，这是本次最容易误判的一点。
+
+② **运行中的 CDM 完全可用，不代表文件完好。** `OptionID` 缺失期间，用户仍完整跑通了
+「自动化生产排版 + 重新生成标签」（6 个标签 EMF 正常产出）。**内存里的工程是好的，
+危险只在下一次启动**。→ "功能正常所以 .arb 没事"这个推断是错的。
+
+③ **备份脚本也会产出不可用副本。** 源文件被锁时 `shutil.copy2` 可能拷出**缺流的副本**：
+```
+已备份 -> backup/CDM.arb_20260910_134926.bak
+大小: 5013504 字节 | 流数量: 269 | Licom/OptionID: [缺失 - 该备份不可用!]
+```
+→ `backup_cdm_arb.py` 的 `Licom/OptionID` 判定是权威判据；**报"缺失"的备份必须立刻重命名标记**
+（如 `..._corrupt_noOptionID.bak`），否则以后会被误当成回退点。
+另注意：源文件被锁时，直接 `olefile` 读**活动** `.arb` 反而能读（OLE 结构可共享读），
+所以"能读出结构"和"备份可用"是两件事，以备份报告的判定为准。
+
+**计数口径（两条容易混，今天都量过）：**
+
+| 方法 | 正常 | 损坏 |
+|---|---|---|
+| `backup_cdm_arb.py` 报告的「流数量」 | **270** | 269 |
+| `ole.listdir(streams=True, storages=True)` | **333** | 332 |
+
+关键是**两者都只差 1**，那一个就是 `Licom/OptionID`。
+（本文档早前记的 "正常 264 / 损坏 333" 是更早、组件更少时的口径，别直接拿来比。）
+
+**新恢复手段：优雅关闭本身就能修复（今天实测有效），不一定需要从备份还原。**
+AlphaCAM 的**退出保存会把内存工程完整重写**，`OptionID` 随之回来：
+1. 先备份现状（哪怕是坏的，留证）：`python backup_cdm_arb.py`
+2. **优雅关闭** AlphaCAM —— `PostMessage WM_CLOSE` 到 `AlphaCAM_3DMILL` 主窗口。
+   本次**没有任何对话框**，0.5 秒干净退出（关闭前 `ActiveDrawing.Modified = False`，
+   确认过没有未保存图纸）
+3. 校验：`ole.exists('Licom/OptionID')` → True，流数量恢复 270 / 333
+4. 立即备份 → 得到新的已知可用版
+5. **重启验证**：无"取得选项ID失败"弹窗，且运行中模块版本正确
+
+**如何判断代码是否真的落盘（不需要解压 MS-OVBA）：**
+VBA 模块源码以 MS-OVBA 压缩存储在 `vao/The VBA Project/_VBA_Project/VBA/<模块名>`。
+压缩流中**字面量的首次出现是原样存储**的，所以可直接在原始字节里搜**版本独有的 ASCII 标识符**：
+```python
+data = ole.openstream('vao/The VBA Project/_VBA_Project/VBA/modAutoImportNest').read()
+b'ScreenUpdating' in data      # 该版本独有的标识符命中 → 证明这一版已落盘
+```
+⚠️ 两个坑：**命中可信、未命中不可信**（长字符串会被 copy token 打断）；
+且**绝不能用流大小判断内容** —— 同一工程不同保存方式会让流大小剧烈波动
+（本次未改动的 `frmAutoNest` 也涨了 202 字节，`Make` 源码只加约 400 字节却涨了 36,677 字节）。
+
 ---
 
 ### 7.5 加工道次窗口需调整视图后才能操作（AlphaCAM 固有现象）
