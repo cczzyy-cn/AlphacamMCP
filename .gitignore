@@ -19,3 +19,30 @@ nul
 chm/
 ReverseNest_extracted/
 backup/
+
+# ---------------------------------------------------------------------------
+# 本地一次性补丁/调试脚本与产物
+# 约定: 根目录下 "_" 前缀 = 临时文件，不入库
+#   _apply_*.py / _deploy_*.py / _fix_*.py   改 CDM 模块时的一次性 python 补丁
+#   _mat*.py / _mat*.bas / _matlist.txt      材料相关排查脚本与中间产物
+#   _*_out.txt / f22_out.txt / ms006c_out.txt  查询输出
+#   query_*.py                               临时查询脚本
+# 源码真身在各 CDM功能/*.bas；需要留档请移入 tools/ 并去掉下划线前缀。
+# 注意: 模式以 "/" 锚定根目录，避免影响 mcp_bridge/__init__.py 等包内文件。
+# ---------------------------------------------------------------------------
+/_apply_*.py
+/_deploy_*.py
+/_fix_*.py
+/_revert_*.py
+/_patch_*.py
+/_mat*.py
+/_mat*.bas
+/_matlist.txt
+/_pf.py
+/_qdump.txt
+/_stamp_version.py
+/_*_out.txt
+/f22_out.txt
+/ms006c_out.txt
+/query_*.py
+/tmp/
