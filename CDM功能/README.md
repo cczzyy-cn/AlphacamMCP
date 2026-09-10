@@ -97,6 +97,17 @@ AlphaCAM 菜单 → CCC功能 → 自动化生产排版   （弹出 frmAutoNest 
 > ③ 等待 EMF 落盘的期望值改为「板数 + 总件数」（原实现只传总件数，而目录通配计数会把
 > 整板图 `<Job>_<材料>_<板名>.emf` 一并计入，可能提前返回）。
 
+> **v1.8 修复（2026-09-10 实机定位）**：
+> ① **屏幕刷新泄漏**（"窗口标题老显示 `regen_<订单>_<Timer>`"的根因）——
+> `Make.m_CreateAlphaCAMDrawingsOfSheets` 会置 `ScreenUpdating=False` /
+> `ProjectBarUpdating=False`，而收尾处的恢复语句在 `Make.bas:3991/3992` **被注释掉了**，
+> 于是每次生产/重生成后 AlphaCAM 不再重绘，标题与画面停在临时副本名上
+> （此时 `ActiveDrawing.FullName` 其实已是真档案、`Modified=False`）。已恢复那两行，
+> 并在本模块成功/失败路径都兜底 `ScreenUpdating=True` + `Redraw`。
+> ② **备份目录改为先 `Kill` 再 `RmDir`**：旧 EMF 让目录非空，`RmDir` 必定失败且被静默吞掉，
+> 曾累积 28 个 `regen_backup_*`（222 个旧 EMF）。
+> ③ **临时嵌套 ard 改在 `App.New` 关档后补删并记日志**（原先删除时文件仍被占用，静默失败）。
+
 ### 安装方式
 
 ```python

@@ -3988,8 +3988,14 @@ Public Sub m_CreateAlphaCAMDrawingsOfSheets(Material As CMaterial, Optional ByVa
 
     Frame.CloseProgressBox
 
-    'ActiveDrawing.ScreenUpdating = True
-    'Frame.ProjectBarUpdating = True
+    ' v1.8 修复：以下两行原本被注释掉，导致每次生产/重生成标签之后
+    ' ActiveDrawing.ScreenUpdating 与 Frame.ProjectBarUpdating 永久停留在 False，
+    ' AlphaCAM 不再重绘 —— 表现为窗口标题与画面停在旧的临时档案名
+    ' （regen_<订单>_<Timer>）上，用户会误以为打开的是临时档案，
+    ' 其实活动文档早已是真档案。App.DisableUndo / QuickShading 都有配对恢复，
+    ' 唯独这两项漏了。
+    ActiveDrawing.ScreenUpdating = True
+    Frame.ProjectBarUpdating = True
     App.DisableUndo = False
 
     ActiveDrawing.QuickShading = blnQuickShade

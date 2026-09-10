@@ -1,5 +1,16 @@
 ' MCP-INSTALL-TEST: 2026-07-30 测试注释
 ' ==============================================================================
+' 版本: v1.8 (2026-09-10) — 修复屏幕刷新泄漏（窗口停在临时档案名的根源）+ 备份/临时文件清理
+'   本次变更（承 v1.7）:
+'     [P0] 配合 Make.bas:3991/3992 恢复 ActiveDrawing.ScreenUpdating 与
+'          Frame.ProjectBarUpdating，并在重生成的成功与失败路径都兜底恢复刷新 + Redraw。
+'          m_CreateAlphaCAMDrawingsOfSheets 会把两者置 False 且原恢复语句被注释，
+'          导致每次生产/重生成后 AlphaCAM 不再重绘 —— 窗口标题与画面就停在
+'          regen_<订单>_<Timer> 这个临时副本名上（实际活动文档已是真档案）。
+'     [P1] 5.3b 备份目录改为先 Kill 再 RmDir：RmDir 对非空目录必定失败，
+'          原实现从未删成功，ProgramData 累积了 28 个 regen_backup_*（222 个旧 EMF）。
+'     [P1] 临时嵌套 ard 改在 App.New 关档之后再补删一次，结果写入 CDM_Import.log。
+'   ---- 以下为 v1.7 变更记录 ----
 ' 版本: v1.7 (2026-09-10) — 健壮性修复：CSV 导入真正事务化、重生成失败现场还原、清死代码
 '   本次变更（承 v1.6）:
 '     [P0] ImportCSV 全流程纳入 BeginTrans/CommitTrans/RollbackTrans：
@@ -729,15 +740,21 @@ Public Sub g_RegenDoorLabelEMFs()
     End If
     On Error GoTo EH
 
-    ' 5.3b Remove the backup dir once everything succeeded
+    ' 5.3b 成功后删除备份目录（v1.8 修复）
+    '      备份目录装的是 5.1 移走的旧 EMF，非空目录 RmDir 必定失败 ——
+    '      原实现因此从未真正删成功，ProgramData 累积了 28 个 regen_backup_*
+    '      （222 个旧 EMF）。必须先 Kill 再 RmDir。
     If sBakDir <> "" Then
         On Error Resume Next
+        Kill sBakDir & "*.*"
         RmDir sBakDir
         On Error GoTo EH
     End If
 
     ' 5.4 删除临时巢套 ard 与临时副本；用户主图文件从未重存。
     '     真正“切换到原档案”在下面成功弹窗关闭之后执行。
+    '     v1.8: 此处的临时嵌套 ard 常仍被 AlphaCAM 占用（m_Create 打开过它），
+    '          删除会失败 —— 成功结尾在 App.New 关档之后再补删一次并记日志。
     On Error Resume Next
     If sScratchFile <> "" Then
         If FSO2.FileExists(sScratchFile) Then FSO2.DeleteFile sScratchFile, True
@@ -761,6 +778,22 @@ Public Sub g_RegenDoorLabelEMFs()
     Sleep 500
     If sUserARD <> "" Then App.OpenDrawing sUserARD
     ActiveDrawing.ZoomAll
+    ' v1.8: App.New 已关掉占用临时嵌套 ard 的文档，此时补删 5.4 删不掉的那个文件
+    If sScratchFile <> "" Then
+        Set FSO2 = New Scripting.FileSystemObject
+        If FSO2.FileExists(sScratchFile) Then FSO2.DeleteFile sScratchFile, True
+        If FSO2.FileExists(sScratchFile) Then
+            m_Log "临时嵌套档案仍未能删除(被占用): " & sScratchFile & " 请手工清理"
+        Else
+            m_Log "临时嵌套档案已清理: " & sScratchFile
+        End If
+        Set FSO2 = Nothing
+    End If
+    ' v1.8: 兜底恢复屏幕/工程栏刷新并重绘（Make.m_CreateAlphaCAMDrawingsOfSheets
+    '       会置 False，其恢复语句在 Make.bas:3991/3992 原本被注释掉）
+    ActiveDrawing.ScreenUpdating = True
+    Frame.ProjectBarUpdating = True
+    ActiveDrawing.Redraw
     On Error GoTo EH
     Exit Sub
 EH:
@@ -794,6 +827,10 @@ EH:
         App.OpenDrawing sUserARD
         ActiveDrawing.ZoomAll
     End If
+    ' v1.8: 失败路径同样兜底恢复刷新，否则报错后画面也是“冻住”的
+    ActiveDrawing.ScreenUpdating = True
+    Frame.ProjectBarUpdating = True
+    ActiveDrawing.Redraw
     On Error GoTo EH
     m_LogError Err.Number, "g_RegenDoorLabelEMFs", Err.Description & " (材料=" & sMat & " 订单=" & gstr_JobName & ")"
     MsgBox "重生成标签失败，已还原现场。" & vbCrLf & vbCrLf & _

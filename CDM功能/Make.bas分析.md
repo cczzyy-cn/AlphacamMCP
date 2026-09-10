@@ -290,6 +290,15 @@ Next
 6. `EditMark` 高亮区（3867 起）：同件多路径按面积去重 → 当前件红色+`HatchPath` 阴影、其余浅灰 → **逐件保存 EMF**（供报表逐门缩略图）
 7. 恢复背景/刷新/undo，重开总图
 
+   > ⚠️ **2026-09-10 更正（v1.8）**：上面的"恢复刷新"**原本并未真正执行** ——
+   > `Make.bas:3991/3992` 的 `'ActiveDrawing.ScreenUpdating = True` 与
+   > `'Frame.ProjectBarUpdating = True` **被注释掉了**，而同段的
+   > `App.DisableUndo = False`(3993)、`ActiveDrawing.QuickShading = blnQuickShade`(3995)
+   > 都是实行的。结果：**只有屏幕刷新与工程栏刷新没有恢复**，每次调用后 AlphaCAM
+   > 不再重绘，窗口标题与画面停在旧的 `regen_<订单>_<Timer>` 临时副本名上
+   > （实际 `ActiveDrawing.FullName` 已是真档案、`Modified=False`）。
+   > 已取消注释修复，并在调用方 `g_RegenDoorLabelEMFs` 成功/EH 路径兜底。
+
 ### mbln_ComparePressNestToOrder（3997–4028）
 压机版数量校验：按 `GroupByMaterialThickness` 决定统计范围（单厚度或全厚度），对比嵌套板 `Parts.Count`。
 

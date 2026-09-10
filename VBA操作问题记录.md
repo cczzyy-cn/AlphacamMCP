@@ -479,6 +479,46 @@ len(ole.listdir())                     # 与备份对比（正常 264，损坏 3
 
 ---
 
+### 7.6 屏幕刷新被宏关掉且未恢复 → 窗口标题/画面"卡"在旧的临时档案名上
+
+**现象：** 跑完"自动化生产排版"或"重新生成标签"后，AlphaCAM 主窗口标题一直是
+`3D 5-轴鉋花机专业版: regen_<订单>_<Timer>`（临时副本名），画面也不更新，
+**看起来像打开的还是临时档案**。
+
+**真相：** 文档其实早就换回真档案了。用 COM 读一下就知道：
+
+```python
+app = win32com.client.GetActiveObject("aroutaps.Application")
+d = app.ActiveDrawing
+d.FullName          # D:\2016\NC\<订单>\<订单>.ard   ← 真档案
+d.Modified          # False
+d.ScreenUpdating    # False   ← 病根
+```
+
+`ScreenUpdating = False` 时 AlphaCAM **不重绘任何东西**，所以标题栏与画面都停在
+最后一次重绘时的状态，与真实的活动文档无关。
+
+**根因：** `Make.m_CreateAlphaCAMDrawingsOfSheets` 开头置
+`ActiveDrawing.ScreenUpdating = False`、`Frame.ProjectBarUpdating = False`，
+但收尾处的两行恢复语句**被注释掉了**（`Make.bas` 的 3991/3992；同段的
+`App.DisableUndo = False`、`QuickShading = blnQuickShade` 都有恢复，唯独这两项漏了）。
+
+**修复：** 取消那两行注释，并在调用方兜底：
+
+```vba
+ActiveDrawing.ScreenUpdating = True
+Frame.ProjectBarUpdating = True
+ActiveDrawing.Redraw
+```
+
+**现场急救（不必重启 AlphaCAM）：** 连 COM 设 `ActiveDrawing.ScreenUpdating = True`
+→ `Redraw()` → `ZoomAll()`，标题栏立刻恢复正常。
+
+**教训：** 判断"当前打开的是哪个档案"**不要看标题栏**，要读 `ActiveDrawing.FullName`；
+标题栏可能因屏幕被锁定而严重滞后。
+
+---
+
 ## 8. AlphaDOOR（CDM）门板机制与数据库（本项目核心）
 
 ### 8.1 门板构成

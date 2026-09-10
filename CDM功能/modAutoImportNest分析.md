@@ -1,6 +1,6 @@
 # modAutoImportNest.bas 分析 —— CDM 自动化生产排版
 
-> 文件: `CDM功能/modAutoImportNest.bas`（**v1.7，2026-09-10；36,795 字节 / 827 行 / GBK 编码 / LF**）
+> 文件: `CDM功能/modAutoImportNest.bas`（**v1.8，2026-09-10；38,877 字节 / 864 行 / GBK 编码 / LF**）
 > 定位: CDM（橱柜门制造）工程内的核心 VBA 模块，由「CCC功能」菜单触发，
 > 实现 **CSV 订单导入 → 批量生产 → 排版 + NC 输出**，以及排版完成后的
 > **门板标签 EMF 重生成**（含失败现场还原）。
@@ -297,10 +297,36 @@ lngExpected = Σ Nsh.Parts.Count (总件数) + 板数
 | v1.5 | — | 删除对主图 `.bak` 驻留/还原（`Name`/`Kill`，**闪退根源**）；结尾重开真档案 |
 | v1.6 | 2026-09-02 | 旧 EMF 先备份→成功删除→失败回滚；DB 同步加事务；去掉 `Exit For` 漏更；标签导出抽为 `Make.m_ExportDoorLabelEMFs`；材料改为只校验（`m_CheckMaterialExists`） |
 | **v1.7** | **2026-09-10** | **ImportCSV 全流程事务化**；**重生成失败现场还原**（重开原档案 + 清临时文件）；**未保存修改确认框**；CSV 存在性检查上移；删死代码 `sDefaultMaterial` / `glng_EnsureMaterial`；`Sleep` 补 `PtrSafe`；**`m_WaitForLabelEMFs` 期望值改为「板数+总件数」** |
+| **v1.8** | **2026-09-10** | **修屏幕刷新泄漏（B1）**：配合 `Make.bas:3991/3992` 恢复 `ScreenUpdating` / `ProjectBarUpdating`，并在本模块成功与失败路径兜底 `Redraw` —— 解决"窗口标题停在 `regen_<订单>_<Timer>` 临时副本名"；**备份目录改 Kill+RmDir（B2）**，原先 `RmDir` 对非空目录必失败、累积 28 个；**临时嵌套 ard 改在 `App.New` 关档后补删并记日志（B3）** |
 
 ---
 
-## 九、已知遗留问题（未在 v1.7 处理）
+## 九、已知遗留问题
+
+> ### ✅ v1.8 已修（2026-09-10 实机定位并验证）
+>
+> **B1 屏幕刷新泄漏 —— "窗口还显示临时档案"的真正原因**
+> `Make.m_CreateAlphaCAMDrawingsOfSheets` 在 `Make.bas:3742/3743` 置
+> `ActiveDrawing.ScreenUpdating = False` 与 `Frame.ProjectBarUpdating = False`，
+> 而收尾处的恢复语句 `3991/3992` **被注释掉了**（同段的 `App.DisableUndo`(3993)、
+> `QuickShading`(3995) 都有配对恢复，唯独这两项漏了）。
+> 后果：每次生产排版 / 重生成标签之后 AlphaCAM 不再重绘，窗口标题与画面停在旧的
+> `regen_<订单>_<Timer>` 上，**看起来像"还打开着临时档案"，其实 `ActiveDrawing.FullName`
+> 早已是真档案、`Modified=False`**。
+> 已恢复 Make.bas 两行，并在本模块成功路径与 EH 都兜底 `ScreenUpdating=True` + `Redraw`。
+>
+> **B2 备份目录永远删不掉**
+> 备份目录里装的是 5.1 移走的旧 EMF，**非空目录 `RmDir` 必定失败**，且被
+> `On Error Resume Next` 吞掉 → ProgramData 累积 **28 个** `regen_backup_*`（222 个旧 EMF，
+> 时间跨度 9/2–9/10）。已改为先 `Kill sBakDir & "*.*"` 再 `RmDir`。
+>
+> **B3 临时嵌套 ard 删不掉**
+> 5.4 删除时该文件仍被 AlphaCAM 占用（`m_Create` 打开过它），失败被静默吞掉 →
+> 累积 `regen_scratch_*.ard`。已改为在 `App.New` 关档之后补删一次，并把结果写入
+> `CDM_Import.log`（`临时嵌套档案已清理` / `仍未能删除(被占用)`）。
+> 实测：关档后该文件 `locked=False`，可正常删除 —— 证实了占用判断。
+
+以下为 v1.7 时点仍存在的问题：
 
 1. **材料回退优先级 3 的子查询假定 JobName 唯一**：
    `SELECT DISTINCT Material FROM AD_ORDER_DETAILS WHERE OrderID=(SELECT OrderID FROM AD_ORDERS WHERE JobName='…')`
