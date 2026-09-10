@@ -1,5 +1,76 @@
 Option Explicit
+' ============================================================================
+' 版本: v2.1 (2026-09-02) — 配合 modAutoImportNest 重新生成标签
+'   - m_CreateAlphaCAMDrawingsOfSheets 新增 Optional sNestARDOverride，重生成时保存到临时巢套路径，绝不覆盖用户主图
+'   - m_ExportDoorLabelEMFs(sMatName, sSheetName) 为“逐件高亮+导出 EMF”共享例程（生产与重生成共用）
+' ============================================================================
 '
+' ============================================================================
+Private Sub m_ExportDoorLabelEMFs(ByVal sMatName As String, ByVal sSheetName As String)
+    Dim LayerHighlight As Layer
+    Dim LayerAPS As Layer
+    Dim SheetPath As Path
+    Dim SheetPath2 As Path
+    Dim ps As Paths
+    Dim lngSheetPartCount As Long
+    Dim lngPartCount As Long
+    Dim strPartCount As String
+    Dim sEMFPath As String
+    Set LayerHighlight = ActiveDrawing.CreateLayer("HIGHLIGHT")
+    With LayerHighlight
+        .LineWidth = 9
+    End With
+    Set LayerAPS = ActiveDrawing.Layers(1)
+    lngSheetPartCount = ActiveDrawing.Attribute(DEF_ATT_SHEET_DOOR_COUNT)
+    For lngPartCount = 1 To lngSheetPartCount
+        Set SheetPath2 = Nothing
+        For Each SheetPath In ActiveDrawing.Geometries
+            strPartCount = SheetPath.Attribute(DEF_ATT_NEST_DOOR_COUNT)
+            If strPartCount <> "" Then
+                If strPartCount = CStr(lngPartCount) Then
+                    If Not SheetPath2 Is Nothing Then
+                        If SheetPath.GetArea(-1) >= SheetPath2.GetArea(-1) Then
+                            SheetPath2.Delete
+                            Set SheetPath2 = SheetPath
+                        Else
+                            SheetPath.Delete
+                        End If
+                    Else
+                        Set SheetPath2 = SheetPath
+                    End If
+                End If
+                SheetPath.Redraw
+            End If
+        Next
+    Next
+    For lngPartCount = 1 To lngSheetPartCount
+        For Each SheetPath In ActiveDrawing.Geometries
+            strPartCount = SheetPath.Attribute(DEF_ATT_NEST_DOOR_COUNT)
+            If strPartCount <> "" Then
+                If strPartCount = CStr(lngPartCount) Then
+                    SheetPath.SetLayer LayerHighlight
+                    SheetPath.Color = acamRED
+                    Set ps = App.ActiveDrawing.HatchPath(SheetPath, acamHatchSingle, 45, 5, 10)
+                Else
+                    SheetPath.SetLayer LayerAPS
+                    SheetPath.Color = acamLIGHT_GREY
+                End If
+                SheetPath.Redraw
+            Else
+                If SheetPath.Attribute(attScrapCut) = "1" Then
+                    SheetPath.Visible = False
+                    SheetPath.Redraw
+                End If
+            End If
+        Next
+        sEMFPath = gstr_CheckDir(gstr_EnsureBackslash(clsOptions.PathToRoot) & DEF_PATH_IMAGE) & _
+                   gstr_JobName & DEF_UNDERSCORE & sMatName & DEF_UNDERSCORE & sSheetName & DEF_UNDERSCORE & lngPartCount
+        ActiveDrawing.SaveEmfFile sEMFPath & DEF_EXTENSION_EMF, False, False
+        ps.Delete
+    Next
+End Sub
+
+
 
 Private Sub m_DeleteNestSheet(NestSheetToDelete As NestSheet)
   Dim Npi           As NestPartInstance
@@ -3629,7 +3700,7 @@ Public Sub m_CreateAlphaCAMDrawingsOfSheetsPress(PressDetails As String)
     
 End Sub
 
-Public Sub m_CreateAlphaCAMDrawingsOfSheets(Material As CMaterial)
+Public Sub m_CreateAlphaCAMDrawingsOfSheets(Material As CMaterial, Optional ByVal sNestARDOverride As String = "")
 
     Dim nInfo                   As NestInformation
     Dim SH                      As NestSheet
@@ -3703,7 +3774,11 @@ Public Sub m_CreateAlphaCAMDrawingsOfSheets(Material As CMaterial)
     End With
 
     With clsOptions
-        strNestARD = mstr_CompileNestOrNCFilename(Material) & DEF_EXTENSION_ARD
+        If sNestARDOverride <> "" Then
+            strNestARD = sNestARDOverride
+        Else
+            strNestARD = mstr_CompileNestOrNCFilename(Material) & DEF_EXTENSION_ARD
+        End If
         'strNestARD = DEF_NEST_PREFIX & udtCCI.JobID & DEF_UNDERSCORE & clsNest.SheetName & DEF_EXTENSION_ARD
         Frame.ShowProgressBox Frame.ReadTextFile(strCTX, 300, 22), Frame.ReadTextFile(strCTX, 300, 23)
 
@@ -3866,72 +3941,8 @@ Public Sub m_CreateAlphaCAMDrawingsOfSheets(Material As CMaterial)
       ActiveDrawing.SaveEmfFile sEMFPath & DEF_EXTENSION_EMF, False, False
 'EditMark
      ' Highlight each door in the sheet
-    Set LayerHighlight = ActiveDrawing.CreateLayer("HIGHLIGHT")
-    With LayerHighlight
-    .LineWidth = 9
-    End With
-    Set LayerAPS = ActiveDrawing.Layers(1)
-    lngSheetPartCount = ActiveDrawing.Attribute(DEF_ATT_SHEET_DOOR_COUNT)
-      For lngPartCount = 1 To lngSheetPartCount
-        Set SheetPath2 = Nothing
-        For Each SheetPath In ActiveDrawing.Geometries
-          strPartCount = SheetPath.Attribute(DEF_ATT_NEST_DOOR_COUNT)
-          If strPartCount <> "" Then
-            If strPartCount = CStr(lngPartCount) Then
-
-                If Not SheetPath2 Is Nothing Then
-                    If SheetPath.GetArea(-1) >= SheetPath2.GetArea(-1) Then
-                        SheetPath2.Delete
-                        Set SheetPath2 = SheetPath
-                    Else
-                        SheetPath.Delete
-                    End If
-                Else
-                    Set SheetPath2 = SheetPath
-                End If
-            End If
-            SheetPath.Redraw
-          End If
-        Next
+    Call m_ExportDoorLabelEMFs(Material.MaterialName, colSheetNames(iCount))
       Next
-
-For lngPartCount = 1 To lngSheetPartCount
-
-        For Each SheetPath In ActiveDrawing.Geometries
-
-          strPartCount = SheetPath.Attribute(DEF_ATT_NEST_DOOR_COUNT)
-
-          If strPartCount <> "" Then
-            If strPartCount = CStr(lngPartCount) Then
-              SheetPath.SetLayer LayerHighlight
-              SheetPath.Color = acamRED
-
-             Set ps = App.ActiveDrawing.HatchPath(SheetPath, acamHatchSingle, 45, 5, 10)
-
-
-            Else
-              SheetPath.SetLayer LayerAPS
-              SheetPath.Color = acamLIGHT_GREY
-            End If
-            SheetPath.Redraw
-          Else
-            If SheetPath.Attribute(attScrapCut) = "1" Then
-              SheetPath.Visible = False
-              SheetPath.Redraw
-            End If
-          End If
-
-        Next
-
-        sEMFPath = gstr_CheckDir(gstr_EnsureBackslash(clsOptions.PathToRoot) & DEF_PATH_IMAGE) & _
-          gstr_JobName & DEF_UNDERSCORE & Material.MaterialName & DEF_UNDERSCORE & colSheetNames(iCount) & DEF_UNDERSCORE & lngPartCount
-        ActiveDrawing.SaveEmfFile sEMFPath & DEF_EXTENSION_EMF, False, False
-
-        ps.Delete
-
-      Next
-      Next
-      
 '       Set LayerHighlight = ActiveDrawing.CreateLayer("HIGHLIGHT")
 '      With LayerHighlight
 '        .LineWidth = 9
@@ -3985,7 +3996,11 @@ For lngPartCount = 1 To lngSheetPartCount
 
     ' Restore original nested drawing
     With clsOptions
-        strNestARD = mstr_CompileNestOrNCFilename(Material) & DEF_EXTENSION_ARD
+        If sNestARDOverride <> "" Then
+            strNestARD = sNestARDOverride
+        Else
+            strNestARD = mstr_CompileNestOrNCFilename(Material) & DEF_EXTENSION_ARD
+        End If
         'strNestARD = DEF_NEST_PREFIX & udtCCI.JobID & DEF_UNDERSCORE & clsNest.SheetName & DEF_EXTENSION_ARD
         OpenDrawing strSave
     End With
@@ -5141,7 +5156,7 @@ Private Function mbln_UpdateAndSave(Door As CDoor, lPartNumber As Long, _
     
     Dim strSave                 As String
     Dim strFilename             As String
-    Dim P                       As Path
+    Dim p                       As Path
     Dim ps                      As Paths
     Dim strImage                As String
     Dim pGeos                   As Paths
@@ -5208,12 +5223,12 @@ On Error GoTo mbln_UpdateAndSave_Error
                   '..rotate part
                   Set pGeos = ActiveDrawing.Geometries
   
-                  For Each P In ps
-                      P.RotateL 90, 0, 0
-                  Next P
+                  For Each p In ps
+                      p.RotateL 90, 0, 0
+                  Next p
   
-                  For Each P In pGeos
-                      P.RotateL 90, 0, 0
+                  For Each p In pGeos
+                      p.RotateL 90, 0, 0
                   Next
                 End If
                                 
@@ -5254,12 +5269,12 @@ On Error GoTo mbln_UpdateAndSave_Error
                           '..rotate part
                           Set pGeos = ActiveDrawing.Geometries
           
-                          For Each P In ps
-                              P.RotateL 90, 0, 0
-                          Next P
+                          For Each p In ps
+                              p.RotateL 90, 0, 0
+                          Next p
           
-                          For Each P In pGeos
-                              P.RotateL 90, 0, 0
+                          For Each p In pGeos
+                              p.RotateL 90, 0, 0
                           Next
                         End If
                                         
@@ -5338,15 +5353,15 @@ On Error GoTo mbln_UpdateAndSave_Error
         If Not .ByPassNest Then
                                                                 
             '..loop thru all toolpaths and assign the anc path to an attribute (used for labeling)
-            For Each P In ps
+            For Each p In ps
 
-                With P
+                With p
                     .Attribute(DEF_ATT_ANC_NAME) = strFilename & "." & clsOptions.NCFileExtension
                     .Attribute(DEF_ATT_ANC_FULLNAME) = strSave & "." & clsOptions.NCFileExtension
                     .Attribute(DEF_ATT_PART_IMAGE) = strImage
                 End With
 
-            Next P
+            Next p
             
             '..output nc code for single door?
             If clsOptions.SaveAllDoorNC Then
@@ -5391,8 +5406,8 @@ On Error GoTo mbln_UpdateAndSave_Error
                 
             ' Assign the allowable door rotation angle to the door toolpaths
             ' This is used mainly for twin head nesting
-            For Each P In ps
-                P.Attribute(DEF_ATT_DOOR_ROTATION_ANGLE) = .RotationAngle
+            For Each p In ps
+                p.Attribute(DEF_ATT_DOOR_ROTATION_ANGLE) = .RotationAngle
             Next
 
             
@@ -5406,26 +5421,26 @@ On Error GoTo mbln_UpdateAndSave_Error
             '.Fields!PathToANC = strFilename & DEF_EXTENSION_ANC 'strSave
                 
             '..loop thru all toolpaths and assign the anc path to an attribute (used for labeling)
-            For Each P In ps
+            For Each p In ps
 
-                With P
+                With p
                     .Attribute(DEF_ATT_ANC_NAME) = strFilename & clsOptions.NCFileExtension
                     .Attribute(DEF_ATT_PART_IMAGE) = strImage
                 End With
 
-            Next P
+            Next p
             
             If blnTranslateDoor Then
             
                 '..rotate part
                 Set pGeos = ActiveDrawing.Geometries
         
-                For Each P In ps
-                    P.MoveL Door.Length, 0
-                Next P
+                For Each p In ps
+                    p.MoveL Door.Length, 0
+                Next p
         
-                For Each P In pGeos
-                    P.MoveL Door.Length, 0
+                For Each p In pGeos
+                    p.MoveL Door.Length, 0
                 Next
             
             End If
@@ -5490,12 +5505,12 @@ On Error GoTo mbln_UpdateAndSave_Error
             '..rotate part
             Set pGeos = ActiveDrawing.Geometries
     
-            For Each P In ps
-                P.RotateL 90, 0, 0
-            Next P
+            For Each p In ps
+                p.RotateL 90, 0, 0
+            Next p
     
-            For Each P In pGeos
-                P.RotateL 90, 0, 0
+            For Each p In pGeos
+                p.RotateL 90, 0, 0
             Next
         
         Else
@@ -5586,7 +5601,7 @@ Private Function mbln_UpdateAndSavePress(Door As CDoor, lPartNumber As Long) As 
     
     Dim strSave                 As String
     Dim strFilename             As String
-    Dim P                       As Path
+    Dim p                       As Path
     Dim strImage                As String
     Dim pGeos                   As Paths
     
@@ -5612,8 +5627,8 @@ On Error GoTo mbln_UpdateAndSave_Error
                 
             Case adoorPART_ROTATION_LOCKX
                                             
-                For Each P In pGeos
-                    P.RotateL 90, 0, 0
+                For Each p In pGeos
+                    p.RotateL 90, 0, 0
                 Next
                                 
                 ActiveDrawing.ZoomAll
@@ -5639,8 +5654,8 @@ On Error GoTo mbln_UpdateAndSave_Error
                         
                             Case adoorPART_ROTATION_LOCKX
                                                             
-                                For Each P In pGeos
-                                    P.RotateL 90, 0, 0
+                                For Each p In pGeos
+                                    p.RotateL 90, 0, 0
                                 Next
                         
                                 ' Now lock the angle
@@ -5661,8 +5676,8 @@ On Error GoTo mbln_UpdateAndSave_Error
                     
                     Case adoorPART_ROTATION_LOCKX
                                                     
-                        For Each P In pGeos
-                            P.RotateL 90, 0, 0
+                        For Each p In pGeos
+                            p.RotateL 90, 0, 0
                         Next
                 
                         ' Now lock the angle
@@ -5722,13 +5737,13 @@ On Error GoTo mbln_UpdateAndSave_Error
     strImage = strImage & strFilename
                                                                                                                      
     '..loop thru all toolpaths and assign the anc path to an attribute (used for labeling)
-    For Each P In pGeos
+    For Each p In pGeos
 
-        With P
+        With p
             .Attribute(DEF_ATT_PART_IMAGE) = strImage
         End With
 
-    Next P
+    Next p
                     
     '..save it to default location
     ActiveDrawing.SaveAs strSave & DEF_EXTENSION_ARD
@@ -7249,47 +7264,47 @@ mbln_MachineWithNoOffset_Error:
 
 End Function
 
-Private Sub m_SetDetailAttributes(Door As CDoor, P As Path)
+Private Sub m_SetDetailAttributes(Door As CDoor, p As Path)
     
 On Error Resume Next
     
     With Door
 
-        P.Attribute("LicomUSrlg_alphadoor_CustomerName") = .CustomerName
-        P.Attribute("LicomUSrlg_alphadoor_JobID") = .JobName
-        P.Attribute("LicomUSrlg_alphadoor_PO") = .PO
-        P.Attribute("LicomUSrlg_alphadoor_Address_1") = .Address_1
-        P.Attribute("LicomUSrlg_alphadoor_Address_2") = .Address_2
-        P.Attribute("LicomUSrlg_alphadoor_City") = .City
-        P.Attribute("LicomUSrlg_alphadoor_Zip") = .Zip
-        P.Attribute("LicomUSrlg_alphadoor_Telephone") = .Telephone
-        P.Attribute("LicomUSrlg_alphadoor_Fax") = .Fax
-        P.Attribute("LicomUSrlg_alphadoor_Contact") = .Contact
-        P.Attribute("LicomUSrlg_alphadoor_Email") = .Email
-        P.Attribute("LicomUSrlg_alphadoor_DueDate") = .DueDate
-        P.Attribute("LicomUSrlg_alphadoor_OrderDate") = .OrderDate
-        P.Attribute(DEF_ATT_TYPE_NAME) = .TypeName
-        P.Attribute("LicomUSrlg_alphadoor_HotJob") = CStr(.HotJob)
-        P.Attribute("LicomUSrlg_alphadoor_StyleNumber") = .StyleNumber
-        P.Attribute("LicomUSrlg_alphadoor_Quantity") = .Quantity
-        P.Attribute(DEF_ATT_PART_WIDTH) = .Width
-        P.Attribute(DEF_ATT_PART_LENGTH) = .Length
-        P.Attribute("LicomUSrlg_alphadoor_CornerRadius") = .CornerRadius
-        P.Attribute("LicomUSrlg_alphadoor_UserStyleName") = .UserStyleName
-        P.Attribute("LicomUSrlg_alphadoor_UserVariableString") = .UserVariableString
-        P.Attribute("LicomUSrlg_alphadoor_UserArg_0") = .UserArg_0
-        P.Attribute("LicomUSrlg_alphadoor_UserArg_1") = .UserArg_1
-        P.Attribute("LicomUSrlg_alphadoor_UserArg_2") = .UserArg_2
-        P.Attribute("LicomUSrlg_alphadoor_UserArg_3") = .UserArg_3
-        P.Attribute("LicomUSrlg_alphadoor_UserArg_4") = .UserArg_4
-        P.Attribute("LicomUSrlg_alphadoor_UserArg_5") = .UserArg_5
-        P.Attribute("LicomUSrlg_alphadoor_UserArg_6") = .UserArg_6
-        P.Attribute(DEF_ATT_DOOR_PRODUCTION_COMMENT) = Door.ProductionComment
-        P.Attribute(DEF_ATT_DOOR_CUSTOM_1) = Door.CustomField1
-        P.Attribute(DEF_ATT_DOOR_CUSTOM_2) = Door.CustomField2
-        P.Attribute(DEF_ATT_FOIL_COLOUR) = Door.FoilColour
+        p.Attribute("LicomUSrlg_alphadoor_CustomerName") = .CustomerName
+        p.Attribute("LicomUSrlg_alphadoor_JobID") = .JobName
+        p.Attribute("LicomUSrlg_alphadoor_PO") = .PO
+        p.Attribute("LicomUSrlg_alphadoor_Address_1") = .Address_1
+        p.Attribute("LicomUSrlg_alphadoor_Address_2") = .Address_2
+        p.Attribute("LicomUSrlg_alphadoor_City") = .City
+        p.Attribute("LicomUSrlg_alphadoor_Zip") = .Zip
+        p.Attribute("LicomUSrlg_alphadoor_Telephone") = .Telephone
+        p.Attribute("LicomUSrlg_alphadoor_Fax") = .Fax
+        p.Attribute("LicomUSrlg_alphadoor_Contact") = .Contact
+        p.Attribute("LicomUSrlg_alphadoor_Email") = .Email
+        p.Attribute("LicomUSrlg_alphadoor_DueDate") = .DueDate
+        p.Attribute("LicomUSrlg_alphadoor_OrderDate") = .OrderDate
+        p.Attribute(DEF_ATT_TYPE_NAME) = .TypeName
+        p.Attribute("LicomUSrlg_alphadoor_HotJob") = CStr(.HotJob)
+        p.Attribute("LicomUSrlg_alphadoor_StyleNumber") = .StyleNumber
+        p.Attribute("LicomUSrlg_alphadoor_Quantity") = .Quantity
+        p.Attribute(DEF_ATT_PART_WIDTH) = .Width
+        p.Attribute(DEF_ATT_PART_LENGTH) = .Length
+        p.Attribute("LicomUSrlg_alphadoor_CornerRadius") = .CornerRadius
+        p.Attribute("LicomUSrlg_alphadoor_UserStyleName") = .UserStyleName
+        p.Attribute("LicomUSrlg_alphadoor_UserVariableString") = .UserVariableString
+        p.Attribute("LicomUSrlg_alphadoor_UserArg_0") = .UserArg_0
+        p.Attribute("LicomUSrlg_alphadoor_UserArg_1") = .UserArg_1
+        p.Attribute("LicomUSrlg_alphadoor_UserArg_2") = .UserArg_2
+        p.Attribute("LicomUSrlg_alphadoor_UserArg_3") = .UserArg_3
+        p.Attribute("LicomUSrlg_alphadoor_UserArg_4") = .UserArg_4
+        p.Attribute("LicomUSrlg_alphadoor_UserArg_5") = .UserArg_5
+        p.Attribute("LicomUSrlg_alphadoor_UserArg_6") = .UserArg_6
+        p.Attribute(DEF_ATT_DOOR_PRODUCTION_COMMENT) = Door.ProductionComment
+        p.Attribute(DEF_ATT_DOOR_CUSTOM_1) = Door.CustomField1
+        p.Attribute(DEF_ATT_DOOR_CUSTOM_2) = Door.CustomField2
+        p.Attribute(DEF_ATT_FOIL_COLOUR) = Door.FoilColour
         
-        P.Attribute(DEF_ATT_GROUP_ID) = P.Group
+        p.Attribute(DEF_ATT_GROUP_ID) = p.Group
         
     End With
     
@@ -7297,18 +7312,18 @@ On Error Resume Next
     
 End Sub
 
-Private Sub m_SetPressAttributes(Door As CDoor, P As Path)
+Private Sub m_SetPressAttributes(Door As CDoor, p As Path)
     
 On Error Resume Next
     
     With Door
 
-        P.Attribute(DEF_ATT_ALPHADOOR) = "1"
-        P.Attribute(DEF_ATT_DETAIL_ID) = .DetailID
-        P.Attribute(DEF_ATT_ORDER_ID) = .OrderID
-        P.Attribute(DEF_ATT_CUSTOMER_ID) = .CustomerID
-        P.Attribute(DEF_ATT_TYPE_NAME) = Door.TypeName
-        P.Attribute(DEF_ATT_FOIL_COLOUR) = Door.FoilColour
+        p.Attribute(DEF_ATT_ALPHADOOR) = "1"
+        p.Attribute(DEF_ATT_DETAIL_ID) = .DetailID
+        p.Attribute(DEF_ATT_ORDER_ID) = .OrderID
+        p.Attribute(DEF_ATT_CUSTOMER_ID) = .CustomerID
+        p.Attribute(DEF_ATT_TYPE_NAME) = Door.TypeName
+        p.Attribute(DEF_ATT_FOIL_COLOUR) = Door.FoilColour
         
     End With
     
@@ -7922,5 +7937,4 @@ Public Sub TestScrap()
     Debug.Print gdbl_Scrap(Ns)
   Next
 End Sub
-
 
