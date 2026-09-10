@@ -42,7 +42,10 @@ Private Const OFN_HIDEREADONLY As Long = &H4
 ' 自动化生产排版 — CSV 文件选择窗体
 ' ==============================================================================
 ' 用法: 插入 → 用户窗体 → 名称改 frmAutoNest → 添加控件 → 粘贴本代码
-' 控件: lblCSV, txtCSV, cmdBrowse, cmdOK, cmdCancel
+' 控件(8 个，缺一不可): lblCSV, txtCSV, cmdBrowse, cmdOK, cmdCancel,
+'                       chkOnlyImport, chkOverwrite, cmdRegenLabel
+' 类型: lblCSV=Label  txtCSV=TextBox  cmdBrowse/cmdOK/cmdCancel/cmdRegenLabel=CommandButton
+'       chkOnlyImport/chkOverwrite=CheckBox
 ' ==============================================================================
 
 Private Sub AddMinButton(frm As Object)
@@ -104,9 +107,12 @@ Private Sub cmdOK_Click()
     SaveSetting "CCC", "AutoImportNest", "LastPath", Trim$(txtCSV)
     
     ' 调用模块带参入口（勾选“只导入订单”则跳过排版）
+    ' 签名: AutoImportNestWithParams(CSV路径, 客户名, bRunNest, bOverwrite)
+    ' 材料不再作为形参传入 —— 逐行取自 CSV 第 12 列（0 基），
+    ' 且必须已存在于 AD_MATERIALS 表（v1.7 删除原第 3 个死参数）
     ' g_Make_Master 内部 g_UnLoadAllForms 会卸载所有窗体，完成后重新显示，可连续导入多个订单
     modAutoImportNest.AutoImportNestWithParams _
-        Trim$(txtCSV), "自动化生产", "", Not chkOnlyImport.Value, chkOverwrite.Value
+        Trim$(txtCSV), "自动化生产", Not chkOnlyImport.Value, chkOverwrite.Value
     frmAutoNest.Show vbModeless
 End Sub
 

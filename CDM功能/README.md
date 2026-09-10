@@ -22,7 +22,8 @@ AlphaCAM 菜单 → CCC功能 → 自动化生产排版   （弹出 frmAutoNest 
 ```
 
 - 菜单项绑定 `Events.bas` 的 `m_AutoImportNest` → `modAutoImportNest.AutoImportNest`（弹出 `frmAutoNest` 窗体）
-- 窗体"确定"→ `AutoImportNestWithParams(路径, "自动化生产", 材料, bRunNest, bOverwrite)`：
+- 窗体"确定"→ `AutoImportNestWithParams(CSV路径, "自动化生产", bRunNest, bOverwrite)`：
+  - **无材料形参**（v1.7 删除死参数）：材料逐行取自 CSV 第 13 列（0 基 12），且必须已存在于 `AD_MATERIALS`
   - 不勾选"只导入订单，不生产排版" → `bRunNest=True`（导入 + 排版）
   - 勾选 → `bRunNest=False`（仅导入订单，跳过排版）
   - 勾选"强制覆盖重名订单" → `bOverwrite=True`：订单名已存在时删除原订单相关数据（`AD_ORDER_DETAILS`、`AD_REPORT_DATA`、`AD_ORDERS`）后重新导入
@@ -41,9 +42,15 @@ AlphaCAM 菜单 → CCC功能 → 自动化生产排版   （弹出 frmAutoNest 
    │     │    （否则宏调用失败："无法连接用户定义的宏"）
    │     └── UserStyle=False → 900（标准镶板门）
    └── 新门型 → 自动创建为 900 标准镶板门
-5. 材料不存在 → 自动创建（默认"开料机3000mm" 18×1220×3000）
+5. 材料校验：该行材料必须已存在于 AD_MATERIALS 表，缺失则整体失败并回滚
+   （v1.6 起只校验、不自动建档，避免静默建出错规格材料）
 6. 调用 g_Make_Master(OrderID) → 批量生产 + 排版 + NC
 ```
+
+> **v1.7 事务与顺序**：CSV 文件存在性检查提前到「创建订单」之前（路径写错不再
+> 留下空订单 + 客户记录）；客户/订单/门型/明细全部纳入**同一个数据库事务**
+> （`BeginTrans`/`CommitTrans`/`RollbackTrans`），任一步失败整体回滚 ——
+> 覆盖模式下「先删旧订单、再插新明细」中途失败时，旧数据随回滚恢复，不会丢。
 
 ### CSV 字段映射（1-based 列号）
 
@@ -59,7 +66,7 @@ AlphaCAM 菜单 → CCC功能 → 自动化生产排版   （弹出 frmAutoNest 
 | 列9 终端地址 | 8 | `CustomField2` | |
 | 列10 板件码 | 9 | `CSV_OrderNumber` | 订单号 |
 | 列12 备注 | 11 | `ProductionComment` | |
-| 列13 材料 | 12 | `Material` | 空时用默认"开料机3000mm" |
+| 列13 材料 | 12 | `Material` | **必填**：必须已存在于 `AD_MATERIALS`，否则整单导入失败回滚 |
 
 ### 关键技术点
 
@@ -69,7 +76,26 @@ AlphaCAM 菜单 → CCC功能 → 自动化生产排版   （弹出 frmAutoNest 
 | **UserValue_0~6** | INSERT...SELECT 从 `AD_DOOR_TYPES` 直接复制，供 `App.Run` 传参给宏 |
 | **ComponentGrouping 类型** | Long 整数，CSV 颜色文本需 `Val()` 转换（文本→0） |
 | **订单重名** | 默认直接取消导入（不弹窗询问）；勾选窗体"强制覆盖重名订单"则删除原订单明细/报表后重建 |
-| **材料默认** | "开料机3000mm"：18mm 厚、1220×3000mm 板 |
+| **材料校验** | 明细材料按名查 `AD_MATERIALS`，不存在即报错并回滚整单；不自动建档（v1.6 起改为只校验，v1.7 删除遗留的自动建档死代码 `glng_EnsureMaterial`） |
+
+### 重新生成门板标签（g_RegenDoorLabelEMFs）
+
+排版后若在 ARD 嵌套图里**手动移动过门板**，用窗体上的"重新生成标签"按钮重出标签图：
+
+- 入口：`frmAutoNest.cmdRegenLabel_Click` → `modAutoImportNest.g_RegenDoorLabelEMFs`
+- 前提：当前图纸是排版后的嵌套档案（`GetNestInformation` 非空），且刀路含 `DEF_ATT_JOB_NAME` 属性
+- 材料名四级回退：图纸名 `<Job>_<材料>.ard` → `AD_REPORT_DATA.PressDoorImage` 路径 →
+  `AD_ORDER_DETAILS.Material`（多材料则放弃）→ 图纸属性 `DEF_ATT_MATERIAL_NAME`
+  （嵌套板的 `MaterialName` 是板名配置如 "Admin"，**不是材料名**，不能直接取）
+- 产出：`<Job>_<材料>_<板名>_<件号>.emf`，并同步 `AD_REPORT_DATA.PressDoorImage` / `PressDoorCounter`
+- 保护原图：把当前图 `SaveAs` 到临时副本后在副本上生成，用户正式图纸数据零触碰（保住加工道次关联）
+
+> **v1.7 健壮性修复**：
+> ① 开始前弹「未保存修改」确认 —— 未保存的手动移动只用于出标签、不会写回原图，重生成后会丢失；
+> ② 失败时自动 *回滚数据库 + 从备份目录还原旧 EMF + 清理 `regen_*` 临时文件 + 重新打开用户原档案*
+> （原实现失败后会把用户留在空白图/临时副本里）；
+> ③ 等待 EMF 落盘的期望值改为「板数 + 总件数」（原实现只传总件数，而目录通配计数会把
+> 整板图 `<Job>_<材料>_<板名>.emf` 一并计入，可能提前返回）。
 
 ### 安装方式
 
