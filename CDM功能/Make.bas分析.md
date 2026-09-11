@@ -288,6 +288,13 @@ Next
 4. 文本转几何（保留 `attSheetIdent`）→ 每板拆单板图纸：**去除引导线**（`PathHasLeadInOut` → `SetLeadInOutNONE/Auto`）、标 `DEF_ATT_POCKET_PATH`（ProcessType 2/4/5 铣槽）、移入临时图纸、保存 `JobName_材料_板名.ard`
 5. 报表图：白底 → 每板着色（槽=黄，其余=黑）→ `ZoomToBox` → 隐藏废料（`g_ShowHideScrapCuts`）→ 整板 EMF
 6. `EditMark` 高亮区（3867 起）：同件多路径按面积去重 → 当前件红色+`HatchPath` 阴影、其余浅灰 → **逐件保存 EMF**（供报表逐门缩略图）
+
+   > ⚠️ **2026-09-11 修复（重复涂黑标签）**：这段"逐件高亮 + 导出 EMF"就是
+   > `m_ExportDoorLabelEMFs`（已抽出为共享例程），原本有三处缺陷，会让**同一位置在多张标签里重复涂黑**：
+   > ① 去重循环在 `For Each ActiveDrawing.Geometries` **内部 `Delete`** → 枚举器跳项，同件号残留多个几何；
+   > ② `Set ps = HatchPath(...)` **覆盖引用**，一轮只删得掉**最后一个** hatch，前面的无人删除；
+   > ③ `ps` 每轮不重置，某件号无匹配几何时会对**已删除**对象重复 `Delete`。
+   > 已改为：几何先快照进 `Collection` 再增删；每轮产生的 hatch **全部收集、轮末逐个删光**。
 7. 恢复背景/刷新/undo，重开总图
 
    > ⚠️ **2026-09-10 更正（v1.8）**：上面的"恢复刷新"**原本并未真正执行** ——

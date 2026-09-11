@@ -16,41 +16,56 @@ Private Sub m_ExportDoorLabelEMFs(ByVal sMatName As String, ByVal sSheetName As 
     Dim lngPartCount As Long
     Dim strPartCount As String
     Dim sEMFPath As String
+    Dim colGeo As Collection
+    Dim colHatch As Collection
+    Dim i As Long
     Set LayerHighlight = ActiveDrawing.CreateLayer("HIGHLIGHT")
     With LayerHighlight
         .LineWidth = 9
     End With
     Set LayerAPS = ActiveDrawing.Layers(1)
     lngSheetPartCount = ActiveDrawing.Attribute(DEF_ATT_SHEET_DOOR_COUNT)
+    ' ---- 1) 同件去重：先快照再删，绝不在 For Each 枚举中 Delete ----
+    '  在枚举中 Delete 会让枚举器跳项，同一件号会残留多个几何；随后每轮为它们
+    '  各建一个 hatch，而只删得掉最后一个，残留的 hatch 就会在后续标签的同一位置重复涂黑。
     For lngPartCount = 1 To lngSheetPartCount
-        Set SheetPath2 = Nothing
+        Set colGeo = New Collection
         For Each SheetPath In ActiveDrawing.Geometries
-            strPartCount = SheetPath.Attribute(DEF_ATT_NEST_DOOR_COUNT)
-            If strPartCount <> "" Then
-                If strPartCount = CStr(lngPartCount) Then
-                    If Not SheetPath2 Is Nothing Then
-                        If SheetPath.GetArea(-1) >= SheetPath2.GetArea(-1) Then
-                            SheetPath2.Delete
-                            Set SheetPath2 = SheetPath
-                        Else
-                            SheetPath.Delete
-                        End If
-                    Else
-                        Set SheetPath2 = SheetPath
-                    End If
-                End If
-                SheetPath.Redraw
+            If SheetPath.Attribute(DEF_ATT_NEST_DOOR_COUNT) = CStr(lngPartCount) Then
+                colGeo.Add SheetPath
             End If
         Next
-    Next
+        If colGeo.Count > 1 Then
+            Set SheetPath2 = colGeo.Item(1)
+            For i = 2 To colGeo.Count
+                Set SheetPath = colGeo.Item(i)
+                If SheetPath.GetArea(-1) >= SheetPath2.GetArea(-1) Then
+                    SheetPath2.Delete
+                    Set SheetPath2 = SheetPath
+                Else
+                    SheetPath.Delete
+                End If
+            Next i
+        End If
+    Next lngPartCount
+    ' ---- 2) 逐件高亮 + 涂黑 + 出 EMF ----
+    '  几何先快照：新建 hatch 会改变 ActiveDrawing.Geometries，边枚举边新建
+    '  会让枚举器把新 hatch 也当成候选。每轮产生的 hatch 全部收集，轮末删光。
     For lngPartCount = 1 To lngSheetPartCount
+        Set colHatch = New Collection
+        Set colGeo = New Collection
         For Each SheetPath In ActiveDrawing.Geometries
+            colGeo.Add SheetPath
+        Next
+        For i = 1 To colGeo.Count
+            Set SheetPath = colGeo.Item(i)
             strPartCount = SheetPath.Attribute(DEF_ATT_NEST_DOOR_COUNT)
             If strPartCount <> "" Then
                 If strPartCount = CStr(lngPartCount) Then
                     SheetPath.SetLayer LayerHighlight
                     SheetPath.Color = acamRED
                     Set ps = App.ActiveDrawing.HatchPath(SheetPath, acamHatchSingle, 45, 5, 10)
+                    If Not ps Is Nothing Then colHatch.Add ps
                 Else
                     SheetPath.SetLayer LayerAPS
                     SheetPath.Color = acamLIGHT_GREY
@@ -62,12 +77,16 @@ Private Sub m_ExportDoorLabelEMFs(ByVal sMatName As String, ByVal sSheetName As 
                     SheetPath.Redraw
                 End If
             End If
-        Next
+        Next i
         sEMFPath = gstr_CheckDir(gstr_EnsureBackslash(clsOptions.PathToRoot) & DEF_PATH_IMAGE) & _
                    gstr_JobName & DEF_UNDERSCORE & sMatName & DEF_UNDERSCORE & sSheetName & DEF_UNDERSCORE & lngPartCount
         ActiveDrawing.SaveEmfFile sEMFPath & DEF_EXTENSION_EMF, False, False
-        ps.Delete
-    Next
+        ' 本轮产生的 hatch 必须全部删除：原实现 Set ps 会覆盖引用、只删得掉最后一个，
+        ' 同一件号匹配到多个几何时前面的 hatch 无人删除，残留到下一张标签的同一位置。
+        For i = 1 To colHatch.Count
+            colHatch.Item(i).Delete
+        Next i
+    Next lngPartCount
 End Sub
 
 

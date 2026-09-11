@@ -574,6 +574,45 @@ ActiveDrawing.Redraw
 
 ---
 
+### 7.7 VBA 边枚举边增删 → 同一件号多个几何 → 标签"同一位置重复涂黑"
+
+**现象：** 多个零件位置调整过若干次后，重新生成门板标签，会出现**两张标签涂黑在同一位置**
+（例：订单 `9-11纳百川`，`_2` 与 `_3` 的 hatch 位置重合）。
+
+**取证手段（可复用）：** 标签是 EMF 矢量图，用 .NET 渲染成 PNG 就能直接用眼睛比对：
+```powershell
+Add-Type -AssemblyName System.Drawing
+$img = [System.Drawing.Image]::FromFile($emf); $bmp = New-Object System.Drawing.Bitmap($img.Width,$img.Height)
+$g = [System.Drawing.Graphics]::FromImage($bmp); $g.DrawImage($img,0,0,$img.Width,$img.Height)
+$bmp.Save($png, [System.Drawing.Imaging.ImageFormat]::Png)
+```
+把多张标签的**同一区域**裁出来纵向拼一张，就能看出"被涂黑的是不是同一条"。
+
+**根因（`Make.bas` 的 `m_ExportDoorLabelEMFs`，三处缺陷）：**
+1. **边枚举边删**：去重循环在 `For Each ActiveDrawing.Geometries` **内部**调 `SheetPath.Delete`。
+   VBA 的 `For Each` 在枚举中被改动会跳项 → 同一 `DEF_ATT_NEST_DOOR_COUNT`
+   （`LicomUKljo_alphadoor_nest_door_count`）**残留多个几何**。
+2. **只删最后一个 hatch**：`Set ps = App.ActiveDrawing.HatchPath(...)` 会**覆盖引用**，
+   一轮里匹配到多个几何时前面的 hatch 无人删除 → **残留到下一张标签的同一位置**。
+   （`Drawing.HatchPath` 返回 `Paths`，是**真的往图纸里加了几何**，必须显式删除。）
+3. **`ps` 每轮不重置**：某件号没有匹配几何时，会对**已删除**对象重复 `Delete`。
+
+**改法：** 几何先**快照进 `Collection` 再增删**（绝不在 `For Each` 里 Delete/Add）；
+每轮产生的 hatch **全部收集**，在 `SaveEmfFile` 之后**逐个删光**。
+
+**通用教训：**
+- VBA 里**任何** `For Each` 循环体内都不要 `Delete`/`Add` 被枚举的集合 —— 先快照。
+- 会往图纸里加几何的 API（`HatchPath` 等）**返回的是句柄**，用 `Set x = ...` 覆盖前
+  先确认前一个是否已删；多个时要用 `Collection` 收全。
+- 部署后若发现模块里 `.Add` 变成 `.add`（或其它成员名大小写变化），那是 **VBA 编译时的
+  成员名归一化，不是错误** —— 比对运行中代码与仓库文件时**必须大小写不敏感**，
+  否则会误判成"部署失败"（本次就误报过一次 `RESULT=FAIL`）。
+
+**注意：** 同一订单明细数量 >1 时，排版上会有多个实例共用同一个**印在板上的件号**，
+因此那几张标签"看起来一样"是正常的；本条的 bug 特指**同一位置残留重复涂黑**。
+
+---
+
 ## 8. AlphaDOOR（CDM）门板机制与数据库（本项目核心）
 
 ### 8.1 门板构成
