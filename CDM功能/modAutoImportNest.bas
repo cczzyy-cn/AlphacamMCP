@@ -508,7 +508,7 @@ Public Sub g_RegenDoorLabelEMFs()
     Dim Ni As NestInformation
     Dim Nsh As NestSheet, Npi As NestPartInstance
     Dim rst2 As ADODB.Recordset
-    Dim lngOrderID2 As Long, lngCnt As Long, lngDetail As Long
+    Dim lngOrderID2 As Long, lngCnt As Long, lngDetail As Long, lngUpd As Long
     Dim sDetailList As String, sImgPath As String, sDel As String
     Dim psTemp As Paths, lngBG As Long
     Dim blnGradW As Boolean, blnGradS As Boolean
@@ -725,7 +725,18 @@ Public Sub g_RegenDoorLabelEMFs()
                         lngCnt = CLng(P.Attribute(DEF_ATT_NEST_DOOR_COUNT))
                         sImgPath = gstr_EnsureBackslash(clsOptions.PathToRoot) & DEF_PATH_IMAGE & DEF_BACKSLASH & _
                                    gstr_JobName & DEF_UNDERSCORE & sMat & DEF_UNDERSCORE & Nsh.Name & DEF_UNDERSCORE & lngCnt & DEF_EXTENSION_EMF
-                        gdb_CDM.Execute "UPDATE AD_REPORT_DATA SET PressDoorImage='" & gs_FixSQL(sImgPath) & "', PressDoorCounter=" & lngCnt & " WHERE DetailID=" & lngDetail
+                        ' 用三键定位到「具体那一件」的报表行：DetailID + 件序号(PressDoorCounter) + 板名(SheetName)。
+                        ' 同一 DetailID 下有多件（明细数量>1），只按 DetailID 匹配会把它们全部覆盖成
+                        ' 同一张标签路径 → 数据库里多件指向同一张图 → BarTender 打出重复标签。
+                        ' 板件号（DetailID）可能相同，不能单独当身份用。
+                        lngUpd = 0
+                        gdb_CDM.Execute "UPDATE AD_REPORT_DATA SET PressDoorImage='" & gs_FixSQL(sImgPath) & "'" & _
+                                        " WHERE OrderID=" & lngOrderID2 & " AND DetailID=" & lngDetail & _
+                                        " AND PressDoorCounter=" & lngCnt & " AND SheetName='" & gs_FixSQL(Nsh.Name) & "'", lngUpd
+                        If lngUpd = 0 Then
+                            m_Log "报表行未匹配(明细+件序号+板名): DetailID=" & CStr(lngDetail) & _
+                                  " 件序号=" & CStr(lngCnt) & " 板=" & Nsh.Name
+                        End If
                         If sDetailList = "" Then sDetailList = CStr(lngDetail) Else sDetailList = sDetailList & "," & lngDetail
                     End If
                 Next P

@@ -284,6 +284,13 @@
 
 ### AD_REPORT_DATA
 
+> **行身份（一件一行）**：`DetailID` + `PressDoorCounter` + `SheetName`。
+> `DetailID` 是订单明细号，**同一明细数量 >1 时多行的 `DetailID` 相同**，所以
+> **不能只用 `DetailID` 定位一行** —— 否则会把该明细的多件覆盖成同一张标签。
+> 写入方 `Make.bas:6405` 的 INSERT：`PressDoorCounter = DEF_ATT_NEST_DOOR_COUNT`（板内实例序号）、
+> `SheetName = SH.Name`、`PressDoorImage = <Job>_<材料>_<板>_<实例序号>.emf`。
+> 读取方 `g_RegenDoorLabelEMFs` 已按上述三键 UPDATE（2026-09-11），未匹配会写 `CDM_Import.log`。
+
 | 字段 | 类型 | 长度 | 说明 |
 |------|------|------|------|
 | CustomerID  | Integer |  | 客户ID |

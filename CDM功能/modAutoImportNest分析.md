@@ -198,14 +198,28 @@ FROM AD_DOOR_TYPES dt WHERE dt.TypeID='<门型>'
      构造临时嵌套路径 sScratchFile（v1.7 提前算好，供 EH 清理）
      m_CreateAlphaCAMDrawingsOfSheets Material, sNestOverride
      m_WaitForLabelEMFs(...) 轮询等待落盘
-5.3  BeginTrans：逐 Sheet/Part/Path 按 DEF_ATT_DETAIL_ID 写入
-     AD_REPORT_DATA.PressDoorImage / PressDoorCounter
+5.3  BeginTrans：逐 Sheet/Part/Path 按 **DetailID + PressDoorCounter + SheetName** 写入
+     AD_REPORT_DATA.PressDoorImage
      → DELETE 本订单中已不存在的 DetailID → CommitTrans
 5.3b 成功 → RmDir 备份目录
 5.4  删除临时嵌套 ard 与临时副本；ZoomAll；弹成功提示
 结尾  App.New + App.OpenDrawing sUserARD（回到用户原档案）+ ZoomAll
 EH   回滚事务 / 还原 EMF / 清理临时文件 / 重开原档案（见下）
 ```
+
+> ### ⚠️ 标签行的身份 = `DetailID` + `PressDoorCounter` + `SheetName`（2026-09-11 修复）
+> `AD_REPORT_DATA` 是**一件一行**：`Make.bas:6405` 的 INSERT 写入
+> `PressDoorCounter = DEF_ATT_NEST_DOOR_COUNT`（板内实例序号）、`SheetName = SH.Name`、
+> `PressDoorImage = <Job>_<材料>_<板>_<实例序号>.emf`。
+>
+> 而 5.3 原本**只按 `DetailID` 定位**：`UPDATE ... WHERE DetailID=<detail>`。
+> **同一明细数量 >1 时它们的 `DetailID` 相同 → 每件依次覆盖这批行 → 多行指向同一张
+> 标签图 → BarTender 打出重复标签。**
+>
+> 现已改为三键定位（`DetailID` + `PressDoorCounter` + `SheetName`），且 `lngUpd = 0`
+> （没匹配到行）时把「明细+件序号+板名」写入 `CDM_Import.log`，便于发现序号漂移。
+>
+> **要点：板件号/明细号可能重复，不能单独当身份用。**
 
 ### 材料名四级回退（步骤 3）
 
