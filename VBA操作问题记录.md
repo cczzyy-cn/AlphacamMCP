@@ -613,6 +613,42 @@ $bmp.Save($png, [System.Drawing.Imaging.ImageFormat]::Png)
 
 ---
 
+### 7.8 `Frame.ReadTextFile` 读**不存在的行号** → 模态报错框 + 刷屏记事本（2026-09-11 我踩的）
+
+想确认"自动化生产排版"挂在哪个菜单下，为了"多查几项"写了个探针，对
+`CDM.ctx` 连读了 `(1,1) (3,1) (7,1) (8,1) (12,1) (13,1) (14,1) (15,1) (16,1)` —— 其中
+**7/8/12/13/14/16 六行根本不存在**。结果：
+
+- AlphaCAM 弹出**模态框**并卡住界面：
+  `ERROR IN READING TEXT FILE ...\CDM\CDM.ctx` /
+  `ERRORS WILL BE WRITTEN TO ...\CDM\CDM.err` / `确定`
+- 同时**连开 6 个记事本**显示 `CDM.err`（一个错误一个），全是垃圾窗口。
+- `CDM.err` 内容（766 字节，正好 6 条）：
+  `TEXT MESSAGE(S) NOT FOUND :-` + `$7 / $8 / $12 / $13 / $14 / $16`
+
+**关键：`CDM.ctx` 文件本身完全正常**（26 KB，2015/11/23），路径也没错 ——
+`ReadTextFile` 是按 **(行, 列)** 取**文本资源槽**，槽位不存在就报错，
+报错信息却写成"读文件失败"，极容易被误判成文件损坏。
+
+**教训（务必遵守）：**
+- **绝不盲读 CTX 行号**。要用哪条资源，先在**已知存在的行**里确认，或改成一次读整块后解析。
+- CTX 是**稀疏**的：本次实测真正有内容的只有 `(1,1)="CDM橱柜"`、`(3,1)="CDM"`，
+  连 `(15,1)="确定(&O)"` 这种看着该有的槽也是碰运气。
+- 读 CTX 前**先用 `On Error` 包住**，并且**不要**把"读不到"当成"文件坏了"。
+- 报错框是**模态**的、会卡住 AlphaCAM 的界面；但**不影响 COM**（`run_vba_line`/`App.Run`
+  期间仍可执行），所以"探针返回 ok"**不能**证明没有弹窗 —— 本次就是探针 ok 但屏幕上有框。
+- AlphaCAM 自己的错误处理会 `ShellExecute` 打开 `CDM.err` 记事本，**同一错误重复触发会叠一堆窗口**，
+  事后要清理（本次 6 个）。
+
+**清理手法**（无 pywin32 依赖，ctypes 即可）：枚举顶层窗口 → 按标题匹配
+→ `PostMessageW(hwnd, WM_CLOSE, 0, 0)`。见 `_deploy_winlist.py --close-title "CDM.err"`。
+
+**顺带一个环境事实：** AlphaCAM 的进程名是 **`Acam.exe`**（PID 会变，主窗口类名
+`AlphaCAM_3DMILL`，标题 `3D 5-轴鉋花机专业版`）—— 用 `Get-Process | ? ProcessName -match 'alphacam'`
+**过滤不到它**，别据此判断"AlphaCAM 没在跑"。
+
+---
+
 ## 8. AlphaDOOR（CDM）门板机制与数据库（本项目核心）
 
 ### 8.1 门板构成
