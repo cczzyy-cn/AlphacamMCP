@@ -52,8 +52,12 @@ Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
 ' 自动化生产排版 — 弹窗选CSV → 导入 → 批量生产 → 排版（CDM 工程内）
 ' ==============================================================================
 ' 安装: 在 CDM 工程的 VBA 编辑器中导入此文件
-' 用法: AlphaCAM 菜单 → CCC功能 → 自动化生产排版
-' 说明: 由 CCC 功能菜单触发，代码在 CDM 工程中执行以直接调用 g_Make_Master
+' 用法: AlphaCAM 菜单 → CDM → 自动化生产排版
+'       菜单项注册在 CDM功能\Events.bas:277：
+'         App.Frame.AddMenuItem32 "自动化生产排版", "m_AutoImportNest", acamMenuNEW, strMenuName
+'       菜单名 strMenuName 取自 CDM.ctx 资源 (3,1) = "CDM"（不是 CCC功能）
+' 链路: CDM 菜单 → Events.m_AutoImportNest(Events.bas:2866) → AutoImportNest()
+'         → frmAutoNest 窗体 → AutoImportNestWithParams → g_Make_Master（在 CDM 工程内执行）
 '
 ' v1.1 增强（错误与提示处理）:
 '   - 错误日志落盘（CDM_Import.log，含时间/步骤/错误号/描述）
@@ -91,7 +95,7 @@ Private Sub m_LogError(ByVal lngNum As Long, ByVal sStep As String, ByVal sDesc 
 End Sub
 
 ' ============================================================================
-' 主入口（CCC 功能菜单触发）
+' 主入口（CDM 菜单 → 自动化生产排版；注册见 CDM功能\Events.bas:277）
 ' ============================================================================
 Public Sub AutoImportNest()
     ' 菜单入口：弹出 frmAutoNest 窗体（非模态，不阻塞 AlphaCAM）

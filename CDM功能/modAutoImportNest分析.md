@@ -1,7 +1,7 @@
 # modAutoImportNest.bas 分析 —— CDM 自动化生产排版
 
-> 文件: `CDM功能/modAutoImportNest.bas`（**v1.8，2026-09-10；38,877 字节 / 864 行 / GBK 编码 / LF**）
-> 定位: CDM（橱柜门制造）工程内的核心 VBA 模块，由「CCC功能」菜单触发，
+> 文件: `CDM功能/modAutoImportNest.bas`（**v1.9，2026-09-11；46292 字节 / 1005 行 / GBK 编码 / LF**）
+> 定位: CDM（橱柜门制造）工程内的核心 VBA 模块，由 **CDM 菜单 → 自动化生产排版** 触发（菜单项注册见 `CDM功能/Events.bas:277`），
 > 实现 **CSV 订单导入 → 批量生产 → 排版 + NC 输出**，以及排版完成后的
 > **门板标签 EMF 重生成**（含失败现场还原）。
 >

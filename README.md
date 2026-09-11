@@ -253,7 +253,7 @@ pip install -r requirements.txt
 自动化流程（已在 CDM 工程中运行验证）：
 
 ```
-菜单 → CCC功能 → 自动化生产排版（弹出 frmAutoNest 窗体，CSV 路径记忆回填）
+菜单 → CDM → 自动化生产排版（弹出 frmAutoNest 窗体，CSV 路径记忆回填）
   → 选择/输入 CSV 文件 → 确定
   → 客户名"自动化生产"（自动创建）
   → 创建订单（重名直接取消）

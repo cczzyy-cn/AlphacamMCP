@@ -18,7 +18,7 @@ AlphaCAM CDM（Cabinet Door Manufacturing）自动化模块源码与文档。
 ### 使用方式
 
 ```
-AlphaCAM 菜单 → CCC功能 → 自动化生产排版   （弹出 frmAutoNest 窗体）
+AlphaCAM 菜单 → CDM → 自动化生产排版   （弹出 frmAutoNest 窗体）
 ```
 
 - 菜单项绑定 `Events.bas` 的 `m_AutoImportNest` → `modAutoImportNest.AutoImportNest`（弹出 `frmAutoNest` 窗体）

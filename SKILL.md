@@ -77,7 +77,7 @@ description: 通过 MCP 协议直接实时操作 AlphaCAM 2016 R1 的桥接器�
 CDM 工程中已安装 `modAutoImportNest` 模块与 `frmAutoNest` 窗体，实现一键自动化：
 
 ```
-菜单 → CCC功能 → 自动化生产排版（弹出 frmAutoNest 窗体，CSV 路径记忆回填）
+菜单 → CDM → 自动化生产排版（弹出 frmAutoNest 窗体，CSV 路径记忆回填）
   → 选择/输入 CSV → 确定
   → 客户"自动化生产" → 创建订单（重名取消）→ 逐行导入门板明细（复制 UserStyle 参数）
   → 勾选"只导入订单，不生产排版"？ 是→仅导入，结束
