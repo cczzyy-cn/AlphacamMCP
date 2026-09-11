@@ -20,16 +20,26 @@
 | `alphacam_com.py` | AlphaCAM COM 自动化封装层（含 VBA 模块管理、自动重连） |
 | `DOCUMENTATION_INDEX.md` | AlphaCAM 全部 33 个 .chm 文档的索引目录（含分组和转换状态） |
 | `chm/` | .chm 文档目录（含指向安装目录的符号链接 + 已转换的 _html 子目录） |
+| `tools/` | **CDM 模块的部署与诊断工具**：审计/部署/编译探针、GBK 读源码、数据库查询、排版结构导出、标签配对复演、窗口清理。见 [`tools/README.md`](tools/README.md) |
 | `CCC功能/` | VBA 插件合集目录（依边界裁剪、全排版刀具偏移、排版刀具排序） |
-| `CDM功能/` | CDM 自动化模块（`modAutoImportNest.bas` 一键导入+排版、`Events.bas` 菜单注册、`Make.bas` 原源码、`CDM分析报告.md` 分析文档） |
-| `软件工作流程.md` | AI 操作手册：CSV 导入 → 批量生产 → 排版的完整工作流 |
-| `open_vba_editor.py` | 自动激活/最大化 AlphaCAM 窗口并打开 VBA 编辑器（Alt+F11） |
+| `CDM功能/` | CDM 自动化模块（`modAutoImportNest.bas` v1.9：导入 + 排版 + 标签重生成、`Events.bas` 菜单注册、`Make.bas` 原源码，以及数据库/流程分析文档） |
 | `RevNest_source/` | RevNest 反向排版 v1.2 插件完整源码（从 AlphaCAM 提取） |
+| `RevNest_API参考.md` | RevNest 反向排版的 API 参考 |
+| `VBA操作问题记录.md` | VBA/COM 操作踩坑与规避手册（含 CDM.arb 损坏、屏幕刷新泄漏、`ReadTextFile` 盲读 CTX 等 8 类） |
+| `open_vba_editor.py` | 自动激活/最大化 AlphaCAM 窗口并打开 VBA 编辑器（Alt+F11） |
 | `install.bat` | Windows 一键安装脚本 |
-| `install_vba.py` | VBA 代码安装到 AlphaCAM 的 Python 脚本 |
+| `install_ccc.py` | 把 `CCC功能/` 的模块安装进 AlphaCAM |
+| `install_vba.py` | VBA 代码安装脚本 —— ⚠️ 路径**硬编码指向另一个工程**，已失效，仅作留档 |
+| `backup_cdm_arb.py` | 一键备份 `CDM.arb`（含 OLE 完整性校验与 `--keep N` 轮转） |
 | `make_icons.py` | 生成工具栏 BMP 图标的工具 |
+| `update_adoor_mirror.py` | 更新 AdoorEvents 模块：`L0orR1 = 0` 时按竖直中线镜像门型 |
 | `SKILL.md` | MCP 技能定义 |
 | `requirements.txt` | Python 依赖 |
+
+> **改 CDM 模块请走 `tools/` 的部署闭环**：`running_snapshot.py` 存基线 →
+> `component_deploy.py audit`（运行版 / 仓库 / 基线三方比对，不等于其中之一就拒绝写）→
+> `deploy`（整体替换 + 读回校验 + 失败回滚）→ `deploy_probe.py`（标记断言 + 全工程编译探针）。
+> 比较一律大小写不敏感：VBA 会把成员名归一化（`.Add` → `.add`）。
 
 ## 安装
 

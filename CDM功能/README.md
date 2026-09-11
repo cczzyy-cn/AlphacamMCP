@@ -6,12 +6,20 @@ AlphaCAM CDM（Cabinet Door Manufacturing）自动化模块源码与文档。
 
 | 文件 | 说明 |
 |------|------|
-| `modAutoImportNest.bas` | ⭐ **自动化生产排版模块**：导入门板数据 → `g_Make_Master` 批量生产+排版+NC 输出；含菜单入口 `AutoImportNest`（弹 `frmAutoNest` 窗体）与带参入口 `AutoImportNestWithParams` |
+| `modAutoImportNest.bas` | ⭐ **自动化生产排版模块**（v1.9，1005 行）：导入门板数据 → `g_Make_Master` 批量生产+排版+NC 输出；含菜单入口 `AutoImportNest`（弹 `frmAutoNest` 窗体）与带参入口 `AutoImportNestWithParams`；**门板标签 EMF 重生成**（稳定唯一码对齐报表行） |
 | `frmAutoNest.txt` | ⭐ **自动化生产排版窗体**（代码文本）：CSV 路径记忆回填 + 系统文件对话框 + 确定/取消（AlphaCAM 不支持导入 .frm，需手动创建，见 `frmAutoNest_手动创建.md`） |
-| `Events.bas` | CDM 工程菜单注册（含"自动化生产排版"按钮 + `m_AutoImportNest` 包装函数） |
-| `Make.bas` | CDM 原始 Make 模块源码备份（7926 行，加工引擎） |
+| `Events.bas` | CDM 工程菜单注册（`Events.bas:277` 注册"自动化生产排版"按钮 → `m_AutoImportNest` 包装函数；`mint_UpdateDB` 里含 `AD_REPORT_DATA.PressPieceUID` 建列） |
+| `Make.bas` | CDM 原始 Make 模块源码（8005 行，加工引擎；v2.2 起在打件序号时同步写稳定唯一码 `DEF_ATT_PIECE_UID`） |
+| `modAutoImportNest分析.md` | 该模块的完整分析（5.3 标签行身份、重复标签根因链与 A/B 修法） |
+| `CDM数据库说明.md` | `CDM.mdb` 表结构与字段说明（含 `AD_REPORT_DATA` 行身份、DDL 锁限制） |
+| `Make.bas分析.md` | `Make.bas` 的模块结构与调用链分析 |
 | `CDM分析报告.md` | CDM 完整源码分析（模块结构、数据库表、调用链） |
+| `标签重生成优化方案.md` | 标签重生成的设计与优化记录 |
+| `frmAutoNest_手动创建.md` | 窗体手动创建步骤（AlphaCAM 不支持 .frm 导入） |
 | `README.md` | 本文档 |
+
+> **改这三个 `.bas` 请走仓库根的 `tools/` 部署闭环**（快照 → 三方审计 → 部署读回校验 →
+> 编译探针），见 [`../tools/README.md`](../tools/README.md)。改动前先 `running_snapshot.py` 存基线。
 
 ## 自动化生产排版（modAutoImportNest）
 

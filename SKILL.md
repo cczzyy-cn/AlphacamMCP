@@ -133,5 +133,16 @@ cm.DeleteLines(1, cm.CountOfLines); cm.AddFromString(code)  # 建议先备份，
 - VBA 宏调用使用 `Project.Module.Procedure` 格式
 - 工作平面检查：打开临时图纸时检查 `Drawing.WorkPlanes.count`，若包含工作平面则无法插入
 - 文档搜索自动检测 AlphaCAM 安装目录，涵盖 VBA API + 3D/4D 用户手册
+- **改 CDM 模块必须走 `tools/` 的部署闭环**：`running_snapshot.py` 存基线 →
+  `component_deploy.py audit`（运行版/仓库/基线三方比对，不匹配就拒绝写）→ `deploy`
+  （整体替换 + 读回校验 + 失败回滚）→ `deploy_probe.py`（标记断言 + 全工程编译探针）。
+  详见 [`tools/README.md`](tools/README.md)
+- 比对运行中 VBA 代码与仓库文件时**必须大小写不敏感**：VBA 编译时会把成员名归一化
+  （`.Add` → `.add`），按字节比对会误报"部署失败"
+- 读 `CDM.ctx` 等**文本资源槽**（`Frame.ReadTextFile(文件, 行, 列)`）**绝不能盲试行号**：
+  槽不存在会弹**模态框**并让 AlphaCAM 的错误处理开一堆 `CDM.err` 记事本；而且它**不阻塞 COM**，
+  探针照样返回 ok —— "探针过了"不能当作"屏幕上没弹窗"
+- AlphaCAM 的进程名是 `Acam.exe`（主窗口类 `AlphaCAM_3DMILL`），
+  用 `ProcessName -match 'alphacam'` 过滤不到它
 - 支持 `.env` 文件配置 `ALPHACAM_PROG_ID`、`ALPHACAM_VISIBLE` 等环境变量
 - 需要打开 VBA 编辑器时：运行 `open_vba_editor.py`（激活/最大化 AlphaCAM 窗口 + Alt+F11），已获用户授权
