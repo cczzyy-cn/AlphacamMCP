@@ -1,11 +1,18 @@
 Option Explicit
-' ---- 稳定唯一码（每件一码；移动/重排板件后不变）见 modAutoImportNest 5.3 ----
-Private Const DEF_ATT_PIECE_UID As String = "LicomUSrlg_alphadoor_piece_uid"
 ' ============================================================================
+' 版本: v2.2 (2026-09-11) — 稳定唯一码 + 报表行定位修复
+'   - [v2.2] m_CreateAlphaCAMDrawingsOfSheets 给每个 part instance 的全部路径写
+'            DEF_ATT_PIECE_UID（仅缺失时分配、板内唯一），移动/重排板件后身份不变；
+'            g_RegenDoorLabelEMFs 5.3 按它精确对齐报表行。
+'   - [v2.2] 修复 m_InsertReportDataRouter 中 lngPK 在 For Each Ni 循环里不复位
+'            （某件没匹配到行时会沿用上一件的 PK，把上一件的行重复写一遍）。
+'   ---- 以下为 v2.1 变更记录 ----
 ' 版本: v2.1 (2026-09-02) — 配合 modAutoImportNest 重新生成标签
 '   - m_CreateAlphaCAMDrawingsOfSheets 新增 Optional sNestARDOverride，重生成时保存到临时巢套路径，绝不覆盖用户主图
 '   - m_ExportDoorLabelEMFs(sMatName, sSheetName) 为“逐件高亮+导出 EMF”共享例程（生产与重生成共用）
-' ============================================================================
+' ============
+' ---- 稳定唯一码（每件一码；移动/重排板件后不变）见 modAutoImportNest 5.3 ----
+Private Const DEF_ATT_PIECE_UID As String = "LicomUSrlg_alphadoor_piece_uid"
 '
 ' ============================================================================
 Private Sub m_ExportDoorLabelEMFs(ByVal sMatName As String, ByVal sSheetName As String)

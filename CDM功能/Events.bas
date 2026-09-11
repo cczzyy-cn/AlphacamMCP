@@ -1386,7 +1386,11 @@ On Error GoTo EH
             
         End If
     
-        ' add the PressPieceUID field if not there (稳定唯一码：每件一码)
+        ' add the PressPieceUID field if not there
+        '   v1.9 稳定唯一码（每件一码）：AD_REPORT_DATA 的"行身份"列。
+        '   注意：mint_UpdateDB 只在 DEF_DB_VERSION > AD_VERSION.DatabaseVersion
+        '   时由 m_ValidDatabase 调用（实测两者均为 1.3，故重启不触发，本段平时
+        '   不执行）；该列实际由 modAutoImportNest.g_RegenDoorLabelEMFs 5.3 的自愈建立。
         If Not mbln_DBFieldExists(r, "PressPieceUID") Then
             gdb_CDM.Execute "ALTER TABLE AD_REPORT_DATA ADD PressPieceUID VARCHAR(64)"
         End If
