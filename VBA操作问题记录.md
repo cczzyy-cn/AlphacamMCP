@@ -641,7 +641,7 @@ $bmp.Save($png, [System.Drawing.Imaging.ImageFormat]::Png)
   事后要清理（本次 6 个）。
 
 **清理手法**（无 pywin32 依赖，ctypes 即可）：枚举顶层窗口 → 按标题匹配
-→ `PostMessageW(hwnd, WM_CLOSE, 0, 0)`。见 `_deploy_winlist.py --close-title "CDM.err"`。
+→ `PostMessageW(hwnd, WM_CLOSE, 0, 0)`。见 `tools/win_ctl.py --close-title "CDM.err"`。
 
 **顺带一个环境事实：** AlphaCAM 的进程名是 **`Acam.exe`**（PID 会变，主窗口类名
 `AlphaCAM_3DMILL`，标题 `3D 5-轴鉋花机专业版`）—— 用 `Get-Process | ? ProcessName -match 'alphacam'`
