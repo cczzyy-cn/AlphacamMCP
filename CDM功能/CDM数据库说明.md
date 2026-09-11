@@ -284,12 +284,29 @@
 
 ### AD_REPORT_DATA
 
-> **行身份（一件一行）**：`DetailID` + `PressDoorCounter` + `SheetName`。
-> `DetailID` 是订单明细号，**同一明细数量 >1 时多行的 `DetailID` 相同**，所以
-> **不能只用 `DetailID` 定位一行** —— 否则会把该明细的多件覆盖成同一张标签。
-> 写入方 `Make.bas:6405` 的 INSERT：`PressDoorCounter = DEF_ATT_NEST_DOOR_COUNT`（板内实例序号）、
-> `SheetName = SH.Name`、`PressDoorImage = <Job>_<材料>_<板>_<实例序号>.emf`。
-> 读取方 `g_RegenDoorLabelEMFs` 已按上述三键 UPDATE（2026-09-11），未匹配会写 `CDM_Import.log`。
+> **行身份（一件一行）＝ 每件的唯一码 `PressPieceUID`**（v1.9 起）
+>
+> - **绘图侧**：`Make.m_CreateAlphaCAMDrawingsOfSheets` 给每个 part instance 的**全部**路径写
+>   `DEF_ATT_PIECE_UID = "LicomUSrlg_alphadoor_piece_uid"`，**仅在缺失时分配**（值 `U0001`…，板内唯一）。
+>   移动 / 重排板件**不会**改变它 —— 这是本方案与「顺序号」的根本区别。
+> - **数据库侧**：`AD_REPORT_DATA.PressPieceUID`（v1.9 新增，`WChar 64`），由 `g_RegenDoorLabelEMFs` 写入。
+> - **匹配顺序**（`g_RegenDoorLabelEMFs` 5.3）：
+>   1. 按 `DetailID + SheetName + PressPieceUID` **精确命中**；
+>   2. 没有唯一码的旧行，按 `(DetailID, SheetName)` 分组、以 **PK 升序**与绘图实例**按序配对**
+>      （数学上保证一一对应，不会两件抢一行），并把唯一码**回填**进该行；
+>   3. 本板范围内**未被认领的行直接删除** —— 多出来的重复行正是「重复标签」的来源。
+>
+> ⚠️ **`PressDoorCounter` 是"顺序号"，不是身份。**
+> 它 = 该件在 `SH.Parts` 枚举里的排位（`Make.bas` 每板从 1 递增），
+> **移动 / 重排板件后整板序号会漂移**。因此**既不能用 `DetailID`、也不能用 `PressDoorCounter`
+> 单独定位一行**（同一明细数量 >1 时多行 `DetailID` 相同）。
+> `PressDoorImage` 文件名里的件序号同样会漂移，但路径每次都由 5.3 写回数据库，
+> 消费方（BarTender）读的是数据库中的路径，所以不影响正确性。
+>
+> ⚠️ `AD_REPORT_DATA` 的 **DDL（加列）只在 CDM 启动时能成功**（那时表未被占用）；
+> 运行中加列会失败（Jet：*由于表 'AD_REPORT_DATA' 正由另一用户或另一进程使用，数据库引擎无法锁定该表*）。
+> 所以 5.3 里的加列是**尽力而为**，失败就退化为上面的配对逻辑，**绝不中断标签生成**；
+> 正式加列请走 `Events.mint_UpdateDB`（启动时 / 版本升级时执行）。
 
 | 字段 | 类型 | 长度 | 说明 |
 |------|------|------|------|
@@ -326,6 +343,7 @@
 | PressItemNumber  | Integer |  |  |
 | PressName  | WChar | 255 |  |
 | PressPathToEMF  | WChar | 255 |  |
+| PressPieceUID  | WChar | 64 | **每件唯一码（v1.9）**，行身份；见上方「行身份」说明 |
 | PressQuantityOnSheet  | Integer |  |  |
 | PressQuantityThisSheet  | Integer |  | 压机板内数量 |
 | PressSheetIdentifier  | WChar | 50 | 板条码 |

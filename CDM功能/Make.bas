@@ -1,4 +1,6 @@
 Option Explicit
+' ---- 稳定唯一码（每件一码；移动/重排板件后不变）见 modAutoImportNest 5.3 ----
+Private Const DEF_ATT_PIECE_UID As String = "LicomUSrlg_alphadoor_piece_uid"
 ' ============================================================================
 ' 版本: v2.1 (2026-09-02) — 配合 modAutoImportNest 重新生成标签
 '   - m_CreateAlphaCAMDrawingsOfSheets 新增 Optional sNestARDOverride，重生成时保存到临时巢套路径，绝不覆盖用户主图
@@ -3753,6 +3755,9 @@ Public Sub m_CreateAlphaCAMDrawingsOfSheets(Material As CMaterial, Optional ByVa
     Dim pthNestZone             As Path
     Dim SheetPath2              As Path
     Dim ps                      As Paths
+    Dim dicUID                  As Object
+    Dim strUID                  As String
+    Dim lngNextUID              As Long
 '
     Set nInfo = ActiveDrawing.GetNestInformation
     ActiveDrawing.ThreeDViews = False
@@ -3773,19 +3778,40 @@ Public Sub m_CreateAlphaCAMDrawingsOfSheets(Material As CMaterial, Optional ByVa
         For Each SH In nInfo.Sheets
             
             lngPartCount = 1
-            
+            lngNextUID = 1
+            Set dicUID = CreateObject("Scripting.Dictionary")   ' 本板已用唯一码
+
             For Each Npi In SH.Parts
-              
+
               strNestImage = gstr_CheckDir(gstr_EnsureBackslash(clsOptions.PathToRoot) & DEF_PATH_IMAGE) & _
                                            gstr_JobName & DEF_UNDERSCORE & Material.MaterialName & DEF_UNDERSCORE & SH.Name & DEF_UNDERSCORE & lngPartCount
-              
+
+              ' ---- 稳定唯一码：沿用已有，缺失才分配 ----
+              '  件序号(lngPartCount)是"顺序号"，移动/重排板件后会整体漂移；
+              '  piece_uid 一经写入不再改变，标签与报表行都按它对齐（v1.9）。
+              strUID = ""
+              For Each NestPath In Npi.Paths
+                If strUID = "" Then strUID = "" & NestPath.Attribute(DEF_ATT_PIECE_UID)
+              Next
+              If strUID <> "" Then
+                If dicUID.Exists(strUID) Then strUID = ""        ' 板内重复 -> 重新分配
+              End If
+              If strUID = "" Then
+                Do
+                  strUID = "U" & Format$(lngNextUID, "0000")
+                  lngNextUID = lngNextUID + 1
+                Loop While dicUID.Exists(strUID)
+              End If
+              dicUID.Add strUID, 1
+
               For Each NestPath In Npi.Paths
                 NestPath.Attribute(DEF_ATT_NEST_DOOR_IMAGE) = strNestImage
                 NestPath.Attribute(DEF_ATT_NEST_DOOR_COUNT) = lngPartCount
+                NestPath.Attribute(DEF_ATT_PIECE_UID) = strUID
               Next
-              
+
               lngPartCount = lngPartCount + 1
-              
+
             Next
                     
         Next
@@ -6291,6 +6317,11 @@ On Error GoTo m_InsertReportData_Error
         For Each Ni In SH.Parts
 
             lngQuantityOnSheet = 0
+            ' B 修复：这些量原先只在满足条件时才赋值，某件不满足时会沿用上一件的值，
+            '         导致本件的报表行被写到上一件的行上（覆盖成同一序号）。
+            lngPK = 0
+            lngNestDoorCount = 0
+            strDoorImage = ""
 
             For Each niPart In SH.Parts
 

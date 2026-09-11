@@ -1386,6 +1386,11 @@ On Error GoTo EH
             
         End If
     
+        ' add the PressPieceUID field if not there (稳定唯一码：每件一码)
+        If Not mbln_DBFieldExists(r, "PressPieceUID") Then
+            gdb_CDM.Execute "ALTER TABLE AD_REPORT_DATA ADD PressPieceUID VARCHAR(64)"
+        End If
+
         ' add the LabelPrinted field if not there
         If Not mbln_DBFieldExists(r, "LabelPrinted") Then
         

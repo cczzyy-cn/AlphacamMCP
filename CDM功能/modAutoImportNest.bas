@@ -1,6 +1,17 @@
 ' MCP-INSTALL-TEST: 2026-07-30 测试注释
 ' ==============================================================================
 ' 版本: v1.8 (2026-09-10) — 修复屏幕刷新泄漏（窗口停在临时档案名的根源）+ 备份/临时文件清理
+' ------------------------------------------------------------------------------
+' 版本: v1.9 (2026-09-11) — 稳定唯一码：标签/报表行按“每件一码”对齐
+'   [P0] 件序号(PressDoorCounter)是顺序号，移动/重排板件后会整体漂移，
+'        旧逻辑按 (DetailID+件序号+板) 匹配报表行 -> 该件匹配不到、另一件命中
+'        两行 -> 两行指向同一个 _N.emf，就是“重复标签”的直接来源。
+'        现在：Make.bas 打件序号时同时写 DEF_ATT_PIECE_UID(仅缺失才分配)，
+'        5.3 先按 (DetailID,板,UID) 精确命中；旧行回退为同(DetailID,板)下按 PK
+'        升序与绘图实例按序配对，并回填 UID；未认领的重复行直接删除。
+'   [P0] 修复 Make.m_InsertReportDataRouter 中 lngPK 在循环里不复位，
+'        导致后一件覆盖前一件报表行的隐患。
+' ------------------------------------------------------------------------------
 '   本次变更（承 v1.7）:
 '     [P0] 配合 Make.bas:3991/3992 恢复 ActiveDrawing.ScreenUpdating 与
 '          Frame.ProjectBarUpdating，并在重生成的成功与失败路径都兜底恢复刷新 + Redraw。
@@ -34,6 +45,8 @@
 '   日期: 2026-09-10
 ' ==============================================================================
 Option Explicit
+' ---- 稳定唯一码属性名（与 Make.bas 的 DEF_ATT_PIECE_UID 保持一致）----
+Private Const DEF_ATT_PIECE_UID As String = "LicomUSrlg_alphadoor_piece_uid"
 Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
 
 ' ==============================================================================
@@ -522,6 +535,12 @@ Public Sub g_RegenDoorLabelEMFs()
     Dim sBakDir As String, blnInTrans As Boolean
     Dim lngExpectedDoors As Long, lngSheetCount As Long
     Dim blnScratchOpened As Boolean
+    Dim strUID As String, sKey As String, sSheetList As String, sPKList As String
+    Dim dicUID As Object, dicQ As Object, dicIdx As Object, dicClm As Object
+    Dim colQ As Collection, colNew As Collection
+    Dim blnUIDCol As Boolean, sUID As String
+    Dim lngPKRow As Long, lngN As Long
+    Dim v As Variant
 
     ' 0. 检查当前图纸是否为排版档案（ARD 嵌套图）
     '    注意: VBA 的 Or 不短路，Ni Is Nothing Or Ni.Sheets.Count 会在
@@ -713,37 +732,145 @@ Public Sub g_RegenDoorLabelEMFs()
     End If
     If lngOrderID2 > 0 Then
         On Error GoTo EH
+        ' 稳定唯一码列：能建就建；表被占用建不了就退化为“按序配对”，绝不因此失败
+        '   （AD_REPORT_DATA 的 DDL 只在 CDM 启动时(Events.mint_UpdateDB)必定成功）
+        blnUIDCol = False
+        On Error Resume Next
+        Set rst2 = gdb_CDM.Execute("SELECT TOP 1 PressPieceUID FROM AD_REPORT_DATA")
+        If Err.Number = 0 Then
+            blnUIDCol = True
+            rst2.Close
+        Else
+            Err.Clear
+            gdb_CDM.Execute "ALTER TABLE AD_REPORT_DATA ADD PressPieceUID VARCHAR(64)"
+            If Err.Number = 0 Then blnUIDCol = True
+        End If
+        Err.Clear
+        On Error GoTo EH
         gdb_CDM.BeginTrans
         blnInTrans = True
         sDetailList = ""
+        sSheetList = ""
+        Set dicUID = CreateObject("Scripting.Dictionary")     ' Detail|Sheet|UID -> PK
+        Set dicQ = CreateObject("Scripting.Dictionary")       ' Detail|Sheet -> 该组 PK(按 PK 升序)
+        Set dicIdx = CreateObject("Scripting.Dictionary")     ' Detail|Sheet -> 下一个待配对下标
+        Set dicClm = CreateObject("Scripting.Dictionary")     ' PK -> 已被认领
+
+        ' ---- 预取本单全部报表行，建立两级索引 ----
+        If blnUIDCol Then
+            Set rst2 = gdb_CDM.Execute("SELECT PK, DetailID, SheetName, PressPieceUID FROM AD_REPORT_DATA" & _
+                                       " WHERE OrderID=" & lngOrderID2 & " ORDER BY PK")
+        Else
+            Set rst2 = gdb_CDM.Execute("SELECT PK, DetailID, SheetName FROM AD_REPORT_DATA" & _
+                                       " WHERE OrderID=" & lngOrderID2 & " ORDER BY PK")
+        End If
+        If Not rst2 Is Nothing Then
+            Do While Not rst2.EOF
+                sKey = CStr(rst2.Fields("DetailID")) & "|" & CStr("" & rst2.Fields("SheetName"))
+                If Not dicQ.Exists(sKey) Then
+                    Set colNew = New Collection
+                    dicQ.Add sKey, colNew
+                    dicIdx.Add sKey, 1
+                End If
+                dicQ(sKey).Add CLng(rst2.Fields("PK"))
+                If blnUIDCol Then
+                    sUID = "" & rst2.Fields("PressPieceUID")
+                Else
+                    sUID = ""
+                End If
+                If sUID <> "" Then
+                    sKey = sKey & "|" & sUID
+                    If Not dicUID.Exists(sKey) Then dicUID.Add sKey, CLng(rst2.Fields("PK"))
+                End If
+                rst2.MoveNext
+            Loop
+            rst2.Close
+        End If
+
         Set Ni = ActiveDrawing.GetNestInformation
         For Each Nsh In Ni.Sheets
+            If sSheetList = "" Then
+                sSheetList = "'" & gs_FixSQL(Nsh.Name) & "'"
+            Else
+                sSheetList = sSheetList & ",'" & gs_FixSQL(Nsh.Name) & "'"
+            End If
             For Each Npi In Nsh.Parts
+                strUID = ""
+                lngDetail = 0
+                lngCnt = 0
                 For Each P In Npi.Paths
-                    If P.Attribute(DEF_ATT_DETAIL_ID) <> "" And P.Attribute(DEF_ATT_NEST_DOOR_COUNT) <> "" Then
-                        lngDetail = CLng(P.Attribute(DEF_ATT_DETAIL_ID))
-                        lngCnt = CLng(P.Attribute(DEF_ATT_NEST_DOOR_COUNT))
-                        sImgPath = gstr_EnsureBackslash(clsOptions.PathToRoot) & DEF_PATH_IMAGE & DEF_BACKSLASH & _
-                                   gstr_JobName & DEF_UNDERSCORE & sMat & DEF_UNDERSCORE & Nsh.Name & DEF_UNDERSCORE & lngCnt & DEF_EXTENSION_EMF
-                        ' 用三键定位到「具体那一件」的报表行：DetailID + 件序号(PressDoorCounter) + 板名(SheetName)。
-                        ' 同一 DetailID 下有多件（明细数量>1），只按 DetailID 匹配会把它们全部覆盖成
-                        ' 同一张标签路径 → 数据库里多件指向同一张图 → BarTender 打出重复标签。
-                        ' 板件号（DetailID）可能相同，不能单独当身份用。
-                        lngUpd = 0
-                        gdb_CDM.Execute "UPDATE AD_REPORT_DATA SET PressDoorImage='" & gs_FixSQL(sImgPath) & "'" & _
-                                        " WHERE OrderID=" & lngOrderID2 & " AND DetailID=" & lngDetail & _
-                                        " AND PressDoorCounter=" & lngCnt & " AND SheetName='" & gs_FixSQL(Nsh.Name) & "'", lngUpd
-                        If lngUpd = 0 Then
-                            m_Log "报表行未匹配(明细+件序号+板名): DetailID=" & CStr(lngDetail) & _
-                                  " 件序号=" & CStr(lngCnt) & " 板=" & Nsh.Name
+                    If strUID = "" Then strUID = "" & P.Attribute(DEF_ATT_PIECE_UID)
+                    If lngDetail = 0 Then
+                        If P.Attribute(DEF_ATT_DETAIL_ID) <> "" And P.Attribute(DEF_ATT_NEST_DOOR_COUNT) <> "" Then
+                            lngDetail = CLng(P.Attribute(DEF_ATT_DETAIL_ID))
+                            lngCnt = CLng(P.Attribute(DEF_ATT_NEST_DOOR_COUNT))
                         End If
-                        If sDetailList = "" Then sDetailList = CStr(lngDetail) Else sDetailList = sDetailList & "," & lngDetail
                     End If
                 Next P
+                If lngDetail > 0 Then
+                    sImgPath = gstr_EnsureBackslash(clsOptions.PathToRoot) & DEF_PATH_IMAGE & DEF_BACKSLASH & _
+                               gstr_JobName & DEF_UNDERSCORE & sMat & DEF_UNDERSCORE & Nsh.Name & DEF_UNDERSCORE & lngCnt & DEF_EXTENSION_EMF
+                    sKey = CStr(lngDetail) & "|" & Nsh.Name
+                    lngPKRow = 0
+                    ' 1) 优先按 (DetailID, 板, UID) 精确命中
+                    If strUID <> "" Then
+                        If dicUID.Exists(sKey & "|" & strUID) Then lngPKRow = dicUID(sKey & "|" & strUID)
+                    End If
+                    ' 2) 回退：与同 (DetailID, 板) 下尚未认领的行按 PK 升序配对
+                    If lngPKRow = 0 Then
+                        If dicQ.Exists(sKey) Then
+                            Set colQ = dicQ(sKey)
+                            lngN = dicIdx(sKey)
+                            Do While lngN <= colQ.Count
+                                If Not dicClm.Exists(CStr(colQ(lngN))) Then
+                                    lngPKRow = colQ(lngN)
+                                    dicIdx(sKey) = lngN + 1
+                                    Exit Do
+                                End If
+                                lngN = lngN + 1
+                            Loop
+                            If lngPKRow = 0 Then dicIdx(sKey) = lngN
+                        End If
+                    End If
+                    If lngPKRow > 0 Then
+                        ' 旧行没有唯一码 -> 用稳定值回填，下次即可精确命中
+                        If strUID = "" Then strUID = "R" & Format$(lngPKRow, "0000")
+                        If Not dicClm.Exists(CStr(lngPKRow)) Then dicClm.Add CStr(lngPKRow), 1
+                        lngUpd = 0
+                        gdb_CDM.Execute "UPDATE AD_REPORT_DATA SET PressDoorImage='" & gs_FixSQL(sImgPath) & "'," & _
+                                        " PressDoorCounter=" & lngCnt & " WHERE PK=" & lngPKRow, lngUpd
+                        If blnUIDCol And strUID <> "" Then
+                            ' 唯一码单独写，缺列时整段跳过，不影响标签同步
+                            gdb_CDM.Execute "UPDATE AD_REPORT_DATA SET PressPieceUID='" & gs_FixSQL(strUID) & "'" & _
+                                            " WHERE PK=" & lngPKRow
+                        End If
+                        If lngUpd = 0 Then
+                            m_Log "报表行更新影响 0 行: PK=" & CStr(lngPKRow) & " DetailID=" & CStr(lngDetail) & " 板=" & Nsh.Name
+                        End If
+                    Else
+                        m_Log "报表行未匹配: DetailID=" & CStr(lngDetail) & " 件序号=" & CStr(lngCnt) & _
+                              " 板=" & Nsh.Name & " UID=" & strUID
+                    End If
+                    If sDetailList = "" Then sDetailList = CStr(lngDetail) Else sDetailList = sDetailList & "," & lngDetail
+                End If
             Next Npi
         Next Nsh
         If sDetailList <> "" Then
             gdb_CDM.Execute "DELETE FROM AD_REPORT_DATA WHERE OrderID=" & lngOrderID2 & " AND DetailID NOT IN (" & sDetailList & ")"
+        End If
+        ' 删除本图各板上“未被认领”的行：多出来的重复行正是重复标签的来源
+        If sSheetList <> "" Then
+            sPKList = ""
+            For Each v In dicClm.Keys
+                If sPKList = "" Then sPKList = CStr(v) Else sPKList = sPKList & "," & CStr(v)
+            Next v
+            If sPKList = "" Then
+                gdb_CDM.Execute "DELETE FROM AD_REPORT_DATA WHERE OrderID=" & lngOrderID2 & _
+                                " AND SheetName IN (" & sSheetList & ")"
+            Else
+                gdb_CDM.Execute "DELETE FROM AD_REPORT_DATA WHERE OrderID=" & lngOrderID2 & _
+                                " AND SheetName IN (" & sSheetList & ") AND PK NOT IN (" & sPKList & ")"
+            End If
         End If
         gdb_CDM.CommitTrans
         blnInTrans = False

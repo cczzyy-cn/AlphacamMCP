@@ -198,28 +198,60 @@ FROM AD_DOOR_TYPES dt WHERE dt.TypeID='<门型>'
      构造临时嵌套路径 sScratchFile（v1.7 提前算好，供 EH 清理）
      m_CreateAlphaCAMDrawingsOfSheets Material, sNestOverride
      m_WaitForLabelEMFs(...) 轮询等待落盘
-5.3  BeginTrans：逐 Sheet/Part/Path 按 **DetailID + PressDoorCounter + SheetName** 写入
-     AD_REPORT_DATA.PressDoorImage
-     → DELETE 本订单中已不存在的 DetailID → CommitTrans
+5.3  BeginTrans：预取本订单全部报表行，建两级索引
+       · UID 索引   (DetailID, 板, PressPieceUID) → PK
+       · 配对队列   (DetailID, 板) → 该组 PK（按 PK 升序）
+     逐绘图实例：① 按 (DetailID, 板, UID) 精确命中
+                 ② 无唯一码的旧行 → 从队列里取下一个未被认领的 PK，按序配对，并回填 UID
+                 ③ 按 PK 写回 PressDoorImage + PressDoorCounter（缺列时 UID 单独跳过）
+     → DELETE 本订单中已不存在的 DetailID
+     → DELETE 本图各板中「未被认领」的行（多出来的重复行就是重复标签的来源）
+     → CommitTrans
 5.3b 成功 → RmDir 备份目录
 5.4  删除临时嵌套 ard 与临时副本；ZoomAll；弹成功提示
 结尾  App.New + App.OpenDrawing sUserARD（回到用户原档案）+ ZoomAll
 EH   回滚事务 / 还原 EMF / 清理临时文件 / 重开原档案（见下）
 ```
 
-> ### ⚠️ 标签行的身份 = `DetailID` + `PressDoorCounter` + `SheetName`（2026-09-11 修复）
-> `AD_REPORT_DATA` 是**一件一行**：`Make.bas:6405` 的 INSERT 写入
-> `PressDoorCounter = DEF_ATT_NEST_DOOR_COUNT`（板内实例序号）、`SheetName = SH.Name`、
-> `PressDoorImage = <Job>_<材料>_<板>_<实例序号>.emf`。
+> ### ⚠️ 标签行的身份 = 每件的 `PressPieceUID`（v1.9，2026-09-11）
 >
-> 而 5.3 原本**只按 `DetailID` 定位**：`UPDATE ... WHERE DetailID=<detail>`。
-> **同一明细数量 >1 时它们的 `DetailID` 相同 → 每件依次覆盖这批行 → 多行指向同一张
-> 标签图 → BarTender 打出重复标签。**
+> **现象**：多次调整板件位置后重新生成标签，会出现**重复标签**（两行指向同一个
+> `..._Sheet A1_3.emf`）。
 >
-> 现已改为三键定位（`DetailID` + `PressDoorCounter` + `SheetName`），且 `lngUpd = 0`
-> （没匹配到行）时把「明细+件序号+板名」写入 `CDM_Import.log`，便于发现序号漂移。
+> **根因链**（已用现场数据证实）：
+> 1. `PressDoorCounter` = `DEF_ATT_NEST_DOOR_COUNT`，是**板内实例序号**，
+>    由 `Make.m_CreateAlphaCAMDrawingsOfSheets` 按 `SH.Parts` **枚举顺序**从 1 递增打下。
+>    板件一被移动 / 重排，枚举顺序就可能变，**整板序号漂移**。
+> 2. `AD_REPORT_DATA` 里存的是**旧序号**，只有整个报表流程重跑才会被重写。
+> 3. v1.8 的 5.3 用 `DetailID + PressDoorCounter + SheetName` 匹配：
+>    序号一漂移，本该配 `_2` 的那件**匹配不到任何行**，而 `_3` 那件**一次命中两行**
+>    → 两行都写成 `_3.emf` → **重复标签**。
 >
-> **要点：板件号/明细号可能重复，不能单独当身份用。**
+> **现场对照**（OrderID=10234 / `9-11纳百川` / Sheet A1，4 件）：
+>
+> | 绘图实例（`SH.Parts` 序） | DetailID | 绘图件序号 | 数据库旧值 | 数据库旧图 |
+> |---|---|---|---|---|
+> | 1 | 472438 | 1 | 1 | `_1.emf` |
+> | 2 | **472439** | **2** | **3** ❌ | `_3.emf` ❌ |
+> | 3 | **472439** | 3 | 3 | `_3.emf` |
+> | 4 | 472437 | 4 | 4 | `_4.emf` |
+>
+> **没有一行是 2、却有两行是 3** —— 撞在一起的正是同一板件号（`PA锁Y`，数量 2）
+> 的两件，也就是会被**框选一起移动**的那一对。
+>
+> **修法（A+B）**：
+> - **A 稳定唯一码**：`Make.bas` 打件序号时同时写 `DEF_ATT_PIECE_UID`，**仅在缺失时分配**、
+>   板内唯一（`U0001`…），移动板件后不变。5.3 优先按 `(DetailID, 板, UID)` 精确命中。
+>   （已实测：该自定义属性名**可写可读可清空**，54 条路径全部成功。）
+> - **B 按序配对 + 复位 `lngPK`**：没有唯一码的旧行，按 `(DetailID, 板)` 分组、
+>   以 **PK 升序**与绘图实例**按序配对** → 数学上保证一一对应，两件不可能抢同一行；
+>   同时把唯一码回填进该行。另外修复 `Make.m_InsertReportDataRouter` 里
+>   `lngPK` **在 `For Each Ni` 循环中从不复位**（某件没匹配到行时会沿用上一件的 PK、
+>   把上一件的行重复写一遍）的隐患。
+> - 未被认领的重复行在事务内 **DELETE**。
+>
+> **要点：板件号（`DetailID`）会重复、件序号（`PressDoorCounter`）会漂移，
+> 两者都不能单独当身份用；身份必须"每件一码"。**
 
 ### 材料名四级回退（步骤 3）
 
