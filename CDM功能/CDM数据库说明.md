@@ -303,10 +303,24 @@
 > `PressDoorImage` 文件名里的件序号同样会漂移，但路径每次都由 5.3 写回数据库，
 > 消费方（BarTender）读的是数据库中的路径，所以不影响正确性。
 >
-> ⚠️ `AD_REPORT_DATA` 的 **DDL（加列）只在 CDM 启动时能成功**（那时表未被占用）；
-> 运行中加列会失败（Jet：*由于表 'AD_REPORT_DATA' 正由另一用户或另一进程使用，数据库引擎无法锁定该表*）。
-> 所以 5.3 里的加列是**尽力而为**，失败就退化为上面的配对逻辑，**绝不中断标签生成**；
-> 正式加列请走 `Events.mint_UpdateDB`（启动时 / 版本升级时执行）。
+> ⚠️ **本列由谁创建（2026-09-11 实测）**：
+> - `Events.mint_UpdateDB` 的门槛是 `If (PDbl(DEF_DB_VERSION) > dblV) Then …`，
+>   `dblV` = `AD_VERSION.DatabaseVersion`。实测两者**都是 1.3**（相等），
+>   所以**重启不会触发** `mint_UpdateDB`，加在它里面的加列代码只在**版本升级**时才走。
+> - 本列实际是由 **`g_RegenDoorLabelEMFs` 5.3 的"尽力而为"自愈**创建成功的
+>   （14:31 那次重生成：`SELECT TOP 1 PressPieceUID` 失败 → `ALTER TABLE … ADD` 成功），
+>   并且同一轮 `blnUIDCol=True`，`U0001…U0004` 当场就写进了库。
+> - 之所以单独试会失败：`AD_REPORT_DATA` 的 DDL 需要独占锁，
+>   **CDM 持有该表时会报** Jet *"由于表 'AD_REPORT_DATA' 正由另一用户或另一进程使用，
+>   数据库引擎无法锁定该表"*（同一轮在临时表上 `CREATE/ALTER/DROP` 全部成功，
+>   所以不是权限问题）。报表/压机界面打开时表被占用，重生成早期则往往空闲。
+> - 因此 5.3 的加列**必须**是尽力而为：失败就退化为上面的配对逻辑，**绝不中断标签生成**。
+>
+> ⚠️ **绘图侧唯一码的生命周期**：`m_CreateAlphaCAMDrawingsOfSheets` 末尾
+> `ActiveDrawing.SaveAs strSave`（`Make.bas:3836`）——
+> `sNestARDOverride` 为空时存的是**真实排版档**，唯一码就此落盘；
+> 标签重生成传了覆盖名 → 存进**临时档**，随副本一起删除。
+> 所以重生成不会给用户原图打码，**下一次完整报表/生产排版流程会自动落盘**。
 
 | 字段 | 类型 | 长度 | 说明 |
 |------|------|------|------|
