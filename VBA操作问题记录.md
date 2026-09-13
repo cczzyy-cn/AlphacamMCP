@@ -64,6 +64,16 @@ VBA 编辑器打开的实例其窗口标题类似
 - 注意 `ActiveVBProject` 会随 VBA 编辑器当前选中项目变化——定位模块要遍历所有项目，
   不要假设活动项目。
 
+**保护状态是「会翻转」的，别当成静态属性（2026-09-13 实测）：**
+- 当天上午遍历 27 个工程时，`CDM` **可以读写**（成功部署了 `modAutoImportNest` / `frmAutoNest`）；
+  关掉 AlphaCAM 再重开后，**同一个 `CDM` 变成受保护**，而 `CCC功能` 仍可读写。
+- ⇒ AlphaCAM 自带插件的工程保护状态随 `.arb` 走，**重启后可能恢复成锁定**。
+  任何"今天能写"的假设都不成立；自动化脚本必须每次都按实际状态判断。
+- 后果：`running_snapshot.py` / `component_deploy.py` 访问受保护工程的 `VBComponents` 会抛
+  `该工程已被保护`。已改为**明确报错并提示**「先在 VBA 编辑器里 工具 → <工程>属性 → 保护 解除」，
+  不再是裸 traceback。
+- 想改 CDM 模块：先在 VBA 编辑器里解除保护，改完记得重新加保护（`.arb` 会把它存下来）。
+
 ---
 
 ## 2. 宏调用（`Application.Run`）
@@ -132,6 +142,33 @@ res = app.Run(proj.Name + '.AdoorEvents.Sindeg', 30.0)   # → 0.5
 
 **验证：** 修复后连续 5 次 `run_vba_line` 成功、零残留（组件数恢复原始值）。
 
+### 2.6 `Run` 最多 10 个位置参数 → 多参过程要注入临时模块调用（2026-09-13）
+
+**现象：** `app.Run("CCC功能.modRamp.ApplyRampEntry", *args)` 传 9 个实参时报：
+```
+IAlphaCamApp.Run() takes from 1 to 10 positional arguments but 11 were given
+```
+即 `Run` 的签名上限是 **self + 宏名 + 9 个可选实参**。要调用**参数更多的过程**就撞墙。
+
+**解决：** 把调用写成 **VBA 代码**，注入临时模块后 `Run` 那个无参过程 —— VBA 侧没有实参个数限制：
+
+```python
+proj = app.VBE.ActiveVBProject
+mod = proj.VBComponents.Add(1)                       # 1 = 标准模块
+mod.Name = "MCP_TEST_" + uuid.uuid4().hex[:8]        # 必须字母开头(见 2.5)
+mod.CodeModule.AddFromString(
+    "Public Sub MCPRun()\n" + "modRamp.ApplyRampEntry 0,18,10,\"\",\"\",0,True,0.8,True" + "\nEnd Sub")
+try:
+    app.Run("%s.%s.MCPRun" % (proj.Name, mod.Name))
+finally:
+    proj.VBComponents.Remove(mod)                    # 传组件对象, 不是名字
+```
+
+**注意：**
+- 临时模块加在 **`ActiveVBProject`** 上 —— 跑之前确认活动工程就是你要动的那个（VBA 编辑器里
+  切一下文件就变，见 1.4）。本次目标工程是 **`CCC功能`**（不是 CDM）。
+- `Remove` 要传**组件对象**；传名字会抛错，异常路径下记得清理以免残留"模块N"。
+
 ---
 ## 3. 模块代码读写（CodeModule）
 
@@ -192,6 +229,41 @@ cm.DeleteLines(start, end - start + 1)
 
 或用"整模块重写"（3.2）兜底，彻底清除残留。
 
+### 3.5 VBA 会**重写长小数字面量** → 部署读回校验永远失败（2026-09-13，重要）
+
+**现象：** 仓库文件里写 `Private Const DEG2RAD As Double = 0.0174532925199433`，
+`AddFromString` 写入并保存后，**从运行工程读回来的文本变成了**
+`Private Const DEG2RAD As Double = 1.74532925199433E-02`。
+于是 `component_deploy.py` 的"读回校验"永远不相等 → 每次都判定部署失败并回滚；
+即使绕过校验，此后每次 `audit` 也永远显示 `==repo=False`。
+
+**根因：** VBA 在保存模块时会**规范化数字字面量**（本次是转成 15 位有效数字的科学计数法）。
+这不是行尾/大小写那种可以靠"忽略大小写"绕过的差异 —— 它是**字符内容**变了。
+
+**规避（推荐第一种）：**
+1. **不要在源码里写长小数字面量**，改用运行时计算：
+   ```vba
+   Private Function Pi() As Double
+       Pi = 4 * Atn(1)
+   End Function
+   Private Function Deg2Rad() As Double
+       Deg2Rad = Pi() / 180
+   End Function
+   ```
+   （`modRamp.bas` v2.0 就是这么改的，改完读回校验立刻 `verify=True`。）
+2. 若必须写字面量，就按 VBA 规范化的形态写（科学计数法、15 位有效数字），
+   但这需要先实测一次它到底重写成什么。
+
+**排查手法：** 把"仓库文本"和"运行版文本"逐行做**大小写归一化后的**对比，
+真实差异会自己浮出来（本次 45 处差异里只有 1 处是真实差异，其余全是大小写/标签名归一化）：
+```python
+sm = difflib.SequenceMatcher(None, [l.lower() for l in repo], [l.lower() for l in running])
+```
+
+**同批发现的其它归一化（这些不影响校验，因为比较是大小写不敏感的）：**
+`.Count` → `.count`、`.FinalDepth` → `.finalDepth`、标签 `NextTp:` → `nextTP:`、
+局部变量名 `scX` → `scx`（VBA 按**声明处**的大小写统一）。
+
 ---
 
 ## 4. VBA 语言陷阱
@@ -205,13 +277,29 @@ AlphaCAM 报"声明重复"编译错误。
 
 **解决：** 所有 `Dim` 集中在过程顶部；块内只保留赋值（去掉 `Dim` 关键字）。
 
-### 4.2 `MsgBox` 会阻塞自动化
+### 4.2 `MsgBox` 会阻塞自动化 —— 但只阻塞**调用方**（2026-09-13 三条实测）
 
-**现象：** 宏里 `MsgBox` 弹窗后 MCP/COM 调用挂起等待用户点击，表现为"卡住"。
+**现象：** 宏里 `MsgBox` 弹窗后，发起调用的那个进程会一直等（`app.Run` 不返回），表现为"卡住"。
 
-**解决：**
-- 验证用代码内不要 `MsgBox`；需要输出信息时写文件（见 5.2）。
-- 真出现弹窗：关掉后重试（错误提示里也常见这句）。
+**实测的三条规律（都很反直觉，务必记住）：**
+
+| # | 结论 | 证据 |
+|---|---|---|
+| 1 | **只阻塞调用方，不阻塞 COM 本身** | 回执框还挂在屏幕上时，**另一个进程**的 COM 调用（`GetActiveObject` + 读写工程）正常返回。与 §7.8 的 `ReadTextFile` 现象一致 |
+| 2 | **`WM_COMMAND`/`IDOK` 关不掉它** | 对 `#32770` 窗口连发 8 次 `PostMessage(WM_COMMAND, IDOK)` 毫无作用，窗口一直在 |
+| 3 | **对「确定」按钮发 `BM_CLICK` 一次即关** | `SendMessage(button_hwnd, 0x00F5, 0, 0)`；先 `EnumChildWindows` 找 `class == "Button"` 的子窗口 |
+
+**⇒ `tools/win_ctl.py --dismiss <pid>` 目前用 `WM_COMMAND/IDOK`，对 AlphaCAM 的 VBA `MsgBox` 是失效的**，
+应改为 `BM_CLICK`。另外它只按窗口类 `#32770` 过滤，**会误伤其它程序**（2026-09-13 实测误点了
+360压缩 的三个解压进度窗）—— 一律**按标题精确匹配**。
+
+**解决（自动化时的正确姿势）：**
+- 验证用代码内不要 `MsgBox`；需要输出信息时写文件（见 5.2）。**这是在 VBA 里最省事的做法。**
+- 若被调用的是**已发布的插件**（不能为测试改它的代码，例：`modRamp` 完成时必弹回执框）：
+  1. **调用放后台作业**跑（`python -u`），别让前台调用被卡死；
+  2. **另起一个独立监视进程**轮询目标标题的窗口，**先把窗口文本记下来**再点掉它。
+     回执框内容往往就是唯一的结果摘要（本次靠它读到 `候选/受理/已应用/跳过/微连接/小件降速` 计数）；
+  3. 见 §5.5 的参考实现。
 
 ### 4.3 浮点"等于"判断
 
@@ -288,6 +376,50 @@ If Ni.Sheets.Count = 0 Then MsgBox "...": Exit Sub
 
 ---
 
+### 4.8 `win32com` 动态绑定：**方法必须加括号**，否则报错极具误导性（2026-09-13）
+
+**现象：** 三种看起来完全不同的报错，其实是同一个原因：
+```
+AttributeError: 'function' object has no attribute 'Name'
+AttributeError: 'method' object has no attribute 'ToolInOut'
+AttributeError: 'method' object has no attribute 'Sheets'
+```
+**根因：** 用 `GetActiveObject`（后期绑定）时，**不加括号访问一个方法**拿到的是
+"绑定方法对象"本身，而不是它返回的值。VBA 里可以省略无参调用的括号（`Set ni = drw.GetNestInformation`），
+**Python 不行**。
+
+**判据（记住了能省很多时间）：** 报错里出现 `'function' object has no attribute` 或
+`'method' object has no attribute` → **几乎一定是漏了括号**。本次连踩三次：
+
+| 写错 | 写对 |
+|---|---|
+| `app.GetCurrentTool` | `app.GetCurrentTool()` |
+| `drw.GetNestInformation` | `drw.GetNestInformation()` |
+| `geo.Finish` | `geo.Finish()`（`Create2DGeometry` 的收尾调用）|
+| `drw.GetToolPathCount` | `drw.GetToolPathCount()` |
+
+> **判据之外的另一半**：如果是**属性**（`tp.MinXL`、`ops.Count`）就**不能**加括号，
+> 加了会报另一类错。拿不准时先 `EnsureDispatch` 后用 `dir()` 看它是方法还是属性。
+
+**顺带：后期绑定下 `dir()` 不给成员。** 想知道对象到底有什么，用 typelib 包装：
+
+```python
+import win32com.client as w
+app = w.gencache.EnsureDispatch("Ar5axaps.Application")   # 注意是 Ar5axaps, 见 §1.1
+print([n for n in dir(app) if not n.startswith("_")])      # 本次实测: App 100 个成员
+d = app.ActiveDrawing
+print([n for n in dir(d) if "Geo" in n])                   # Drawing 296 个成员
+el = d.GetFirstToolPath.Elements.Item(1)
+print([n for n in dir(el) if "Z" in n])                    # Element 79 个成员
+```
+
+**注意：反编译出来的接口**（如 `小条先切/AlphaCAMRouter/IElement.vb`）**不能用来断言"没有某成员"** ——
+那些 `.vb` 里有大量 `_VtblGap` 占位，说明接口方法被省略了。实测 `Element` 就有
+`Length` / `StartZL` / `EndZL` / `StartZG` / `EndZG` / `LeadIn` / `LeadOut` 等反编译文件里看不到的成员，
+而这些正是"读回 Z 剖面做验收"的关键（见 §5.5）。
+
+---
+
 ## 5. 验证技巧（无法直接调 `AdoorMain` 时）
 
 ### 5.1 已有宏换体测试
@@ -337,6 +469,38 @@ Err.Clear
 
 ---
 
+### 5.5 验收「已发布插件」的套路：后台调用 + 弹窗监视 + 逐元素读回（2026-09-13）
+
+场景：要验证的插件（`CCC功能/modRamp`）**结尾必弹回执框**，且它**会删掉原刀路再重建** ——
+不能为了测试改它的代码，也不能只凭回执框的计数就下结论。
+
+**三段式：**
+
+1. **调用放后台**（`python -u`）：`app.Run` 会一直等回执框被关掉，前台跑必然"卡住"。
+2. **独立进程盯弹窗**：轮询**目标标题**的窗口（**绝不按窗口类匹配**，见 §4.2），
+   **先把窗口里的 `Static` 文本记进日志**，再对 `Button` 子窗口发 `BM_CLICK`。
+   这份日志就是每个用例的结果摘要（本次读到 `候选/受理/已应用/跳过/微连接/小件降速` 计数）。
+3. **逐元素读回做真正的验收**：
+   ```python
+   els = tp.Elements                      # tp = 处理后的刀路
+   for i in range(1, els.Count + 1):
+       e = els.Item(i)
+       (e.StartXL, e.StartYL, e.StartZL, e.EndXL, e.EndYL, e.EndZL,
+        e.IsLine, e.IsRapid, e.Length)     # StartZL/EndZL = 局部 Z（见 §4.8）
+   ```
+
+**为什么第 3 步不可省（本次的教训）：**
+- 只看回执框计数 → 漏掉了两个真缺陷（无排版图纸整体失败、rapid 段被算进面积）；
+- 只看 `Path.Length` → 会被 **rapid 定位段**带偏（见 §7.9），我因此误判了两次。
+
+**测试台本身也要防坑：**
+- 造件后先**读回确认形状**（`Length` / bbox / 元素数 / `Closed`），再开始测；
+- 两件**别放共线紧邻**：第 2 条刀路会带一个**从前一件收尾点出发的 rapid 段**，
+  它的 `MinXL~MaxXL` / `Length` 会把两件都框进去（本次 `bbox=[0,0,1005,300]`
+  而 `GetFeedExtent=[405,0]-[1005,300]`）；
+- 跑完把测试几何/刀路清掉（见 §7.2）。
+
+---
 ## 6. 门板宏常见操作要点
 
 ### 6.1 路径分组：与门类型刀路关联时必须用**固定组号**
@@ -649,6 +813,64 @@ $bmp.Save($png, [System.Drawing.Imaging.ImageFormat]::Png)
 `AlphaCAM_3DMILL`，标题 `3D 5-轴鉋花机专业版`）—— 用 `Get-Process | ? ProcessName -match 'alphacam'`
 **过滤不到它**，别据此判断"AlphaCAM 没在跑"。
 
+### 7.9 `Path` / `Element` 的几个数据陷阱（2026-09-13，全部实测）
+
+#### (a) `MinXL/MaxXL/Length` **含 rapid 段**；`GetFeedExtent` 才是不含的
+
+第 2 条及以后的刀路，**开头会带一个从"上一件收尾点"出发的 rapid 定位段**。实测：
+
+```
+path2: MinXL~MaxXL = [0,0]-[1005,300]      ← 把前一件也框进来了
+       GetFeedExtent = [405,0]-[1005,300]  ← 真实加工范围
+       Length        = 2205 = 405(rapid) + 1800(真实周长)
+```
+
+**规避：** 判断"件多大/在哪/多长"一律用 `GetFeedExtent`（取不到时再回落包围盒），
+或**逐元素累加、跳过 `IsRapid`**。
+**本次踩坑：** 用 `MinXL~MaxXL` 算件面积 → 第 2 件被算成 301500mm²（实为 180000）→ 该降速的没降速。
+**复制刀路几何时也必须跳过 rapid**（`小条先切` 与 `modRamp` 的 `If Not elem.IsRapid Then` 就是这个原因），
+否则复制出的几何会多出一条横穿的直线。
+
+#### (b) `Path.SetStartPoint(X, Y)` 只对**闭合路径**有效，且点必须在路径上
+
+文档原文只有一句：*"Set the start point for the path, **if path is closed**"*，
+参数是"新起点的局部坐标" —— **没有任何"自动吸附到路径上"的承诺**。
+官方示例传的也都是路径上的点（`Geo.SetStartPoint 50, 100` 是 0..100 矩形的上边中点）。
+
+⇒ 传一个落在路径外的点属**未定义行为**。本次实测到一个真实反例：
+`modRamp` v1.x 用"沿边整边跳一次"求点，100×600 的竖条会算出 `(50, -300)`
+（在包围盒外，靠 `SetStartPoint` 自身兜住才没出事）。v2.0 已改为**直接算目标边的中点**。
+
+#### (c) `Drawing.GetNestInformation` 在**无排版的图纸上直接抛异常**
+
+报错是 `现在图档内无排版`。**单件图、测试图都属于这种情形**，不是错误。
+必须按 §4.7 的模板包起来：
+
+```vba
+Set Ni = Nothing
+On Error Resume Next
+Set Ni = ActiveDrawing.GetNestInformation   ' 无排版会失败，吞掉
+On Error GoTo EH                            ' ← 勿用 On Error GoTo 0
+If Ni Is Nothing Then ' 退回"图纸范围中心"等兜底
+```
+
+**本次踩坑：** `modRamp` v1.x 没包 → **在单件图上整个功能失败**（弹红框），
+而它自己的 `SetGeoStartToSheetSide` 里明明写了兜底分支，永远走不到。v2.0.1 修。
+
+#### (d) 手工重建刀路时的正确写法（文档实证）
+
+- `MillData.ManualToolPath(X, Y, Z)` 给**起点**，`MillManualToolPath.Add3DLine(X, Y, Z)`
+  是**进给直线**（起点=上一段终点，Z=**终点** Z）。
+- **从 `Z = 0`（板面）起步再沿路径下降**，不要把 `ManualToolPath` 的 Z 直接设成切深 ——
+  那等于在起点**直插**一整刀。
+- 逐段 Z 用 `Add3DLine` 表达即可（3D 进给直线，天然形成斜坡）。
+
+#### (e) 常用但反编译文件里看不到的成员（用 §4.8 的 `dir()` 查）
+
+`Element.Length`、`StartZL/EndZL`、`StartZG/EndZG`、`LeadIn/LeadOut`；
+`App.LicomdatPath`（拼刀具路径，别硬编码盘符）、`App.CreateTool`、`App.CreateLeadData(3D)`；
+`Drawing.CreateRectangle(x1,y1,x2,y2)`、`Path.SetMaterial(厚, Z)`。
+
 ---
 
 ## 8. AlphaDOOR（CDM）门板机制与数据库（本项目核心）
@@ -742,7 +964,17 @@ Set db = dbe.OpenDatabase("D:\2016\LICOMDAT\CDM Data\CDM.mdb", True, True)  ' �
 | `AddFromString` 行尾 | CRLF / LF 均可 |
 | 删宏怎么删 | 定位到 `End Sub` 整块删 |
 | `Dim` 放哪 | 过程顶部，勿放循环/条件块内 |
-| MsgBox | 会阻塞，验证用写文件 |
+| MsgBox | 会阻塞**调用方**，但**不阻塞**别进程的 COM；验证代码里别写，改用写文件 |
+| MsgBox 关不掉怎么办 | `WM_COMMAND/IDOK` 无效 → 对「确定」按钮发 `BM_CLICK`（§4.2） |
+| 自动化跑会弹窗的插件 | 调用放**后台** + 独立进程**按标题**监视并记录窗口文本（§5.5） |
+| `Run` 参数上限 | self + 宏名 + 9 个；更多参数就**注入临时模块**调无参过程（§2.6） |
+| 仓库文本 ≠ 运行版文本 | VBA 会**重写长小数字面量**（→科学计数法）；改运行时计算如 `Pi = 4 * Atn(1)`（§3.5） |
+| 读回校验怎么比 | 先**大小写归一化**再逐行 diff，否则淹没在 `.Count`→`.count` 之类差异里（§3.5） |
+| `'function' object has no attribute ...` | **方法漏了括号**（Python 不能像 VBA 那样省略无参括号）（§4.8） |
+| 想知道对象有哪些成员 | `gencache.EnsureDispatch(...)` 后 `dir()`；反编译 `.vb` 里的 `_VtblGap` 不代表"没有"（§4.8） |
+| 刀路 `Length`/`bbox` 偏大 | 含 **rapid** 定位段；用 `GetFeedExtent`，或逐元素累加时跳过 `IsRapid`（§7.9a） |
+| 无排版图纸取 NestInformation | 直接抛「现在图档内无排版」；按 §4.7 模板包起来，勿让它拖垮整个功能（§7.9c） |
+| `SetStartPoint` 传路径外的点 | 文档只保证**闭合路径**、参数应在路径上；越界属未定义行为（§7.9b） |
 | Open 后文件被锁 | 宏里忘 `Close`；空宏执行无参 `Close` 释放 |
 | EH 里 Err 变 0 | `On Error GoTo 0` 清空 Err，先存变量再处理 |
 | Drawing 几何数 | 无 `Count` 属性，用 `GetFirstGeo()` 遍历 |

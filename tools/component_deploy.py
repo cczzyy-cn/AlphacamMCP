@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Generic deploy of one repo file into the RUNNING CDM project component.
+"""Generic deploy of one repo file into the RUNNING project component.
 
-    python tools/component_deploy.py audit  <Component> <repoPath> <baselineGlob>
-    python tools/component_deploy.py deploy <Component> <repoPath> <baselineGlob>
+    python tools/component_deploy.py audit  <Component> <repoPath> <baselineGlob> [Project]
+    python tools/component_deploy.py deploy <Component> <repoPath> <baselineGlob> [Project]
+
+Project defaults to CDM; pass e.g. CCC功能 for the CCC add-in project.
 
 baselineGlob picks the pre-change snapshot (newest match) used as the "clean
 baseline" the running code must equal before we are willing to overwrite it.
@@ -25,12 +27,14 @@ def main():
     if len(a) < 5:
         raise SystemExit(__doc__)
     mode, comp_name, repo_rel, base_glob = a[1], a[2], a[3], a[4]
+    proj_name = a[5] if len(a) > 5 else "CDM"
     repo_path = os.path.join(ROOT, repo_rel)
     cands = sorted(glob.glob(os.path.join(ROOT, base_glob)), key=os.path.getmtime)
     if not cands:
         raise SystemExit("FAIL: no baseline matched %s" % base_glob)
     base_path = cands[-1]
     print("baseline: %s" % os.path.relpath(base_path, ROOT))
+    print("project : %s" % proj_name)
 
     import win32com.client as w
 
@@ -38,15 +42,23 @@ def main():
     proj = None
     for i in range(1, app.VBE.VBProjects.Count + 1):
         p = app.VBE.VBProjects(i)
-        if p.Name == "CDM":
+        if p.Name == proj_name:
             proj = p
             break
     if proj is None:
-        raise SystemExit("FAIL: CDM project not found")
+        raise SystemExit("FAIL: project %s not found (protected? projects are "
+                         "locked while protected)" % proj_name)
 
     comp = None
-    comps = proj.VBComponents
-    for j in range(1, comps.Count + 1):
+    try:
+        comps = proj.VBComponents
+        total = comps.Count
+    except Exception as e:
+        raise SystemExit(
+            "FAIL: 读不到工程 %s 的组件 (%s)\n"
+            "      工程受保护时无法读写。请在 AlphaCAM VBA 编辑器中解除保护\n"
+            "      （工具 → <工程>属性 → 保护）后重试。" % (proj_name, e))
+    for j in range(1, total + 1):
         if comps(j).Name == comp_name:
             comp = comps(j)
             break

@@ -1,0 +1,110 @@
+# -*- coding: utf-8 -*-
+"""Post-deploy verification for the RUNNING CCC功能 project (modRamp v2.0).
+
+Mirrors tools/deploy_probe.py (which is CDM-specific) for the CCC add-in project.
+
+1. re-reads the running code and asserts the v2.0 markers are present and the
+   superseded v1.x logic is gone
+2. forces a project-wide VBA compile by running a pure, side-effect-free function
+   (modRamp.RampVersion -- returns a constant, touches nothing)
+
+VBA normalises member-name case (.Count -> .count) and reformats long numeric
+literals (0.0174532925199433 -> 1.74532925199433E-02), so all text comparisons
+are case-insensitive and we avoid long decimal literals in the source entirely.
+
+ASCII-only stdout on purpose (console codepage is cp936).
+"""
+import sys
+
+PROJECT = "CCC功能"
+
+MARKERS = {
+    "modRamp": [
+        ("v2.0 header",        "v2.0"),
+        ("core: tail anchor",  "\u951a\u5b9a\u5728\u8f6e\u5ed3\u672b\u7aef"),
+        ("core: prohibition",  "[\u7981\u6b62] \u628a\u659c\u5761\u6539\u6210"),
+        ("closed-path gate",   "blnClosed = tp.Closed"),
+        ("HBT score",          "score(k) = nl + ne"),
+        ("exposed sides",      "Function ExposedSides"),
+        ("all-parts mode",     "If minSize <= 0 Then"),
+        ("start-point fix",    "\u671d\u5411\u6392\u7248\u4e2d\u5fc3\u90a3\u4e00\u4fa7\u7684\u3010\u8f83\u957f\u8fb9\u3011\u7684\u4e2d\u70b9"),
+        ("tabs: windows",      "Function BuildTabWindows"),
+        ("tabs: emit",         "Sub AddContourWithTabs"),
+        ("tabs: no pure Z",    "\u65e0\u7eaf Z \u79fb\u52a8"),
+        ("element length",     "Function ElemLen"),
+        ("pi as function",     "Pi = 4 * Atn(1)"),
+        ("slow small parts",   "slowApplied = slowApplied + 1"),
+        ("undo point",         "App.SetUndoPoint"),
+        ("version function",   "Function RampVersion"),
+    ],
+}
+ABSENT = {
+    "modRamp": [
+        "bestDist",                                  # v1.x start-point search
+        "\u671d\u6392\u7248\u4e2d\u5fc3\u65b9\u5411\u504f\u79fb\u6574\u6761\u8fb9\u957f",  # v1.x hop-by-edge
+        "DEG2RAD          As Double = 0",            # v1.x long decimal literal
+    ],
+}
+WATCH = ("modRamp",)
+
+
+def main():
+    import win32com.client as w
+
+    app = w.GetActiveObject("aroutaps.Application")
+    vbe = app.VBE
+    proj = None
+    for i in range(1, vbe.VBProjects.Count + 1):
+        if vbe.VBProjects(i).Name == PROJECT:
+            proj = vbe.VBProjects(i)
+            break
+    if proj is None:
+        print("FAIL: project %s not found (protected?)" % PROJECT)
+        return 1
+    try:
+        print("project %s: %d components" % (PROJECT, proj.VBComponents.Count))
+    except Exception as e:
+        print("FAIL: cannot read components (protected?): %s" % e)
+        return 1
+
+    code = {}
+    for j in range(1, proj.VBComponents.Count + 1):
+        c = proj.VBComponents(j)
+        if c.Name in WATCH:
+            code[c.Name] = c.CodeModule.Lines(1, c.CodeModule.CountOfLines)
+
+    ok = True
+    for cname in sorted(MARKERS):
+        src = code.get(cname, "")
+        low = src.lower()
+        print("-- %s (%d lines)" % (cname, src.count("\n") + (1 if src else 0)))
+        crlf = src.count("\r\n")
+        bare = src.count("\n") - crlf
+        print("   EOL    CRLF=%-5d bare_LF=%-5d %s"
+              % (crlf, bare, "OK" if crlf > 0 and bare == 0 else "*** MIXED/LF ***"))
+        for label, needle in MARKERS[cname]:
+            hit = needle.lower() in low
+            ok &= hit
+            print("   MARKER %-22s %s" % (label, "OK" if hit else "*** MISSING ***"))
+        for needle in ABSENT.get(cname, []):
+            gone = needle.lower() not in low
+            ok &= gone
+            print("   ABSENT %-22s %s" % (needle[:22],
+                                          "OK" if gone else "*** STILL PRESENT ***"))
+
+    if "modRamp" in code:
+        print("-- compile probe: %s.modRamp.RampVersion() --" % PROJECT)
+        try:
+            r = app.Run("%s.modRamp.RampVersion" % PROJECT)
+            print("   compile+run OK, returned %r" % (r,))
+            ok &= isinstance(r, str) and r.startswith("modRamp")
+        except Exception as e:
+            ok = False
+            print("   *** PROBE FAILED (project does not compile): %s" % e)
+
+    print("RESULT=%s" % ("PASS" if ok else "FAIL"))
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

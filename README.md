@@ -25,7 +25,7 @@
 | `CDM功能/` | CDM 自动化模块（`modAutoImportNest.bas` v1.9：导入 + 排版 + 标签重生成、`Events.bas` 菜单注册、`Make.bas` 原源码，以及数据库/流程分析文档） |
 | `RevNest_source/` | RevNest 反向排版 v1.2 插件完整源码（从 AlphaCAM 提取）——**本地目录，未纳入版本控制** |
 | `RevNest_API参考.md` | RevNest 反向排版的 API 参考 |
-| `VBA操作问题记录.md` | VBA/COM 操作踩坑与规避手册（含 CDM.arb 损坏、屏幕刷新泄漏、`ReadTextFile` 盲读 CTX 等 8 类） |
+| `VBA操作问题记录.md` | VBA/COM 操作踩坑与规避手册（含 CDM.arb 损坏、屏幕刷新泄漏、`ReadTextFile` 盲读 CTX、VBA 重写长小数字面量、`Path` 的 rapid 段数据陷阱、MsgBox 关不掉与自动化姿势等） |
 | `open_vba_editor.py` | 自动激活/最大化 AlphaCAM 窗口并打开 VBA 编辑器（Alt+F11） |
 | `install.bat` | Windows 一键安装脚本 |
 | `install_ccc.py` | 把 `CCC功能/` 的模块安装进 AlphaCAM |
@@ -248,7 +248,9 @@ pip install -r requirements.txt
 | `modOffset.bas` | **全排版刀具偏移** — 按刀具名称选择，整体偏移 X/Y/Z |
 | `modSort.bas` | **排版刀具排序** — 按加工方式+刀具分组，拖拽调整加工顺序 |
 | `modMirror.bas` | **反面镜像** — 自动镜像排版 Sheet 几何生成反面（X 轴或 Y 轴镜像） |
-| `frmToolOffset.txt` / `frmToolSort.txt` | 刀具偏移/排序对话框的窗体定义 |
+| `modRamp.bas` | **斜角下刀**（v2.0）— 把切断刀路重建成带斜向下刀的刀路：斜坡**锚定在轮廓末端**，使吃刀负载在闭合点归零（板件在负载最小处被切离）；可选**微连接（留连接点）**与**小件降档降速**。小条范围填 `0` = 处理全部闭合刀路。见 [`开料小板件吸附与斜下刀算法分析.md`](开料小板件吸附与斜下刀算法分析.md) |
+| `modTest.bas` | 通用测试入口（CCC 菜单「【测试】」：显示选中刀路的包围盒/中心） |
+| `frmToolOffset.txt` / `frmToolSort.txt` / `frmRamp.txt` | 各对话框的窗体定义（AlphaCAM 不支持导入 .frm，控件需手工添加） |
 
 ### CDM 橱柜门自动化
 
