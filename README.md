@@ -23,7 +23,7 @@
 | `tools/` | **CDM 模块的部署与诊断工具**：审计/部署/编译探针、GBK 读源码、数据库查询、排版结构导出、标签配对复演、窗口清理。见 [`tools/README.md`](tools/README.md) |
 | `CCC功能/` | VBA 插件合集目录（依边界裁剪、全排版刀具偏移、排版刀具排序） |
 | `CDM功能/` | CDM 自动化模块（`modAutoImportNest.bas` v1.9：导入 + 排版 + 标签重生成、`Events.bas` 菜单注册、`Make.bas` 原源码，以及数据库/流程分析文档） |
-| `RevNest_source/` | RevNest 反向排版 v1.2 插件完整源码（从 AlphaCAM 提取） |
+| `RevNest_source/` | RevNest 反向排版 v1.2 插件完整源码（从 AlphaCAM 提取）——**本地目录，未纳入版本控制** |
 | `RevNest_API参考.md` | RevNest 反向排版的 API 参考 |
 | `VBA操作问题记录.md` | VBA/COM 操作踩坑与规避手册（含 CDM.arb 损坏、屏幕刷新泄漏、`ReadTextFile` 盲读 CTX 等 8 类） |
 | `open_vba_editor.py` | 自动激活/最大化 AlphaCAM 窗口并打开 VBA 编辑器（Alt+F11） |
@@ -326,6 +326,9 @@ cm.AddFromString(code)
 
 `RevNest_source/` 目录包含从 AlphaCAM 2016 R1 `ReverseNest.arb` 插件提取的完整源码，
 实现排版零件的反面镜像生成。详见 [`RevNest_API参考.md`](RevNest_API参考.md)。
+
+> **注意**：该目录是提取来的第三方插件源码，**未纳入版本控制**（`.gitignore` 已排除），
+> 全新 clone 里不会有它；本地需要时从 `ReverseNest.arb` 重新提取。
 
 ## 操作规范
 
