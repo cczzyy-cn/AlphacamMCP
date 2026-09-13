@@ -20,7 +20,7 @@ PROJECT = "CCC功能"
 
 MARKERS = {
     "modRamp": [
-        ("v2.0 header",        "v2.0"),
+        ("v2.1 header",        "v2.1.0 \u53d8\u66f4"),
         ("core: tail anchor",  "\u951a\u5b9a\u5728\u8f6e\u5ed3\u672b\u7aef"),
         ("core: prohibition",  "[\u7981\u6b62] \u628a\u659c\u5761\u6539\u6210"),
         ("closed-path gate",   "blnClosed = tp.Closed"),
@@ -28,23 +28,23 @@ MARKERS = {
         ("exposed sides",      "Function ExposedSides"),
         ("all-parts mode",     "If minSize <= 0 Then"),
         ("start-point fix",    "\u671d\u5411\u6392\u7248\u4e2d\u5fc3\u90a3\u4e00\u4fa7\u7684\u3010\u8f83\u957f\u8fb9\u3011\u7684\u4e2d\u70b9"),
-        ("tabs: windows",      "Function BuildTabWindows"),
-        ("tabs: emit",         "Sub AddContourWithTabs"),
-        ("tabs: no pure Z",    "\u65e0\u7eaf Z \u79fb\u52a8"),
         ("element length",     "Function ElemLen"),
         ("pi as function",     "Pi = 4 * Atn(1)"),
         ("slow small parts",   "slowApplied = slowApplied + 1"),
         ("undo point",         "App.SetUndoPoint"),
         ("version function",   "Function RampVersion"),
+        # --- v2.1.0 新增 ---
+        ("v2.1 finish paths",  "Set newPaths = mtp.Finish"),
+        ("v2.1 OpNo backfill", "newPaths(q).OpNo = CInt(origOpNo)"),
+        ("v2.1 marker on new", "newPaths(q).Attribute(ATT_RAMP_DONE) = 1"),
+        ("v2.1 OrderAll",      "drw.Operations.OrderAll"),
+        ("v2.1 collect OpNo",  "colOpNo.Add CLng(tp.OpNo)"),
     ],
     "frmRamp": [
-        ("v2.0 control list",  "\u63a7\u4ef6\u6e05\u5355\uff0814 \u4e2a"),
-        ("v2.0 chkTabs",       "chkTabs.Value = modRamp.g_lastDoTabs"),
-        ("v2.0 txtTabStock",   "txtTabStock.Text = CStr(modRamp.g_lastTabStock)"),
-        ("v2.0 chkSlowSmall",  "chkSlowSmall.Value = modRamp.g_lastSlowSmall"),
-        ("v2.0 toggle sub",    "Private Sub chkTabs_Click"),
-        ("v2.0 tab validate",  "\u7559\u76ae\u539a\u5ea6\u5fc5\u987b\u5728 0 ~ \u5207\u5272\u6df1\u5ea6"),
-        ("v2.0 9-arg call",    "doTabs, tabStock, slowSmall"),
+        ("v2.1 control list",  "\u63a7\u4ef6\u6e05\u5355\uff0811 \u4e2a"),
+        ("v2.1 7-arg call",    "slowSmall"),
+        ("tool not preselected", "cmbMethodTool.ListIndex = -1"),
+        ("tool not saved",     "\u4e0d\u518d\u4fdd\u5b58\u5200\u5177"),
         ("minSize 0 allowed",  "\u5c0f\u6761\u8303\u56f4\u4e0d\u80fd\u4e3a\u8d1f\u6570"),
     ],
 }
@@ -53,9 +53,21 @@ ABSENT = {
         "bestDist",                                  # v1.x start-point search
         "\u671d\u6392\u7248\u4e2d\u5fc3\u65b9\u5411\u504f\u79fb\u6574\u6761\u8fb9\u957f",  # v1.x hop-by-edge
         "DEG2RAD          As Double = 0",            # v1.x long decimal literal
+        # v2.1.0 移除的微连接/留皮
+        "Function BuildTabWindows",
+        "Sub AddContourWithTabs",
+        "Function InTabWindow",
+        "doTabsUse",
+        "tabApplied",
+        "tabZ = -",
     ],
     "frmRamp": [
         "\u5c0f\u6761\u8303\u56f4\u5fc5\u987b\u5927\u4e8e 0",   # 旧校验(minSize<=0 就报错)
+        "chkTabs.Value",                             # v2.1.0 已删除的控件(代码里不应再引用)
+        "txtTabStock.",
+        "g_lastDoTabs",
+        "g_lastTabStock",
+        "g_lastMethodTool",                          # 刀具不再记忆
     ],
 }
 WATCH = ("modRamp", "frmRamp")

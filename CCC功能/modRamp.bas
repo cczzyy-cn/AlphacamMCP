@@ -1,5 +1,5 @@
 ' ==============================================================================
-' CCC功能 - modRamp 斜角下刀（v2.0.2）
+' CCC功能 - modRamp 斜角下刀（v2.1.0）
 ' ==============================================================================
 ' 依据: 开料小板件吸附与斜下刀算法分析.md
 '       开料小板件防松动算法方案.md（HBT 方案）
@@ -16,6 +16,15 @@
 '   该性质是纯几何的, 与坡角无关; 坡角只影响【斜坡段自身】的负载。
 '   只在【闭合刀路】上成立(开放路径的收尾直线会回切到起点)。
 '
+' v2.1.0 变更（2026-09-13, 按用户要求）
+'   [A] 【移除】微连接(留连接点)/留皮功能 —— 模块与窗体一并删除。
+'   [B] 【新增】操作完成后回填加工道次: 用 MillManualToolPath.Finish 返回的 Paths
+'       把新刀路的 OpNo 设回原道次, 最后调用 drw.Operations.OrderAll 重排
+'       (ACAMAPI 原文: "OpNo - Operation number of this path.
+'        Call Operations.OrderAll if this is changed")。
+'   [C] 【修复】幂等标记终于写得上了: 原先写在【被删除的旧】路径上, 标记丢失,
+'       导致"同一张图重复执行会重复处理"。现在标记写在 Finish 返回的【新】刀路上。
+'
 ' v2.0 变更（承 v1.x）
 '   [1] 起点选择修正: 原 SetGeoStartToSheetSide 用「沿边整边跳一次」求点,
 '       数学上会跳出包围盒(靠 SetStartPoint 吸附兜住)。改为直接算目标边中点,
@@ -23,11 +32,7 @@
 '   [2] 处理顺序改为 HBT 评分升序: score = 归一化(轮廓长度) + 归一化(暴露边数)
 '       取代原来的「距排版板中心距离」。含义: 释放后新增泄漏小、且被邻件夹得紧的先处理。
 '   [3] 小条范围 = 0 时处理【全部闭合刀路】(大板同样需要斜坡; 原实现只处理小板件)。
-'   [4] 新增可选【微连接(留连接点)】: 按轮廓长度等分 2~4 段, 每段留 stock 不切透。
-'       [限制] 连接点只放在【直线元素】上(放圆弧要拆弧, 风险高); 元素不够长则放弃该点,
-'              并计数上报, 绝不静默改几何。
-'       [过渡] 进出连接点都做成【沿路径的斜坡】, 不做纯 Z 抬刀/扎刀 ——
-'              避免 Z 轴瞬时速度超出机床能力, 也避免在连接点端面直插。
+'   [4] (v2.1.0 已整体移除) 曾新增可选【微连接(留连接点)】—— 按用户要求删除。
 '   [5] 新增可选【小件降速】: 按包围盒面积分档降低 CutFeed, 降低侧向推力。
 '   [6] 新增 RampVersion() 供部署闭环的项目编译探针调用(无副作用)。
 '   [7] 斜坡长度上限保护(0.8×轮廓长度) + rampStartDist 非负保护。
@@ -42,15 +47,14 @@
 '       本来就有"退回图纸范围中心"的兜底, 却永远走不到。现改为容错取值。
 '       同时给 tp.GetFeedExtent / mt.FileName / mt.Diameter 加了取值保护。
 '
-' [已知限制] 原版在 tp.Delete 之后才写 CCC_RampDone 属性, 对象已失效, 标记写不进去;
-'   本版改到 Delete 之前(仍然写在【旧】路径上, 同样无法给新刀路打标) ——
-'   因此【对同一张图重复执行会重复处理】。请对同一张图只跑一次, 或先用 Ctrl+Z 撤销。
+' [幂等] v2.1.0 起 CCC_RampDone 写在 Finish 返回的【新】刀路上, 重复执行会跳过已处理的
+'   刀路(跳过数在完成提示里报出)。仍建议同一张图只跑一次, 或先用 Ctrl+Z 撤销。
 '
 ' 安全: 执行前 App.SetUndoPoint, 一次 Ctrl+Z 可整体撤销本模块的改动。
 ' ==============================================================================
 Option Explicit
 
-' ---- 原路径标记(幂等意图, 见「已知限制」) ----
+' ---- 原路径标记(幂等: v2.1.0 起真正写在新建的刀路上) ----
 Private Const ATT_RAMP_DONE    As String = "CCC_RampDone"
 
 ' ---- 几何 / 斜坡 ----
@@ -59,14 +63,6 @@ Private Const ATT_RAMP_DONE    As String = "CCC_RampDone"
 '       部署闭环的读回校验会因此误报失败。改为运行时计算。
 Private Const POINT_STEP       As Double = 0.5
 Private Const RAMP_MAX_FRAC    As Double = 0.8    ' 斜坡长度上限 = 该值 x 轮廓长度
-
-' ---- 微连接(v2.0) ----
-Private Const TAB_TARGET_LEN   As Double = 120    ' 每 120mm 轮廓长度放一个连接点
-Private Const TAB_COUNT_MIN    As Long = 2
-Private Const TAB_COUNT_MAX    As Long = 4
-Private Const TAB_WIDTH        As Double = 5      ' 连接点宽度(mm)
-Private Const TAB_TRANS_IN     As Double = 3      ' 进连接点的抬升过渡长度(不切料, 可短)
-Private Const TAB_TRANS_OUT_MIN As Double = 6     ' 出连接点的下降过渡最小长度(要切料)
 
 ' ---- 小件降速(v2.0): 包围盒面积分档(mm^2) ----
 Private Const SLOW_A1          As Double = 200000 ' >= 0.20 m^2  不降速
@@ -79,8 +75,6 @@ Public g_lastMinSize    As Double
 Public g_lastCutDepth   As Double
 Public g_lastRampAngle  As Double
 Public g_lastMethodTool As String
-Public g_lastDoTabs     As Boolean
-Public g_lastTabStock   As Double
 Public g_lastSlowSmall  As Boolean
 
 ' ==============================================================================
@@ -94,7 +88,7 @@ End Sub
 ' RampVersion - 无副作用, 供部署闭环的项目编译探针 App.Run 调用
 ' ==============================================================================
 Public Function RampVersion() As String
-    RampVersion = "modRamp v2.0.2 (2026-09-13)"
+    RampVersion = "modRamp v2.1.0 (2026-09-13)"
 End Function
 
 ' ==============================================================================
@@ -106,8 +100,7 @@ End Function
 ' methodName : 加工方式名(空=不限)
 ' toolMatch  : 刀具匹配串(空=不限)
 ' tNum       : 刀具号(0=不用)
-' doTabs     : 是否留连接点(微连接), 默认 False
-' tabStock   : 留皮厚度(mm), 默认 0.8
+' (v2.1.0: doTabs/tabStock 两个参数已按用户要求移除)
 ' slowSmall  : 是否对小件分档降速, 默认 False
 ' ==============================================================================
 Public Sub ApplyRampEntry(ByVal minSize As Double, _
@@ -116,8 +109,6 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
                           ByVal methodName As String, _
                           ByVal toolMatch As String, _
                           Optional ByVal tNum As Long = 0, _
-                          Optional ByVal doTabs As Boolean = False, _
-                          Optional ByVal tabStock As Double = 0.8, _
                           Optional ByVal slowSmall As Boolean = False)
     On Error GoTo ErrHandler
 
@@ -127,13 +118,13 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     Dim mt As MillTool, tps As Paths, tp As Path
     Dim totalCount As Long, partCount As Long, rampApplied As Long, skipCount As Long
     Dim openSkipped As Long, noDepth As Long
-    Dim tabApplied As Long, tabSkipped As Long, slowApplied As Long
+    Dim slowApplied As Long, markedCount As Long
     Dim tpW As Double, tpH As Double, isMatch As Boolean, spPos As Integer
     Dim procName As String, selToolNum As Long
 
     ' 收集用(并行集合)
     Dim colTP As Collection, colSO As Collection, colMT As Collection
-    Dim colDepth As Collection, colLen As Collection
+    Dim colDepth As Collection, colLen As Collection, colOpNo As Collection
     Dim colBX1 As Collection, colBY1 As Collection, colBX2 As Collection, colBY2 As Collection
 
     ' HBT 评分
@@ -145,7 +136,10 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
 
     ' 单件处理
     Dim idx As Long, actualDepth As Double, actualDepthAbs As Double
-    Dim tabZ As Double, finalDepth As Double
+    Dim finalDepth As Double
+    ' [v2.1] 加工道次回填(OpNo) + 新刀路的幂等标记
+    Dim origOpNo As Long
+    Dim newPaths As Paths, lastTp As Path, q As Long
     Dim mdOld As MillData, mdNew As MillData, mdCheck As MillData
     Dim safeR As Double, rapidD As Double, spindle As Double, cutF As Double, downF As Double
     Dim origDepth As Double, depthOk As Boolean
@@ -162,17 +156,10 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     Dim boxX1 As Double, boxY1 As Double, boxX2 As Double, boxY2 As Double
     Dim els0 As Elements, el0 As Element, ei0 As Long, rapidSegs As Long
     Dim tf As String
-    ' 微连接
-    Dim doTabsUse As Boolean, tabsOK As Boolean
-    Dim winA() As Double, winB() As Double, winTI() As Double, winTO() As Double, winCnt As Long
-    Dim elStart() As Double, elLen() As Double, elIsLine() As Boolean
     Dim mtp As Object
 
     Set drw = App.ActiveDrawing
     If drw Is Nothing Then MsgBox "没有活动图纸！": Exit Sub
-    If tabStock <= 0 Then tabStock = 0.8
-    doTabsUse = doTabs
-    If doTabsUse And tabStock <= 0 Then doTabsUse = False
     drw.ScreenUpdating = False
     App.SetUndoCommandName "斜角下刀"
     App.SetUndoPoint
@@ -197,10 +184,11 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     ' --------------------------------------------------------------------------
     Set colTP = New Collection: Set colSO = New Collection: Set colMT = New Collection
     Set colDepth = New Collection: Set colLen = New Collection
+    Set colOpNo = New Collection
     Set colBX1 = New Collection: Set colBY1 = New Collection
     Set colBX2 = New Collection: Set colBY2 = New Collection
     totalCount = 0: partCount = 0: rampApplied = 0: skipCount = 0
-    openSkipped = 0: noDepth = 0: tabApplied = 0: tabSkipped = 0: slowApplied = 0
+    openSkipped = 0: noDepth = 0: slowApplied = 0: markedCount = 0
 
     For i = 1 To ops.Count
         Set op = ops(i)
@@ -290,6 +278,7 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
                     If depthOk Then
                         partCount = partCount + 1
                         colTP.Add tp: colSO.Add subop: colMT.Add mt: colDepth.Add origDepth
+                        colOpNo.Add CLng(tp.OpNo)
                         ' [10] 周长只累加【非 rapid】元素长度; 并顺带统计 rapid 段数
                         gLen = 0
                         rapidSegs = 0
@@ -379,6 +368,8 @@ NextOp:
         actualDepth = CDbl(colDepth(idx))
         actualDepthAbs = Abs(actualDepth)
         If actualDepthAbs <= 0 Then GoTo SkipItem
+        ' [v2.1] 记下原加工道次, 稍后回填给新建的刀路
+        origOpNo = CLng(colOpNo(idx))
 
         If Not (mt Is Nothing) Then
             tf = ""
@@ -467,18 +458,6 @@ NextOp:
         SetGeoStartToSheetSide drw, ni, tp, toolGeo
 
         ' [4] 连接点窗口
-        tabsOK = False
-        winCnt = 0
-        If doTabsUse Then
-            tabsOK = BuildTabWindows(toolGeo, geoLen, actualDepthAbs, tabStock, sloopDist, _
-                                     winA, winB, winTI, winTO, winCnt, elStart, elLen, elIsLine)
-            If tabsOK Then
-                tabApplied = tabApplied + 1
-            Else
-                tabSkipped = tabSkipped + 1
-            End If
-        End If
-
         Set mdNew = App.CreateMillData
         mdNew.SafeRapidLevel = safeR
         mdNew.RapidDownTo = 10
@@ -498,18 +477,12 @@ NextOp:
         ' 从 Z=0(板面) 开始, 不是从深度开始 —— 避免直插
         Set mtp = mdNew.ManualToolPath(sx, sy, 0#)
 
-        tabZ = -(actualDepthAbs - tabStock)
-        If tabZ > -0.05 Then tabZ = -0.05
-
         ' 斜坡段: 沿路径逐步下刀
         For s = 1 To rampSteps
             dd = rampStartDist + POINT_STEP * s
             If dd > geoLen Then dd = geoLen
             actDist = dd - rampStartDist
             zz = -actualDepthAbs * (actDist / sloopDist)
-            If tabsOK Then
-                If InTabWindow(dd, winA, winB, winCnt) Then zz = tabZ
-            End If
             If toolGeo.PointAtDistanceAlongPathL(dd, px, py, pelem) Then
                 mtp.Add3DLine px, py, zz
             End If
@@ -519,9 +492,6 @@ NextOp:
         startY = toolGeo.GetFirstElem.StartYL
         mtp.Add3DLine startX, startY, finalDepth
 
-        If tabsOK Then
-            AddContourWithTabs mtp, toolGeo, finalDepth, tabZ, winA, winB, winTI, winTO, winCnt, elStart, elLen, elIsLine
-        Else
             Set elems2 = toolGeo.Elements
             If Not (elems2 Is Nothing) Then
                 For ei = 1 To elems2.Count
@@ -536,30 +506,55 @@ NextOp:
                     End If
                 Next ei
             End If
-        End If
 
-        mtp.Finish
+        ' [v2.1][B][C] Finish 返回新建的 Paths:
+        '   把 OpNo 设回原加工道次 (ACAMAPI: "OpNo - Operation number of this path.
+        '   Call Operations.OrderAll if this is changed"), 并把幂等标记打在【新】刀路上 ——
+        '   这样重复执行会跳过已处理的刀路, 而不是把已经做过斜坡的再做一遍。
+        Set newPaths = Nothing
+        Set newPaths = mtp.Finish
+        If Not (newPaths Is Nothing) Then
+            For q = 1 To newPaths.Count
+                On Error Resume Next
+                newPaths(q).OpNo = CInt(origOpNo)
+                newPaths(q).Attribute(ATT_RAMP_DONE) = 1
+                On Error GoTo ErrHandler
+                markedCount = markedCount + 1
+            Next q
+        Else
+            ' 兜底: Finish 没返回集合时, 用图纸里最后一条刀路
+            Set lastTp = drw.GetLastToolPath
+            If Not (lastTp Is Nothing) Then
+                On Error Resume Next
+                lastTp.OpNo = CInt(origOpNo)
+                lastTp.Attribute(ATT_RAMP_DONE) = 1
+                On Error GoTo ErrHandler
+                markedCount = markedCount + 1
+            End If
+        End If
         toolGeo.Selected = True
         toolGeo.Delete
-
-        On Error Resume Next
-        tp.Attribute(ATT_RAMP_DONE) = 1
-        On Error GoTo ErrHandler
         tp.Delete
         rampApplied = rampApplied + 1
 SkipItem:
     Next k
 
+    ' [v2.1][B] 改过 OpNo 之后必须重排工序(文档: Operations.OrderAll)
+    If markedCount > 0 Then
+        On Error Resume Next
+        drw.Operations.OrderAll
+        On Error GoTo ErrHandler
+    End If
     drw.ScreenUpdating = True
     drw.Redraw
     If rampApplied > 0 Then drw.ZoomAll: DoEvents
     MsgBox "斜角下刀处理完成！" & vbCrLf & _
            "候选: " & totalCount & " 条, 受理: " & partCount & " 条, 已应用: " & rampApplied & " 条" & vbCrLf & _
            "跳过: 已处理过 " & skipCount & " / 开放路径 " & openSkipped & " / 深度不足 " & noDepth & vbCrLf & _
-           IIf(doTabsUse, "微连接: 应用 " & tabApplied & " 条, 无合适直线边跳过 " & tabSkipped & " 条(" & tabStock & "mm 留皮)" & vbCrLf, "") & _
+           "道次回填: " & markedCount & " 条刀路已设回原 Op 并重排" & vbCrLf & _
            IIf(slowSmall, "小件降速: " & slowApplied & " 条" & vbCrLf, "") & _
            "小条范围 = " & IIf(minSize <= 0, "0(全部闭合刀路)", CStr(minSize)) & vbCrLf & _
-           "[注意] 同一张图请勿重复执行(会重复处理); 出错或误操作可用一次 Ctrl+Z 撤销。", _
+           "出错或误操作可用一次 Ctrl+Z 整体撤销。", _
            vbInformation, "斜角下刀"
     Exit Sub
 ErrHandler:
@@ -681,183 +676,6 @@ Private Function Atan2(ByVal y As Double, ByVal x As Double) As Double
         End If
     End If
 End Function
-
-' ==============================================================================
-' BuildTabWindows - 计算连接点窗口(弧长)
-'   理想位置 = k*geoLen/(cnt+1); 只放在【直线元素】上且元素足够长;
-'   放不下就放弃该连接点并计数(不静默改几何)。
-'   窗口需要: 前方 TAB_TRANS_IN 抬升空间 + 后方 TAB_TRANS_OUT 下降空间。
-'   返回 True 表示至少放成 1 个窗口。
-' ==============================================================================
-Private Function BuildTabWindows(ByVal toolGeo As Path, ByVal geoLen As Double, _
-                                 ByVal depthAbs As Double, ByVal stock As Double, ByVal rampLen As Double, _
-                                 ByRef winA() As Double, ByRef winB() As Double, _
-                                 ByRef winTI() As Double, ByRef winTO() As Double, ByRef winCnt As Long, _
-                                 ByRef elStart() As Double, ByRef elLen() As Double, ByRef elIsLine() As Boolean) As Boolean
-    On Error GoTo Fail
-    Dim elems As Elements, e As Element
-    Dim i As Long, kk As Long, q As Long
-    Dim cum As Double, cnt As Long, hit As Long
-    Dim ideal As Double, loc As Double, half As Double
-    Dim need As Double, wa As Double, wb As Double, tOut As Double
-    Dim ok As Boolean
-    BuildTabWindows = False
-    If geoLen <= 0 Then Exit Function
-    Set elems = toolGeo.Elements
-    If elems Is Nothing Then Exit Function
-    If elems.Count < 1 Then Exit Function
-    ReDim elStart(1 To elems.Count)
-    ReDim elLen(1 To elems.Count)
-    ReDim elIsLine(1 To elems.Count)
-    cum = 0
-    For i = 1 To elems.Count
-        elStart(i) = cum
-        Set e = elems(i)
-        elLen(i) = ElemLen(e)
-        If elLen(i) <= 0 Then elLen(i) = 0.0001
-        elIsLine(i) = e.IsLine
-        cum = cum + elLen(i)
-    Next i
-    ' 出连接点的下降过渡长度: 尽量按斜坡角, 但不超过斜坡长度的 1/3
-    tOut = rampLen / 3
-    If tOut < TAB_TRANS_OUT_MIN Then tOut = TAB_TRANS_OUT_MIN
-    If tOut > 60 Then tOut = 60
-    half = TAB_WIDTH / 2
-    need = half + TAB_TRANS_IN + half + tOut + 1
-    cnt = CLng(geoLen / TAB_TARGET_LEN + 0.5)
-    If cnt < TAB_COUNT_MIN Then cnt = TAB_COUNT_MIN
-    If cnt > TAB_COUNT_MAX Then cnt = TAB_COUNT_MAX
-    ReDim winA(1 To cnt)
-    ReDim winB(1 To cnt)
-    ReDim winTI(1 To cnt)
-    ReDim winTO(1 To cnt)
-    winCnt = 0
-    For kk = 1 To cnt
-        ideal = geoLen * kk / (cnt + 1)
-        hit = 0
-        For i = 1 To elems.Count
-            If ideal >= elStart(i) And ideal <= elStart(i) + elLen(i) Then
-                hit = i
-                Exit For
-            End If
-        Next i
-        If hit = 0 Then GoTo NextTab
-        If Not elIsLine(hit) Then GoTo NextTab
-        If elLen(hit) < need Then GoTo NextTab
-        loc = ideal - elStart(hit)
-        If loc < half + TAB_TRANS_IN Then loc = half + TAB_TRANS_IN
-        If loc > elLen(hit) - half - tOut Then loc = elLen(hit) - half - tOut
-        If loc < half + TAB_TRANS_IN Then GoTo NextTab
-        wa = elStart(hit) + loc - half
-        wb = elStart(hit) + loc + half
-        If wa < 1 Or wb + tOut > geoLen - 1 Then GoTo NextTab
-        ok = True
-        For q = 1 To winCnt
-            If Not (wa > winB(q) + winTO(q) Or wb + tOut < winA(q) - winTI(q)) Then
-                ok = False
-                Exit For
-            End If
-        Next q
-        If Not ok Then GoTo NextTab
-        winCnt = winCnt + 1
-        winA(winCnt) = wa
-        winB(winCnt) = wb
-        winTI(winCnt) = TAB_TRANS_IN
-        winTO(winCnt) = tOut
-NextTab:
-    Next kk
-    BuildTabWindows = (winCnt > 0)
-    Exit Function
-Fail:
-    BuildTabWindows = False
-End Function
-
-Private Function InTabWindow(ByVal d As Double, ByRef winA() As Double, ByRef winB() As Double, ByVal winCnt As Long) As Boolean
-    Dim q As Long
-    InTabWindow = False
-    If winCnt <= 0 Then Exit Function
-    For q = 1 To winCnt
-        If d >= winA(q) And d <= winB(q) Then
-            InTabWindow = True
-            Exit Function
-        End If
-    Next q
-End Function
-
-' ==============================================================================
-' AddContourWithTabs - 满深度走完整圈, 落在连接窗口内时抬到 tabZ
-'   窗口只落在直线元素内(见 BuildTabWindows), 所以这里只需拆分【直线】;
-'   圆弧元素整段按 finalDepth 发射, 不会与窗口重叠。
-'   每个窗口发射 4 个点(全部沿路径, 无纯 Z 移动):
-'     [A-TI, 满深] -> [A, 留皮] -> [B, 留皮] -> [B+TO, 满深]
-' ==============================================================================
-Private Sub AddContourWithTabs(ByVal mtp As Object, ByVal toolGeo As Path, _
-                               ByVal finalDepth As Double, ByVal tabZ As Double, _
-                               ByRef winA() As Double, ByRef winB() As Double, _
-                               ByRef winTI() As Double, ByRef winTO() As Double, ByVal winCnt As Long, _
-                               ByRef elStart() As Double, ByRef elLen() As Double, ByRef elIsLine() As Boolean)
-    On Error Resume Next
-    Dim elems As Elements, e As Element
-    Dim i As Long, q As Long, m As Long, nn As Long, pc As Long
-    Dim L As Double, dx As Double, dy As Double
-    Dim la As Double, lb As Double, p1 As Double, p2 As Double, p3 As Double, p4 As Double
-    Dim pts() As Double, zs() As Double
-    Dim tD As Double, tZ As Double, prev As Double
-    Set elems = toolGeo.Elements
-    If elems Is Nothing Then Exit Sub
-    For i = 1 To elems.Count
-        Set e = elems(i)
-        If e Is Nothing Then GoTo NextElem
-        If Not e.IsLine Then
-            mtp.Add3DArcPointCenter e.EndXL, e.EndYL, finalDepth, e.CenterXL, e.CenterYL, e.CW
-            GoTo NextElem
-        End If
-        L = elLen(i)
-        dx = e.EndXL - e.StartXL
-        dy = e.EndYL - e.StartYL
-        If L <= 0 Then
-            mtp.Add3DLine e.EndXL, e.EndYL, finalDepth
-            GoTo NextElem
-        End If
-        ReDim pts(1 To winCnt * 4 + 2)
-        ReDim zs(1 To winCnt * 4 + 2)
-        pc = 0
-        For q = 1 To winCnt
-            la = winA(q) - elStart(i)
-            lb = winB(q) - elStart(i)
-            If lb > 0 And la < L Then
-                p1 = la - winTI(q): p2 = la: p3 = lb: p4 = lb + winTO(q)
-                If p1 < 0 Then p1 = 0
-                If p4 > L Then p4 = L
-                If p1 > 0 And p1 < L Then pc = pc + 1: pts(pc) = p1: zs(pc) = finalDepth
-                If p2 > 0 And p2 < L Then pc = pc + 1: pts(pc) = p2: zs(pc) = tabZ
-                If p3 > 0 And p3 < L Then pc = pc + 1: pts(pc) = p3: zs(pc) = tabZ
-                If p4 > 0 And p4 < L Then pc = pc + 1: pts(pc) = p4: zs(pc) = finalDepth
-            End If
-        Next q
-        If pc = 0 Then
-            mtp.Add3DLine e.EndXL, e.EndYL, finalDepth
-        Else
-            For m = 1 To pc - 1
-                For nn = 1 To pc - m
-                    If pts(nn) > pts(nn + 1) Then
-                        tD = pts(nn): pts(nn) = pts(nn + 1): pts(nn + 1) = tD
-                        tZ = zs(nn): zs(nn) = zs(nn + 1): zs(nn + 1) = tZ
-                    End If
-                Next nn
-            Next m
-            prev = 0
-            For m = 1 To pc
-                If pts(m) > prev + 0.0001 Then
-                    mtp.Add3DLine e.StartXL + dx * (pts(m) / L), e.StartYL + dy * (pts(m) / L), zs(m)
-                    prev = pts(m)
-                End If
-            Next m
-            mtp.Add3DLine e.EndXL, e.EndYL, finalDepth
-        End If
-NextElem:
-    Next i
-End Sub
 
 ' ==============================================================================
 ' SetGeoStartToSheetSide - 起点 = 朝向排版中心那一侧的【较长边】的中点
