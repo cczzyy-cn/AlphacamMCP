@@ -15,6 +15,10 @@ nul
 # Reasonix tool metadata
 .reasonix/
 
+# 「小条先切」——独立 VB.NET WPF 插件项目（dnSpyEx 反编译产物），不属于本 MCP 桥接器
+# 2026-09-11 从版本控制移出（文件仍保留在本地工作目录）
+/小条先切/
+
 # CHM files (extracted help docs, 500MB+, regeneratable)
 chm/
 ReverseNest_extracted/
