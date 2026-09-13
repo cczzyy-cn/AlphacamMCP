@@ -9,14 +9,17 @@
 
 背景:
     .arb 是 AlphaCAM 的插件资源包（OLE 复合文档），含 VBA 工程源码、窗体与配置。
-    **AlphaCAM 退出/保存时才把内存里的 VBA 工程写回该文件** —— 所以：
-      - 正在编辑器里改的代码，磁盘上的 .arb 里【还没有】；
-      - 该文件在 AlphaCAM 运行期间可能被独占，复制会失败（先退出 AlphaCAM）。
+    AlphaCAM **运行期间就在写它**（2026-09-13 实测：AlphaCAM 还在跑，`CCC功能.arb` 里
+    已经能搜到刚部署的新代码），但：
+      - **mtime 可能一直冻结**，所以【不能用 mtime 判断"是否已落盘"】；
+        要判断版本请**搜内容**，而且正反两面都查（新代码独有语句应命中、
+        旧代码独有语句应 0 命中）—— `.arb` 的源码保留流里会留**陈旧碎片**；
+      - 文件在运行期间可能被独占，复制会失败（此时先退出 AlphaCAM）。
     CDM.arb 另有已知损坏模式：`Licom/OptionID` 流丢失
     （启动报"取得选项ID失败 / 无法打开CDM"）。本脚本会校验该流。
 
-⚠️ 本脚本只备份【磁盘上的文件】。要备份【当前运行中（含未保存改动）】的工程，
-   用 tools/running_snapshot.py <tag> <工程名> 导出各组件源码。
+⚠️ 本脚本只备份【磁盘上的文件】。要备份【当前运行中】的工程源码（不依赖落盘时机），
+   用 tools/running_snapshot.py <tag> <工程名> 导出各组件 —— 两者互补，建议都做。
 """
 import datetime
 import glob
@@ -76,10 +79,11 @@ def main():
 
     if acam_running():
         print("警告：AlphaCAM 正在运行。")
-        print("  - 若该 .arb 属于正在运行的工程，磁盘上的是【上次保存】的版本，")
-        print("    编辑器里未保存的改动不在里面（要备份运行中的工程请用 tools/running_snapshot.py）；")
-        print("  - 文件可能被独占锁定，复制会失败。")
-        print("继续备份（可能拿到旧版本）...")
+        print("  - 运行期间它可能独占该文件，复制会失败；")
+        print("  - 文件通常是【较新】的（AlphaCAM 运行中就会写），但 mtime 可能冻结，")
+        print("    所以别用 mtime 判断版本 —— 要判断就搜内容（正反两面都查）；")
+        print("  - 想备份运行中的工程源码，另用 tools/running_snapshot.py（与本次备份互补）。")
+        print("继续备份...")
 
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     os.makedirs(BACKUP_DIR, exist_ok=True)
