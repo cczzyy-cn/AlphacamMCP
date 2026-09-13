@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Post-deploy verification for the running CDM project (piece-uid release, v1.9).
+"""Post-deploy verification for the running CDM project (piece-uid release, v1.9;
+frmAutoNest material combo, v1.10).
 
 1. re-reads the running code and asserts the v1.9 markers are present / the
    superseded matching logic is gone
@@ -38,6 +39,12 @@ MARKERS = {
         ("menu entry = CDM",   "用法: AlphaCAM 菜单 → CDM → 自动化生产排版"),
         ("menu chain noted",   "CDM 菜单 → Events.m_AutoImportNest(Events.bas:2866) → AutoImportNest()"),
         ("entry comment",      "主入口（CDM 菜单 → 自动化生产排版"),
+        ("v1.10 header",       "v1.10 (2026-09-13)"),
+        ("v1.10 override param",  "Optional ByVal sMaterialOverride As String = \"\""),
+        ("v1.10 override check",  "校验窗体材料"),
+        ("v1.10 override assign", 'If sMaterialOverride <> "" Then sMat = sMaterialOverride'),
+        ("v1.10 override log",    "窗体材料="),
+        ("v1.10 passthrough",     "bOverwrite, sMaterialOverride)"),
         ("v1.9 header",        "v1.9 (2026-09-11)"),
         ("v1.9 uid const",     "Private Const DEF_ATT_PIECE_UID"),
         ("v1.9 prefetch",      '"SELECT PK, DetailID, SheetName, PressPieceUID FROM AD_REPORT_DATA"'),
@@ -69,6 +76,13 @@ MARKERS = {
     "frmAutoNest": [
         ("4-arg call",       "Not chkOnlyImport.Value, chkOverwrite.Value"),
         ("no empty material", "PtrSafe"),
+        ("v1.10 combo load",  "m_LoadMaterials"),
+        ("v1.10 combo query", "SELECT Name, MaterialDefault FROM AD_MATERIALS ORDER BY Name"),
+        ("v1.10 preselect",   "m_SelectMaterial sDef"),
+        ("v1.10 list guard",  "If cboMaterial.ListIndex < 0 Then"),
+        ("v1.10 5-arg call",  "chkOverwrite.Value, "),
+        ("v1.10 pass material", "cboMaterial.Value"),
+        ("v1.10 last material", 'SaveSetting "CCC", "AutoImportNest", "LastMaterial"'),
     ],
 }
 ABSENT = {

@@ -38,15 +38,20 @@
 ## 二、主流程：AutoImportNestWithParams
 
 ```vba
-AutoImportNestWithParams(sCSVPath, sCustomerName, bRunNest, Optional bOverwrite = False)
+AutoImportNestWithParams(sCSVPath, sCustomerName, bRunNest, Optional bOverwrite = False, _
+                         Optional sMaterialOverride = "")
 ```
 
 > **v1.7 变更**：删除了第 3 个 `sMaterialName` 形参 —— 它只被用于填充一个从未被
-> 使用的默认值（死代码）。材料逐行取自 CSV 第 13 列（0 基 12），必须已存在于
-> `AD_MATERIALS`。
+> 使用的默认值（死代码）。
+>
+> **v1.10 变更**：新增第 5 个可选形参 `sMaterialOverride`（由 `frmAutoNest` 的材料下拉
+> 传入）。**非空 = 整批统一用该材料并忽略 CSV 第 13 列**；为空 = 回退旧行为（逐行取
+> CSV 第 13 列/0 基 12）。两条路径都要求材料已存在于 `AD_MATERIALS`，本模块只校验、
+> 不自动建档；窗体材料在事务开始前一次性校验。
 
 ```
-接收 (CSV路径, 客户名, bRunNest, bOverwrite)
+接收 (CSV路径, 客户名, bRunNest, bOverwrite, 窗体材料覆盖)
     │
     ├─ 从 CSV 路径解析 JobName（取文件名去扩展名，兼容 \ 与 /）
     ├─ gbln_ConnectToDB()                      失败 → 弹错退出

@@ -1,4 +1,4 @@
-# frmAutoNest 窗体 — 手动创建指南（CSV 文件选择版）
+# frmAutoNest 窗体 — 手动创建指南（CSV + 材料选择版）
 
 > AlphaCAM VBA **不支持导入 .frm 设计文件**，需手动创建窗体。
 > 参照 `CCC功能/frmToolOffset.txt` 的方式保存代码。
@@ -8,7 +8,7 @@
 1. 打开 AlphaCAM VBA 编辑器
 2. 菜单：**插入 → 用户窗体(UserForm)** → 生成 `UserForm1`
 3. 属性窗口：`(名称)` = **frmAutoNest**，`Caption` = **自动化生产排版**
-4. 从工具箱添加 **8 个控件**（名称必须完全一致）：
+4. 从工具箱添加 **10 个控件**（名称必须完全一致）：
 
 | 控件 | 名称 | 标题 | 说明 |
 |------|------|------|------|
@@ -20,6 +20,15 @@
 | CommandButton | `cmdRegenLabel` | "重新生成标签" | 按当前嵌套图纸位置重新生成门板标签 EMF |
 | CommandButton | `cmdOK` | "确定(&O)" | Default=True |
 | CommandButton | `cmdCancel` | "取消(&C)" | Cancel=True |
+| Label | `lblMaterial` | "材料:" | 材料标签（v1.10，在 CSV 行下方） |
+| ComboBox | `cboMaterial` | — | **材料下拉**（v1.10）：启动时从 `AD_MATERIALS` 加载全部材料；`Style=2`（只可选，防手输错名）；选中材料对整批生效 |
+
+> **布局（2026-09-13 实机调整后，以运行中窗体为准）**：材料行在 Top=66，与"选择文件"按钮同一行 ——
+> `lblMaterial` = 78,72（36×18），`cboMaterial` = 120,66（184×18，`ListWidth`=382 磅，长材料名仍完整显示），
+> `cmdBrowse` = 450,66（72×24）；勾选框 `chkOnlyImport` 90、`chkOverwrite` 114；
+> 按钮行 144：`cmdOK` 78、`cmdCancel` 162、`cmdRegenLabel` 384（138×24，右缘与 `txtCSV` 对齐）。
+> 窗体内高 180，内容底边 168，**无需调整窗体尺寸**。
+> 坐标可用 `VBComponent.Designer.Controls` 读回；`VBComponent.Properties` 偶发一次 E_UNEXPECTED，重试即可。
 
 5. 双击窗体空白处 → 代码窗口 → 全选删除默认代码 → 粘贴 [`frmAutoNest.txt`](frmAutoNest.txt) 全部代码
 6. 编译保存（Ctrl+S）
@@ -28,15 +37,18 @@
 
 ```
 ┌─ 自动化生产排版 ─────────────────────────┐
-│  CSV 文件: [txtCSV      ] [...]          │
-│  ?? 只导入订单，不生产排版                │
-│  ?? 强制覆盖重名订单（删除原订单数据）    │
-│  [cmdOK] [cmdCancel] [重新生成标签]      │
-└────────────────────────────────────────┘
+│  CSV 文件:                               │
+│  [txtCSV]                                │
+│  材料: [cboMaterial ▼]       [选择文件]  │
+│  [ ] 只导入订单，不生产排版              │
+│  [ ] 强制覆盖重名订单（删除原订单数据）  │
+│  [确定(&O)] [取消(&C)]     [重新生成标签]│
+└──────────────────────────────────────────┘
 ```
 
 ## 功能
 
+- **材料下拉（v1.10）**：窗体启动时从 `AD_MATERIALS` 读取全部材料，预选顺序 = 上次选择（注册表 `CCC\AutoImportNest\LastMaterial`）→ `MaterialDefault=True` 的行 → 第一项；选中的材料**对整批所有行生效**，忽略 CSV 第 13 列。材料必须已存在于材料库（本功能只校验、不自动建档）
 - 点击"..." → 系统文件选择对话框选 CSV
 - 勾选"只导入订单，不生产排版" → 仅导入订单（`bRunNest=False`），不调用 `g_Make_Master`
 - 不勾选 → 导入 + 排版（`bRunNest=True`）

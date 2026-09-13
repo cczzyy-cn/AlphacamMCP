@@ -6,8 +6,8 @@ AlphaCAM CDM（Cabinet Door Manufacturing）自动化模块源码与文档。
 
 | 文件 | 说明 |
 |------|------|
-| `modAutoImportNest.bas` | ⭐ **自动化生产排版模块**（v1.9，1005 行）：导入门板数据 → `g_Make_Master` 批量生产+排版+NC 输出；含菜单入口 `AutoImportNest`（弹 `frmAutoNest` 窗体）与带参入口 `AutoImportNestWithParams`；**门板标签 EMF 重生成**（稳定唯一码对齐报表行） |
-| `frmAutoNest.txt` | ⭐ **自动化生产排版窗体**（代码文本）：CSV 路径记忆回填 + 系统文件对话框 + 确定/取消（AlphaCAM 不支持导入 .frm，需手动创建，见 `frmAutoNest_手动创建.md`） |
+| `modAutoImportNest.bas` | ⭐ **自动化生产排版模块**（v1.10，1033 行）：导入门板数据 → `g_Make_Master` 批量生产+排版+NC 输出；含菜单入口 `AutoImportNest`（弹 `frmAutoNest` 窗体）与带参入口 `AutoImportNestWithParams`（v1.10 起可传窗体选中的材料，整批覆盖 CSV 材料列）；**门板标签 EMF 重生成**（稳定唯一码对齐报表行） |
+| `frmAutoNest.txt` | ⭐ **自动化生产排版窗体**（代码文本）：CSV 路径记忆回填 + 系统文件对话框 + **材料下拉**（v1.10，启动时从 `AD_MATERIALS` 加载）+ 确定/取消（AlphaCAM 不支持导入 .frm，需手动创建，见 `frmAutoNest_手动创建.md`） |
 | `Events.bas` | CDM 工程菜单注册（`Events.bas:277` 注册"自动化生产排版"按钮 → `m_AutoImportNest` 包装函数；`mint_UpdateDB` 里含 `AD_REPORT_DATA.PressPieceUID` 建列） |
 | `Make.bas` | CDM 原始 Make 模块源码（8005 行，加工引擎；v2.2 起在打件序号时同步写稳定唯一码 `DEF_ATT_PIECE_UID`） |
 | `modAutoImportNest分析.md` | 该模块的完整分析（5.3 标签行身份、重复标签根因链与 A/B 修法） |
@@ -30,8 +30,8 @@ AlphaCAM 菜单 → CDM → 自动化生产排版   （弹出 frmAutoNest 窗体
 ```
 
 - 菜单项绑定 `Events.bas` 的 `m_AutoImportNest` → `modAutoImportNest.AutoImportNest`（弹出 `frmAutoNest` 窗体）
-- 窗体"确定"→ `AutoImportNestWithParams(CSV路径, "自动化生产", bRunNest, bOverwrite)`：
-  - **无材料形参**（v1.7 删除死参数）：材料逐行取自 CSV 第 13 列（0 基 12），且必须已存在于 `AD_MATERIALS`
+- 窗体"确定"→ `AutoImportNestWithParams(CSV路径, "自动化生产", bRunNest, bOverwrite, sMaterialOverride)`：
+  - **材料来自窗体下拉**（v1.10）：`sMaterialOverride` 非空 → 整批统一用该材料，**忽略 CSV 第 13 列**；为空 → 逐行取自 CSV 第 13 列（0 基 12）。两条路径都要求材料已存在于 `AD_MATERIALS`
   - 不勾选"只导入订单，不生产排版" → `bRunNest=True`（导入 + 排版）
   - 勾选 → `bRunNest=False`（仅导入订单，跳过排版）
   - 勾选"强制覆盖重名订单" → `bOverwrite=True`：订单名已存在时删除原订单相关数据（`AD_ORDER_DETAILS`、`AD_REPORT_DATA`、`AD_ORDERS`）后重新导入
@@ -50,7 +50,7 @@ AlphaCAM 菜单 → CDM → 自动化生产排版   （弹出 frmAutoNest 窗体
    │     │    （否则宏调用失败："无法连接用户定义的宏"）
    │     └── UserStyle=False → 900（标准镶板门）
    └── 新门型 → 自动创建为 900 标准镶板门
-5. 材料校验：该行材料必须已存在于 AD_MATERIALS 表，缺失则整体失败并回滚
+5. 材料校验：窗体选中的材料（或逐行的 CSV 材料）必须已存在于 AD_MATERIALS 表，缺失则整体失败并回滚
    （v1.6 起只校验、不自动建档，避免静默建出错规格材料）
 6. 调用 g_Make_Master(OrderID) → 批量生产 + 排版 + NC
 ```
@@ -74,7 +74,7 @@ AlphaCAM 菜单 → CDM → 自动化生产排版   （弹出 frmAutoNest 窗体
 | 列9 终端地址 | 8 | `CustomField2` | |
 | 列10 板件码 | 9 | `CSV_OrderNumber` | 订单号 |
 | 列12 备注 | 11 | `ProductionComment` | |
-| 列13 材料 | 12 | `Material` | **必填**：必须已存在于 `AD_MATERIALS`，否则整单导入失败回滚 |
+| 列13 材料 | 12 | `Material` | **必填**：必须已存在于 `AD_MATERIALS`，否则整单导入失败回滚；**v1.10 起窗体选中的材料会整批覆盖本列** |
 
 ### 关键技术点
 
@@ -84,7 +84,7 @@ AlphaCAM 菜单 → CDM → 自动化生产排版   （弹出 frmAutoNest 窗体
 | **UserValue_0~6** | INSERT...SELECT 从 `AD_DOOR_TYPES` 直接复制，供 `App.Run` 传参给宏 |
 | **ComponentGrouping 类型** | Long 整数，CSV 颜色文本需 `Val()` 转换（文本→0） |
 | **订单重名** | 默认直接取消导入（不弹窗询问）；勾选窗体"强制覆盖重名订单"则删除原订单明细/报表后重建 |
-| **材料校验** | 明细材料按名查 `AD_MATERIALS`，不存在即报错并回滚整单；不自动建档（v1.6 起改为只校验，v1.7 删除遗留的自动建档死代码 `glng_EnsureMaterial`） |
+| **材料校验** | 材料按名查 `AD_MATERIALS`，不存在即报错并回滚整单；不自动建档（v1.6 起改为只校验，v1.7 删除遗留的自动建档死代码 `glng_EnsureMaterial`）。v1.10 起窗体材料在事务开始前**一次性校验**，再整批覆盖明细材料 |
 
 ### 重新生成门板标签（g_RegenDoorLabelEMFs）
 
@@ -116,6 +116,17 @@ AlphaCAM 菜单 → CDM → 自动化生产排版   （弹出 frmAutoNest 窗体
 > 曾累积 28 个 `regen_backup_*`（222 个旧 EMF）。
 > ③ **临时嵌套 ard 改在 `App.New` 关档后补删并记日志**（原先删除时文件仍被占用，静默失败）。
 
+> **v1.10（2026-09-13）窗体材料下拉**：`frmAutoNest` 新增 `lblMaterial` + `cboMaterial`，
+> 启动时从 `AD_MATERIALS` 读全部材料（`Style=2` 只可选，防手输错名），预选顺序 =
+> 上次选择（注册表 `CCC\AutoImportNest\LastMaterial`）→ `MaterialDefault=True` 的行 → 第一项。
+> 选中的材料**对整批所有行生效并忽略 CSV 第 13 列**；模块侧新增可选形参
+> `sMaterialOverride`（空 = 保留旧的逐行 CSV 行为），在事务开始前一次性校验材料存在性，
+> 校验不过直接失败、不产生任何数据库改动。
+>
+> 窗体控件是通过 VBIDE `Designer.Controls.Add` 自动加的（**必须先加控件、再部署引用它的代码**，
+> 反了会编译报"找不到方法或数据成员"）；材料行插在 CSV 行下方，原 Top ≥ 66 的控件整体下移 24。
+> 改动后记得让 AlphaCAM 正常保存/退出，把 VBA 工程写回 `CDM.arb`。
+
 ### 安装方式
 
 ```python
@@ -129,7 +140,7 @@ install_vba_module(module_name="Events", code=code)
 ```
 
 > **frmAutoNest 窗体**：AlphaCAM VBA 不支持导入 .frm 设计文件，需按
-> `frmAutoNest_手动创建.md` 手动创建窗体与 8 个控件（含"只导入订单"/"强制覆盖重名订单"勾选框与"重新生成标签"按钮），
+> `frmAutoNest_手动创建.md` 手动创建窗体与 10 个控件（含 v1.10 的材料下拉 `lblMaterial`/`cboMaterial`、"只导入订单"/"强制覆盖重名订单"勾选框与"重新生成标签"按钮），
 > 再粘贴 `frmAutoNest.txt` 代码（窗体代码若更新，在 VBA 编辑器中整体替换代码窗口内容即可）。
 
 > 若 `install_vba_module` 报"工程已被保护"，需先在 VBA 编辑器确认工程未锁定，

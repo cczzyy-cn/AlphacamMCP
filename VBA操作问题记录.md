@@ -445,7 +445,9 @@ len(ole.listdir())                     # 与备份对比（正常 264，损坏 3
 4. **重装丢失的代码**（恢复版本不含近期改动）：
    - `install_vba_module('modAutoImportNest', 本地bas)` 
    - `install_vba_module('Events', 本地bas)`（含菜单注册）
-   - **重建 UserForm**：`VBComponents.Add(3)` → Name → `Designer.Controls.Add` 8 个控件 → `CodeModule.AddFromString(本地txt)`
+   - **重建 UserForm**：`VBComponents.Add(3)` → Name → `Designer.Controls.Add` 10 个控件 → `CodeModule.AddFromString(本地txt)`
+     （控件清单/坐标见 `CDM功能/frmAutoNest_手动创建.md`；v1.10 起多了 `lblMaterial` + `cboMaterial`。
+     顺序铁律：**先加控件、再灌引用它们的代码**，反了会编译报"找不到方法或数据成员"）
 
 **预防（重要，2026-08-15 实测补充）：**
 - ⚠️ **此环境 AlphaCAM 保存 CDM.arb 会反复丢失 `Licom/OptionID` 流**（8/14、8/15 已发生两次）：

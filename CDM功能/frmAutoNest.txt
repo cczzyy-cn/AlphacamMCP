@@ -42,10 +42,17 @@ Private Const OFN_HIDEREADONLY As Long = &H4
 ' 自动化生产排版 — CSV 文件选择窗体
 ' ==============================================================================
 ' 用法: 插入 → 用户窗体 → 名称改 frmAutoNest → 添加控件 → 粘贴本代码
-' 控件(8 个，缺一不可): lblCSV, txtCSV, cmdBrowse, cmdOK, cmdCancel,
-'                       chkOnlyImport, chkOverwrite, cmdRegenLabel
-' 类型: lblCSV=Label  txtCSV=TextBox  cmdBrowse/cmdOK/cmdCancel/cmdRegenLabel=CommandButton
+' 控件(10 个，缺一不可): lblCSV, txtCSV, cmdBrowse, cmdOK, cmdCancel,
+'                        chkOnlyImport, chkOverwrite, cmdRegenLabel,
+'                        lblMaterial, cboMaterial
+' 类型: lblCSV/lblMaterial=Label  txtCSV=TextBox  cboMaterial=ComboBox(Style=2 只可选)
+'       cmdBrowse/cmdOK/cmdCancel/cmdRegenLabel=CommandButton
 '       chkOnlyImport/chkOverwrite=CheckBox
+' 布局(2026-09-13 实机调整后, 以运行中窗体为准): 材料行在 Top=66, 与"选择文件"同一行 —
+'       lblMaterial 78,72(36x18)  cboMaterial 120,66(184x18, 下拉列表宽 382 磅)
+'       cmdBrowse 450,66(72x24);  勾选框 90/114;  按钮行 144: cmdOK 78 / cmdCancel 162
+'       / cmdRegenLabel 384(138x24, 右缘与 txtCSV 对齐)。窗体内高 180, 内容底边 168
+'       坐标可用 VBComponent.Designer.Controls 读回 —— 见 frmAutoNest_手动创建.md
 ' ==============================================================================
 
 Private Sub AddMinButton(frm As Object)
@@ -62,10 +69,57 @@ End Sub
 
 Private Sub UserForm_Activate(): AddMinButton Me: End Sub
 
+' ==============================================================================
+' 材料下拉：从 AD_MATERIALS 加载全部材料（只列库中已有的，绝不自动建档）
+' 预选顺序：上次选择(注册表) → MaterialDefault=True 的行 → 第一项
+' ==============================================================================
+Private Sub m_LoadMaterials()
+    Dim rst As Object
+    Dim sDef As String, sLast As String
+    On Error GoTo EH
+    cboMaterial.Clear
+    If Not gbln_ConnectToDB() Then
+        MsgBox "无法连接 CDM 数据库，材料列表为空。", vbExclamation, "自动化生产排版"
+        Exit Sub
+    End If
+    Set rst = gdb_CDM.Execute("SELECT Name, MaterialDefault FROM AD_MATERIALS ORDER BY Name")
+    Do While Not rst.EOF
+        cboMaterial.AddItem "" & rst.Fields("Name").Value
+        If sDef = "" Then
+            If Not IsNull(rst.Fields("MaterialDefault").Value) Then
+                If CBool(rst.Fields("MaterialDefault").Value) Then sDef = "" & rst.Fields("Name").Value
+            End If
+        End If
+        rst.MoveNext
+    Loop
+    rst.Close
+    Set rst = Nothing
+
+    sLast = GetSetting("CCC", "AutoImportNest", "LastMaterial", "")
+    If sLast <> "" Then m_SelectMaterial sLast
+    If cboMaterial.ListIndex < 0 And sDef <> "" Then m_SelectMaterial sDef
+    If cboMaterial.ListIndex < 0 And cboMaterial.ListCount > 0 Then cboMaterial.ListIndex = 0
+    Exit Sub
+EH:
+    MsgBox "读取材料库(AD_MATERIALS)失败: " & Err.Description, vbExclamation, "自动化生产排版"
+End Sub
+
+Private Sub m_SelectMaterial(ByVal sName As String)
+    Dim i As Long
+    For i = 0 To cboMaterial.ListCount - 1
+        If cboMaterial.List(i) = sName Then
+            cboMaterial.ListIndex = i
+            Exit Sub
+        End If
+    Next i
+End Sub
+
 Private Sub UserForm_Initialize()
     Me.Caption = "自动化生产排版"
     ' 读取记忆的 CSV 路径
     txtCSV = GetSetting("CCC", "AutoImportNest", "LastPath", "C:\Users\C\Desktop\2026优化表\7-10中林SPC婷兰灰.csv")
+    ' 加载材料库到下拉框（v1.10）
+    m_LoadMaterials
 End Sub
 
 ' ==============================================================================
@@ -103,16 +157,29 @@ Private Sub cmdOK_Click()
         Exit Sub
     End If
     
+    ' v1.10: 材料必选 —— 选中材料对整批所有行生效，忽略 CSV 第 13 列
+    If cboMaterial.ListCount = 0 Then
+        MsgBox "材料库(AD_MATERIALS)为空，无法导入。" & vbCrLf & _
+               "请先在 CDM 材料库添加材料后重新打开本窗体。", vbCritical, "自动化生产排版"
+        Exit Sub
+    End If
+    If cboMaterial.ListIndex < 0 Then
+        MsgBox "请选择材料", vbExclamation, "自动化生产排版"
+        Exit Sub
+    End If
+
     ' 保存记忆
     SaveSetting "CCC", "AutoImportNest", "LastPath", Trim$(txtCSV)
+    SaveSetting "CCC", "AutoImportNest", "LastMaterial", cboMaterial.Value
     
     ' 调用模块带参入口（勾选“只导入订单”则跳过排版）
-    ' 签名: AutoImportNestWithParams(CSV路径, 客户名, bRunNest, bOverwrite)
-    ' 材料不再作为形参传入 —— 逐行取自 CSV 第 12 列（0 基），
-    ' 且必须已存在于 AD_MATERIALS 表（v1.7 删除原第 3 个死参数）
+    ' 签名: AutoImportNestWithParams(CSV路径, 客户名, bRunNest, bOverwrite, sMaterialOverride)
+    ' sMaterialOverride = 窗体选中的材料，非空即整批覆盖（忽略 CSV 第 12 列/0 基），
+    ' 且必须已存在于 AD_MATERIALS 表（v1.7 删除的 sMaterialName 是另一个死参数）
     ' g_Make_Master 内部 g_UnLoadAllForms 会卸载所有窗体，完成后重新显示，可连续导入多个订单
     modAutoImportNest.AutoImportNestWithParams _
-        Trim$(txtCSV), "自动化生产", Not chkOnlyImport.Value, chkOverwrite.Value
+        Trim$(txtCSV), "自动化生产", Not chkOnlyImport.Value, chkOverwrite.Value, _
+        cboMaterial.Value
     frmAutoNest.Show vbModeless
 End Sub
 

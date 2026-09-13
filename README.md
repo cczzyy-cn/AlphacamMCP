@@ -256,18 +256,18 @@ pip install -r requirements.txt
 
 | 文件 | 功能 |
 |---|---|
-| `modAutoImportNest.bas` | **自动化生产排版**：导入 CSV 门板数据 → `g_Make_Master` 批量生产+排版；菜单入口弹 `frmAutoNest` 窗体，支持"只导入订单" |
-| `frmAutoNest.txt` | 自动化生产排版窗体代码（手动创建窗体后粘贴，含"只导入订单"勾选框） |
+| `modAutoImportNest.bas` | **自动化生产排版**：导入 CSV 门板数据 → `g_Make_Master` 批量生产+排版；菜单入口弹 `frmAutoNest` 窗体，支持"只导入订单"；v1.10 起窗体可选材料并覆盖 CSV 材料列 |
+| `frmAutoNest.txt` | 自动化生产排版窗体代码（手动创建窗体后粘贴，含"只导入订单"勾选框、v1.10 材料下拉） |
 | `Events.bas` | CDM 工程菜单注册（含 "自动化生产排版" 按钮） |
 
 自动化流程（已在 CDM 工程中运行验证）：
 
 ```
-菜单 → CDM → 自动化生产排版（弹出 frmAutoNest 窗体，CSV 路径记忆回填）
-  → 选择/输入 CSV 文件 → 确定
+菜单 → CDM → 自动化生产排版（弹出 frmAutoNest 窗体，CSV 路径 + 材料记忆回填）
+  → 选择/输入 CSV 文件 + 选择材料（v1.10，下拉自 AD_MATERIALS）→ 确定
   → 客户名"自动化生产"（自动创建）
   → 创建订单（重名直接取消）
-  → 逐行导入门板明细
+  → 逐行导入门板明细（材料 = 窗体选中的那个，忽略 CSV 材料列）
      ├── 门型已存在 → 用其 UserStyle（900/930）
      │     930 门型（如平板PETA）→ 复制 UserStyleName + UserValue_0~6
      │     正确加载用户样式宏（AD_OnePanelSquare 等）
@@ -279,6 +279,10 @@ pip install -r requirements.txt
 
 > **关键技术点**：930 用户自定义门型的几何由 VBA 宏生成，导入时必须复制
 > `StyleName=UserStyleName`（宏项目名）和 `UserValue_0~6`（宏参数），否则报"无法连接用户定义的宏"。
+>
+> **材料来源（v1.10）**：窗体上的材料下拉列出 `AD_MATERIALS` 全部材料，**选中的材料对整批生效、
+> 忽略 CSV 第 13 列**；模块形参 `sMaterialOverride` 为空时才回退到旧的逐行 CSV 取材料。
+> 无论哪条路径，材料都必须已存在于材料库 —— 只校验、绝不自动建档。
 
 ### 🧩 VBA 窗体/控件编程（VBIDE 对象模型）
 

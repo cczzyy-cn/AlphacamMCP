@@ -1,5 +1,13 @@
 ' MCP-INSTALL-TEST: 2026-07-30 测试注释
 ' ==============================================================================
+' 版本: v1.10 (2026-09-13) — 窗体材料下拉：选中材料覆盖 CSV 第 13 列，整批生效
+'   [P1] frmAutoNest 新增 lblMaterial + cboMaterial：窗体启动时从 AD_MATERIALS
+'        加载全部材料并预选（上次选择 → MaterialDefault=True 的行 → 第一项）。
+'        AutoImportNestWithParams / ImportCSV 新增可选形参 sMaterialOverride：
+'        非空 = 整批统一用窗体选中的材料（忽略 CSV 第 12 列/0 基）；为空 = 沿用
+'        旧行为（逐行取 CSV 第 12 列/0 基）。两条路径都仍要求材料已存在于
+'        AD_MATERIALS 表，本模块只校验、绝不自动建档。
+'   ---- 以下为 v1.9 变更记录 ----
 ' 版本: v1.9 (2026-09-11) — 稳定唯一码：标签/报表行按“每件一码”对齐
 '   [P0] 件序号(PressDoorCounter)是顺序号，移动/重排板件后会整体漂移，
 '        旧逻辑按 (DetailID+件序号+板) 匹配报表行 -> 该件匹配不到、另一件命中
@@ -110,20 +118,23 @@ End Sub
 ' ============================================================================
 ' 导入 CSV → 创建订单，返回 OrderID
 ' ============================================================================
-' 注意: 无材料形参 —— 材料逐行取自 CSV 第 12 列（0 基），且必须已存在于
-'       AD_MATERIALS 表；原 sMaterialName 形参只用于填充一个从未被使用的
-'       默认值（死代码），v1.7 已删除。
+' 材料: sMaterialOverride 非空 = 整批统一用窗体选中的材料（忽略 CSV 第 12 列/0 基）；
+'       为空 = 逐行取自 CSV 第 12 列（0 基）。两者都要求材料已存在于 AD_MATERIALS。
+' 注意: v1.7 删除的 sMaterialName 是「从未被使用的默认值」死代码；本次是窗体
+'       显式选择并强制覆盖整批，语义不同，不要按旧形参理解。
 Public Sub AutoImportNestWithParams(ByVal sCSVPath As String, _
                                     ByVal sCustomerName As String, _
                                     ByVal bRunNest As Boolean, _
-                                    Optional ByVal bOverwrite As Boolean = False)
+                                    Optional ByVal bOverwrite As Boolean = False, _
+                                    Optional ByVal sMaterialOverride As String = "")
     ' 由 frmAutoNest 窗体调用的带参入口
     Dim sJobName As String, sTemp As String, lngOrderID As Long
     Dim sStep As String
     sStep = "解析CSV"
     On Error GoTo EH
     m_Log "开始导入 CSV=" & sCSVPath & " 客户=" & sCustomerName & _
-          " 运行排版=" & CStr(bRunNest) & " 覆盖=" & CStr(bOverwrite)
+          " 运行排版=" & CStr(bRunNest) & " 覆盖=" & CStr(bOverwrite) & _
+          " 窗体材料=" & IIf(Trim$(sMaterialOverride) = "", "（未覆盖/按CSV逐行）", Trim$(sMaterialOverride))
 
     sTemp = sCSVPath
     Do While InStr(sTemp, "\") > 0: sTemp = Mid$(sTemp, InStr(sTemp, "\") + 1): Loop
@@ -138,7 +149,7 @@ Public Sub AutoImportNestWithParams(ByVal sCSVPath As String, _
     End If
 
     sStep = "导入CSV"
-    lngOrderID = ImportCSV(sCSVPath, sJobName, sCustomerName, bOverwrite)
+    lngOrderID = ImportCSV(sCSVPath, sJobName, sCustomerName, bOverwrite, sMaterialOverride)
     m_Log "导入CSV返回 OrderID=" & CStr(lngOrderID)
     If lngOrderID = ORDER_CANCEL Then Exit Sub     ' 取消：内部已提示
     If lngOrderID = ORDER_FAIL Then Exit Sub       ' 失败：ImportCSV 内已提示+日志
@@ -173,12 +184,14 @@ End Sub
 
 ' ============================================================================
 ' CSV 导入（事务包裹 + 失败明细 + 返回码常量 + 日志）
-' 材料: 逐行取自 CSV 第 12 列（0 基），必须已存在于 AD_MATERIALS 表，
-'       缺失即整体失败并回滚（本模块只校验、不自动建档）
+' 材料: sMaterialOverride 非空 = 整批统一（窗体覆盖）；为空 = 逐行取自 CSV 第 12 列
+'       （0 基）。两者都必须已存在于 AD_MATERIALS 表，缺失即整体失败并回滚
+'       （本模块只校验、不自动建档）
 ' ============================================================================
 Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String, _
                            Optional ByVal sCustomerName As String = "自动化生产", _
-                           Optional ByVal bOverwrite As Boolean = False) As Long
+                           Optional ByVal bOverwrite As Boolean = False, _
+                           Optional ByVal sMaterialOverride As String = "") As Long
     '
     Dim lngOrderID As Long, lngRow As Long, lngOK As Long
     Dim sLine As String, vF As Variant, iFile As Integer
@@ -205,6 +218,19 @@ Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String, _
         MsgBox "文件不存在:" & vbCrLf & sCSVPath, vbExclamation, "自动化生产排版"
         ImportCSV = ORDER_FAIL
         GoTo CleanUp
+    End If
+
+    ' 1b. 窗体材料覆盖（v1.10）：在事务开始前一次性校验，避免整批逐行重复查库；
+    '     为空则维持旧行为（逐行取 CSV 第 12 列/0 基）
+    sMaterialOverride = Trim$(sMaterialOverride)
+    If sMaterialOverride <> "" Then
+        sStep = "校验窗体材料"
+        If Not m_CheckMaterialExists(sMaterialOverride) Then
+            m_LogError 0, sStep, "窗体材料[" & sMaterialOverride & "]未在数据库AD_MATERIALS定义"
+            MsgBox "窗体选择的材料 [" & sMaterialOverride & "] 不在数据库 AD_MATERIALS 表，无法导入。" & vbCrLf & "请先在材料库添加该材料后重试。", vbCritical, "自动化生产排版"
+            ImportCSV = ORDER_FAIL
+            GoTo CleanUp
+        End If
     End If
 
     ' 2. 开启事务：客户/订单/门型/明细任一步失败都整体回滚。
@@ -242,6 +268,8 @@ Private Function ImportCSV(ByVal sCSVPath As String, ByVal sJobName As String, _
         sGrp = Trim$(GetF(vF, 4, "")): sTp = Trim$(GetF(vF, 0, "")): w = Val(GetF(vF, 1, "0"))
         h = Val(GetF(vF, 2, "0")): q = Val(GetF(vF, 3, "1"))
         sMat = Trim$(GetF(vF, 12, ""))
+        ' v1.10: 窗体选中材料覆盖整批 —— 忽略 CSV 第 12 列（0 基）
+        If sMaterialOverride <> "" Then sMat = sMaterialOverride
         sCu = Trim$(GetF(vF, 5, "")): sRf = Trim$(GetF(vF, 9, ""))
         sRm = Trim$(GetF(vF, 11, "")): sC1 = Trim$(GetF(vF, 7, "")): sC2 = Trim$(GetF(vF, 8, ""))
         If w <= 0 Or h <= 0 Then GoTo NextLine
