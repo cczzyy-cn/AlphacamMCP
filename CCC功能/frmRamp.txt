@@ -1,3 +1,20 @@
+' ==============================================================================
+' CCC功能 - frmRamp 斜角下刀 设置窗体
+' ==============================================================================
+' AlphaCAM 不支持导入 .frm 设计文件，窗体与控件必须手工创建一次：
+'   菜单: 插入 → 用户窗体 → 名称改 frmRamp → Caption 改 "斜角下刀"
+' 控件清单（14 个，名称必须完全一致）：
+'   cmbMethodTool           ComboBox      加工方式-刀具
+'   txtMinSize              TextBox       小条范围（0 = 处理全部闭合刀路）
+'   txtCutDepth             TextBox       切割深度
+'   txtRampAngle            TextBox       斜坡角(度)
+'   chkTabs                 CheckBox      留连接点(微连接)      <- v2.0
+'   txtTabStock             TextBox       留皮厚度              <- v2.0
+'   chkSlowSmall            CheckBox      小件降速              <- v2.0
+'   cmdOK / cmdCancel       CommandButton 确定 / 取消
+'   标签: Label1(刀具) Label4(深度) Label3(角度) Label2(范围) lblTabStock(留皮)
+' 布局: 刀具行 y=18 / 参数行 y=42 / 新增行 y=60 / 按钮行 y=84
+' ==============================================================================
 Private Declare PtrSafe Function FindWindow Lib "user32" Alias "FindWindowA" (ByVal lpClassName As String, ByVal lpWindowName As String) As Long
 Private Declare PtrSafe Function GetWindowLong Lib "user32" Alias "GetWindowLongA" (ByVal hWnd As Long, ByVal nIndex As Long) As Long
 Private Declare PtrSafe Function SetWindowLong Lib "user32" Alias "SetWindowLongA" (ByVal hWnd As Long, ByVal nIndex As Long, ByVal dwNewLong As Long) As Long
@@ -38,6 +55,15 @@ Private Sub UserForm_Initialize()
     Else
         txtRampAngle.Text = "30"
     End If
+    ' v2.0 新增: 微连接 / 留皮厚度 / 小件降速
+    chkTabs.Value = modRamp.g_lastDoTabs
+    If modRamp.g_lastTabStock > 0 Then
+        txtTabStock.Text = CStr(modRamp.g_lastTabStock)
+    Else
+        txtTabStock.Text = "0.8"
+    End If
+    chkSlowSmall.Value = modRamp.g_lastSlowSmall
+    txtTabStock.Enabled = chkTabs.Value
 
     ' 扫描加工方式+刀具组合
     Dim drw As Drawing: Set drw = App.ActiveDrawing
@@ -113,6 +139,11 @@ Private Sub UserForm_Initialize()
         If cmbMethodTool.ListCount > 0 Then cmbMethodTool.ListIndex = 0
     End If
 End Sub
+' 只在本机上有效；不勾"留连接点"时留皮厚度框置灰
+Private Sub chkTabs_Click()
+    txtTabStock.Enabled = chkTabs.Value
+End Sub
+
 Private Sub cmdOK_Click()
     ' 验证输入
     If cmbMethodTool.ListIndex < 0 Then
@@ -122,9 +153,21 @@ Private Sub cmdOK_Click()
     Dim minSize As Double: minSize = Val(txtMinSize.Text)
     Dim cutDepth As Double: cutDepth = Abs(Val(txtCutDepth.Text))
     Dim rampAngle As Double: rampAngle = Val(txtRampAngle.Text)
-    If minSize <= 0 Then MsgBox "小条范围必须大于 0！", vbExclamation, "斜角下刀": Exit Sub
+    If minSize < 0 Then MsgBox "小条范围不能为负数（填 0 = 处理全部闭合刀路）！", vbExclamation, "斜角下刀": Exit Sub
     If cutDepth <= 0 Then MsgBox "切割深度必须大于 0！", vbExclamation, "斜角下刀": Exit Sub
     If rampAngle <= 0 Or rampAngle >= 90 Then MsgBox "下刀角度必须在 1~89 之间！", vbExclamation, "斜角下刀": Exit Sub
+    ' v2.0 新增选项
+    Dim doTabs As Boolean: doTabs = (chkTabs.Value = True)
+    Dim tabStock As Double: tabStock = Val(txtTabStock.Text)
+    If doTabs Then
+        If tabStock <= 0 Or tabStock >= cutDepth Then
+            MsgBox "留皮厚度必须在 0 ~ 切割深度(" & cutDepth & ") 之间！", vbExclamation, "斜角下刀"
+            Exit Sub
+        End If
+    Else
+        If tabStock <= 0 Then tabStock = 0.8
+    End If
+    Dim slowSmall As Boolean: slowSmall = (chkSlowSmall.Value = True)
 
     ' 提取选择的加工方式+刀具信息
     ' 显示格式: "粗加工 - T1 6mm Endmill"
@@ -156,9 +199,13 @@ Private Sub cmdOK_Click()
     modRamp.g_lastCutDepth = cutDepth
     modRamp.g_lastRampAngle = rampAngle
     modRamp.g_lastMethodTool = cmbMethodTool.Text
+    modRamp.g_lastDoTabs = doTabs
+    modRamp.g_lastTabStock = tabStock
+    modRamp.g_lastSlowSmall = slowSmall
 
     ' 调用执行
     Unload Me
-    modRamp.ApplyRampEntry minSize, cutDepth, rampAngle, methodName, toolMatch, tNum
+    modRamp.ApplyRampEntry minSize, cutDepth, rampAngle, methodName, toolMatch, tNum, _
+                             doTabs, tabStock, slowSmall
 End Sub
 Private Sub cmdCancel_Click(): Unload Me: End Sub

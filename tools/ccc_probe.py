@@ -37,6 +37,16 @@ MARKERS = {
         ("undo point",         "App.SetUndoPoint"),
         ("version function",   "Function RampVersion"),
     ],
+    "frmRamp": [
+        ("v2.0 control list",  "\u63a7\u4ef6\u6e05\u5355\uff0814 \u4e2a"),
+        ("v2.0 chkTabs",       "chkTabs.Value = modRamp.g_lastDoTabs"),
+        ("v2.0 txtTabStock",   "txtTabStock.Text = CStr(modRamp.g_lastTabStock)"),
+        ("v2.0 chkSlowSmall",  "chkSlowSmall.Value = modRamp.g_lastSlowSmall"),
+        ("v2.0 toggle sub",    "Private Sub chkTabs_Click"),
+        ("v2.0 tab validate",  "\u7559\u76ae\u539a\u5ea6\u5fc5\u987b\u5728 0 ~ \u5207\u5272\u6df1\u5ea6"),
+        ("v2.0 9-arg call",    "doTabs, tabStock, slowSmall"),
+        ("minSize 0 allowed",  "\u5c0f\u6761\u8303\u56f4\u4e0d\u80fd\u4e3a\u8d1f\u6570"),
+    ],
 }
 ABSENT = {
     "modRamp": [
@@ -44,8 +54,11 @@ ABSENT = {
         "\u671d\u6392\u7248\u4e2d\u5fc3\u65b9\u5411\u504f\u79fb\u6574\u6761\u8fb9\u957f",  # v1.x hop-by-edge
         "DEG2RAD          As Double = 0",            # v1.x long decimal literal
     ],
+    "frmRamp": [
+        "\u5c0f\u6761\u8303\u56f4\u5fc5\u987b\u5927\u4e8e 0",   # 旧校验(minSize<=0 就报错)
+    ],
 }
-WATCH = ("modRamp",)
+WATCH = ("modRamp", "frmRamp")
 
 
 def main():
