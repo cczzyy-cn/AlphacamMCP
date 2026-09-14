@@ -496,6 +496,33 @@ End If
    不合法就走一个自洽的兜底，**不要让错误值静默传播到算法里**——否则算法"看起来在跑"，
    结果却是无意义的（这里排序确实执行了，只是按错误的基准排）。
 
+#### 4.9.1 同一个 API 的第二个坑：`GetExtent` 的 `Y2` 会返回**确定性错值**（2026-09-14）
+
+v2.1.2 把参数顺序改对后，兜底中心是"先试 `GetExtent`，不好用再退候选件包围盒"。
+第 4 轮实机验证时发现参考中心整体偏了 1188.5mm，追下去是：
+
+| 来源 | 值 |
+|---|---|
+| `drw.GetExtent(...)` | `(-2.5, -2.5, -18, 1602.5, **2679.53**, 20)` |
+| 真实联合包围盒（几何+刀路，逐元素算） | `(0, 0, -18) - (1600, 300, 20)` → 中心 `(800, 150)` |
+
+- `Y2` 应该是 **302.5**，它给的是 **2679.5339467738304**；连调 5 次、`Redraw()` 之后**都一样**
+  —— **不是随机垃圾，是确定性的错值**（像是复用了某个内部字段）。
+- 逐元素扫描全部几何与刀路：**没有任何实体越界**（最大 y = 300）→ 错在 API，不在图纸数据。
+- 后果：`"从外往内"` 用 `|refX-x| + |refY-y|` 排序时，`refY` 偏大 1188mm 会让 Y 项支配整个距离，
+  顺序退化成"按 Y 距离排"（本次数据恰好与正确顺序相同，属于运气，不能当验证通过）。
+
+**结论（已落到 v2.2.0）**：`GetExtent` **不再用于任何参考点**，改两级兜底：
+
+1. 有排版 → **板件几何中心**（`NestSheet.Geometry`，最准）；
+2. 无排版 → **候选件联合包围盒中心**（只依赖我们自己的候选数据，永远自洽）。
+
+`modRamp` 里现在**没有一处 `drw.GetExtent` 调用**；`tools/ccc_probe.py` 用 ABSENT 断言
+`drw.GetExtent gx1` 把这个决定锁死（防止以后有人"顺手"再用回来）。
+
+**教训升级**：一个 API 出错一次，可能是"我用错了"；**同一个 API 用两种不同方式连着坑你，
+就该把它下架**，换成"只依赖自己数据的算法"，而不是继续研究它的怪毛病、打第二个补丁。
+
 ---
 
 ## 5. 验证技巧（无法直接调 `AdoorMain` 时）
@@ -1054,12 +1081,17 @@ If Ni Is Nothing Then ' 退回"图纸范围中心"等兜底
 - `SubOperation.Name` 是 **只读** —— `tempacamapi\Objects\SubOperation\SubOperationProperties.htm`：
   > `Name - (String) The name of this sub-operation, as in the Operation List dialog box (read-only)`
 
-  所以**无法把「手动输入」改回「精加工」**，这条没有代码解法。
+  所以**事后**无法把「手动输入」改回「精加工」。
+- **但名字可以在【建之前】定好** —— ✅ **2026-09-14 v2.2.0 已解决**：
+  建手工刀路前给 MillData 设带参属性
+  `md.Attribute("LicomUKDMBOperationName") = "精加工"`，新子工序就叫
+  `精加工   刀具 2   FLAT - 5MM`。详见 §7.9(i)。
 - 影响可控：`OpNo` 已回填（见上表），刀路顺序由 `Operations.OrderAll` + 插件自己的排序决定，
-  NC 输出仍按道次 `1` 分组。只是加工道次窗口里**一行变四行、名字统一叫「手动输入」**。
-- 若将来一定要保住子工序结构/名字，唯一方向是**别用 `ManualToolPath` 重建**：
-  改成 AlphaCAM **原生斜坡参数**（`MillData.AutoZ` / `AutoZRampAngle`，见
-  `开料小板件防松动算法方案.md` §11）—— 那是"改参数重算刀路"，工序结构天然保留。
+  NC 输出仍按道次 `1` 分组。
+- 剩下的结构性差异：**一个子工序变成多个**（每件一个，名字相同）——
+  这是 `ManualToolPath` 的固有行为，改不掉；若一定要保住子工序结构，唯一方向是
+  **别用 `ManualToolPath` 重建**：改成 AlphaCAM **原生斜坡参数**（`MillData.AutoZ` /
+  `AutoZRampAngle`，见 `开料小板件防松动算法方案.md` §11）—— 那是"改参数重算刀路"，工序结构天然保留。
 
 #### (g) `MillManualToolPath.Finish` 会把**收尾的抬刀 rapid 单列成一条 1 元素刀路**（2026-09-14 实测）
 
@@ -1083,6 +1115,58 @@ If Ni Is Nothing Then ' 退回"图纸范围中心"等兜底
 
 **顺带 2**：`GetFeedExtent` 对这种 1 元素 rapid 刀路返回 `False`（没有进给段），
 `MinXL==MaxXL`；算包围盒/中心时必须跳过这种空进给刀路（`If Not blnExt`）。
+
+#### (h) `Drawing.OrderManual(Ordered)` 能重排加工顺序，但会**重派生刀路之间的连接 rapid**（2026-09-14 实测）
+
+文档原文：
+
+> `drw.OrderManual (Ordered)` —— The parameter Ordered contains some or all of the geometries or
+> tool paths (not both) in the drawing. **The paths will be ordered to match the order of the paths
+> in this collection.**
+
+`Ordered` 用 `drw.CreatePathCollection()` 建，再逐个 `.Add` 路径。
+
+**实测结论（4 件测试台，逐元素"指纹"对比）**：
+
+- **刀路本体不会被改写**：斜坡段元素数、逐段 Z 剖面、斜坡锚定关系**逐元素不变**；
+- 被重新派生的只有**刀路之间的连接 rapid**：
+  - 被排到**首位**的那条会**去掉**引导 rapid（212 → 211 元素）——
+    这正是 AlphaCAM 对"首条刀路"的固有约定（图纸里第一件本来就没有引导 rapid）；
+  - 排到后面的每条会**补上**一条从上一件终点出发的引导 rapid（4 → 5 元素）；
+- **自定义属性会存活**：`CCC_RampDone` 仍在 → 幂等标记不会被重排弄丢
+  （实测重排后第二次执行报 `候选=6, 已处理过=6`，结构不变）；
+- **子工序按新的刀路顺序重新分组**（`sub1` 变成新首位那一组），子工序名不变。
+
+**坑（我第一次实验就踩了）**：目标顺序如果把"轮廓刀路"和它配对的"抬刀 rapid 刀路"**拆开**
+（我第一版把抬刀排到了最后），AlphaCAM 为了自洽会去补/挪 rapid，结果 element 分布变得无法解释
+（轮廓少 1 个元素、抬刀涨成 2 个元素、多出一条 `Z=0` 的横穿 rapid），
+**看起来像"刀路被改坏了"**。
+
+> **规矩**：重排时**必须保持"轮廓 + 其配对的收尾 rapid"成组不拆**；
+> 并且只在**顺序确实需要变化**时才调用（`dst(k) Is drw.ToolPaths(k)` 逐条比较对象同一性），
+> 不要无条件调用 —— 无谓的调用会白白改写未匹配刀路的引导 rapid。
+
+#### (i) 想让手工刀路不叫"手动输入"：`MillData` 的带参属性 `LicomUKDMBOperationName`（2026-09-14 实测）
+
+文档（`MillData.ManualToolPath` 页脚）：
+
+> If the Attribute with name **"LicomUKDMBOperationName"** is set for the MillData object
+> it will be used as **the name of the operation** in the operation list and the NC code.
+
+实测（v2.2.0 落地）：
+
+```vba
+Set md = App.CreateMillData
+md.FinalDepth = -18
+md.Attribute("LicomUKDMBOperationName") = "精加工"     ' ← 必须用带参属性写法
+Set mtp = md.ManualToolPath(sx, sy, 0#)
+```
+
+结果：新建子工序名 = **`精加工   刀具 2   FLAT - 5MM`**（`刀具 …` 部分由 AlphaCAM 自动附加）
+—— 于是 §7.9(f) 里"名字丢掉、只能叫手动输入"的老问题**从根上解决**，
+加工道次窗口与 NC 注释都回到原样。
+
+**写法务必注意**（详见 §7.13）：`md.SetAttribute "名", 值` 在 VBA 里是**编译错误**。
 
 ### 7.10 加工道次窗口（ProjectBar）不刷新 → 用 `Frame.ProjectBarUpdating`（2026-09-14 实测）
 
@@ -1119,6 +1203,73 @@ ErrHandler:
 **直接证据是看窗口**：处理前 `Op 1` 下 1 行 `精加工…`，处理后 **4 行** `手动输入…`（§7.9(f) 的截图核对）。
 取图用 `see` 抓 AlphaCAM **主窗口句柄**即可（`list_windows` 里标题如 `3D 5-轴鉋花机专业版`），
 **不需要切前台**，也就不会像 §1.2 那样把按键送到别的程序里去。
+
+### 7.11 VBA 工程处于 `[中断]`(break) 状态时，VBE 对象模型给的是**陈旧且误导**的结果（2026-09-14 实测，重要）
+
+**现象**：注入的临时模块有编译错误 → 弹"编译错误: 方法和数据成员未找到" → 关掉弹窗后：
+
+- `VBComponents.Remove(mod)` **返回成功，但组件仍在**，`VBComponents.Count` 也不变；
+- 遍历 `VBProjects(i).Name` 会报"**该工程已被保护，不能执行操作**"——
+  而 `ActiveVBProject.Protection = 0`，**根本没被保护**（这条假消息会把你引向完全错误的方向）。
+
+**根因**：此时 VBA IDE 标题是 `... - CCC功能 [中断] - [modRamp (代码)]`，
+`VBE.ActiveVBProject.Mode = 1`（`vbext_vm_Break`）。**中断态下 VBE 对象模型的状态是陈旧的**，
+结构修改可能被静默忽略（本次实际是"改动生效了但列表没刷新"，两种表现都见过）。
+
+**纯 COM 复位（不用键盘，避免 §1.2 把按键送到别的窗口）**：
+
+```python
+vbe = app.VBE
+for i in range(1, vbe.CommandBars.Count + 1):
+    bar = vbe.CommandBars.Item(i)
+    for j in range(1, bar.Controls.Count + 1):
+        c = bar.Controls.Item(j)
+        if int(c.ID) == 228:        # 标准/调试工具栏的「重新设置(&R)」= Reset
+            c.Execute()
+```
+
+复位后 `Mode` 变成 2（设计态），组件列表立刻正确。可复用脚本：`tmp/reset_vba.py`。
+
+**操作规程（现在是硬要求 —— 跑完任何注入式 VBA 测试都要做）**：
+
+1. 复核 `CCC功能` 组件数回到 **12**（正常值）；
+2. 发现 `MCP_*` 残留 → **先 Reset 再删**（中断态删不掉）。
+
+### 7.12 跨线程复用同一个 COM 对象 → 报 `<unknown>.Name` 这种没头没脑的错（2026-09-14）
+
+写"带超时的 `app.Run`"时，我在主线程 `GetActiveObject` 拿到 `app`，却在 worker 线程里调用它；
+结果 `app.Run(...)` 抛异常，`str(e)` 就是 **`<unknown>.Name`** —— 既不是 `Run` 的问题，
+也不是 `Name` 的问题。把 `GetActiveObject` / `AddFromString` / `Run` / `Remove`
+**全部挪进 worker 线程**（各自 `pythoncom.CoInitialize()`）后立刻正常。
+
+**判据**：报错文本里出现 `<unknown>.xxx`，**先怀疑跨线程/跨套间使用 COM 对象**，
+不要顺着那个 `.xxx` 去查成员。可复用脚本：`tmp/vba_try.py`
+（自带超时 + 弹窗清场 + 中断态复位 + 清残留，用来安全试跑 VBA 片段）。
+
+### 7.13 带参属性(parameterized property)在 VBA 里只能写 `对象.属性("名") = 值`（2026-09-14）
+
+想设 `MillData` 的 `"LicomUKDMBOperationName"` 时：
+
+| 写法 | 结果 |
+|---|---|
+| `md.SetAttribute "LicomUKDMBOperationName", "精加工"` | ❌ VBA **编译错误**：方法和数据成员未找到 |
+| `md.Attribute("LicomUKDMBOperationName") = "精加工"` | ✅ 正确 |
+
+原因：typelib 里它是 **id 1003 的 propget + propput**（同一个带参属性），pywin32 生成包装时
+把 put 侧单独命名成 `SetAttribute`（所以 `dir()` 里能看到这个名字），
+**但 VBA 编译器不认这个拼出来的名字**，只认属性语法。
+`Path.Attribute` 一直是这个写法（`tp.Attribute("CCC_RampDone") = 1` ✓），
+只是 `MillData` 上第一次用。
+
+**怎么快速定位这类问题**：`dir()` 只说明"有这么个名字"，**不代表 VBA 认**。
+权威依据是 typelib 里的 `_prop_map_get_` / `_prop_map_put_`：
+`%LOCALAPPDATA%\Temp\gen_py\3.12\<typelib>\Xxx.py`。看到
+"# The method X is actually a property, but must be used as a method to correctly pass the
+arguments"，就说明 **VBA 侧要用属性写法**。
+
+**附带一条**：编译错误弹窗会**阻塞调用方**（§4.2），所以试跑 VBA 一定要
+**后台线程盯着弹窗并点掉**（`tmp/vba_try.py` 的 `DialogWatcher`），
+否则脚本会僵在那里。
 
 ---
 

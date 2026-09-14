@@ -49,9 +49,17 @@ MARKERS = {
         ("v2.1.1 pbar on",     "Frame.ProjectBarUpdating = True"),
         # --- v2.1.2 新增（第 3 轮实机反馈: 参考中心算错）---
         ("v2.1.2 header",      "v2.1.2 \u53d8\u66f4"),
-        ("v2.1.2 extent order", "drw.GetExtent gx1, gy1, gz1, gx2, gy2, gz2"),
         ("v2.1.2 ref fallback", "ux1 = CDbl(colBX1(1))"),
-        ("v2.1.2 extent guard", "If gx2 > gx1 And gy2 > gy1 Then"),
+        # --- v2.2.0 新增（第 4 轮实机反馈: 未匹配小板件的刀路要排到小板件之后）---
+        ("v2.2 header",        "v2.2.0 \u53d8\u66f4"),
+        ("v2.2 op name attr",  "LicomUKDMBOperationName"),
+        ("v2.2 method name fn", "Function MethodNameOf"),
+        ("v2.2 reorder call",  "If ReorderSmallFirst(drw) Then"),
+        ("v2.2 reorder fn",    "Function ReorderSmallFirst"),
+        ("v2.2 ordermanual",   "drw.OrderManual dst"),
+        # v2.2.0: 不看 GetExtent 了, 参考中心改两级兜底
+        ("v2.2 batch center",  "GetRefCenter drw, Nothing, colBX1, colBY1, colBX2, colBY2, refX, refY"),
+        ("v2.2 start-side center", "SetGeoStartToSheetSide drw, ni, tp, toolGeo, refX, refY"),
     ],
     "frmRamp": [
         ("v2.1 control list",  "\u63a7\u4ef6\u6e05\u5355\uff0811 \u4e2a"),
@@ -73,7 +81,8 @@ ABSENT = {
         "doTabsUse",
         "tabApplied",
         "tabZ = -",
-        "GetExtent gx1, gy1, gx2, gy2, 0, 0",        # v2.1.2 修掉的错误参数顺序
+        "drw.GetExtent gx1",                         # v2.1.2/v2.2.0: 该 API 不可信, 已不用
+        'SetAttribute "LicomUKDMBOperationName"',     # v2.2.1: VBA 里必须用带参属性写法
     ],
     "frmRamp": [
         "\u5c0f\u6761\u8303\u56f4\u5fc5\u987b\u5927\u4e8e 0",   # 旧校验(minSize<=0 就报错)

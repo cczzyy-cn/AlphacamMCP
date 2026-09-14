@@ -1,5 +1,5 @@
 ' ==============================================================================
-' CCC功能 - modRamp 斜角下刀（v2.1.2）
+' CCC功能 - modRamp 斜角下刀（v2.2.0）
 ' ==============================================================================
 ' 依据: 开料小板件吸附与斜下刀算法分析.md
 '       开料小板件防松动算法方案.md（HBT 方案）
@@ -15,6 +15,31 @@
 '
 '   该性质是纯几何的, 与坡角无关; 坡角只影响【斜坡段自身】的负载。
 '   只在【闭合刀路】上成立(开放路径的收尾直线会回切到起点)。
+'
+' v2.2.0 变更（2026-09-14 第 4 轮实机反馈）
+'   [A] 【顺序·新增】同一【加工方式 + 刀具】内, 没有匹配到小板件条件的刀路要
+'       【排到小板件之后切割】(用户要求: 小条先切, 大件让位)。
+'       实现: Drawing.OrderManual(Ordered) —— 文档原文:
+'         "The paths will be ordered to match the order of the paths in this collection."
+'       分组键 = OpNo + 加工方式名 + 刀具号; 每组先放已处理(小板件)再放未匹配。
+'       真机实测: OrderManual 只重新派生【刀路之间的连接 rapid】, 刀路自身的元素数与
+'       Z 剖面(斜坡锚定)逐元素不变 —— 被排到首位的那条会去掉引导 rapid,
+'       这正是 AlphaCAM 对"首条刀路"的固有约定。
+'       只在顺序确实需要变化时才调用(逐条比较对象同一性), 不做无谓改写。
+'   [B] 【命名·修复】新建子工序不再叫"手动输入": 用 MillData 的【带参属性】
+'       md.Attribute("LicomUKDMBOperationName") = 原加工方式名  (文档: 该属性用作 operation 名)
+'       注意: 不能写成 md.SetAttribute 名, 值 —— VBA 会报"方法和数据成员未找到"
+'       (typelib 里能看到 SetAttribute, 但它是同一个带参属性的 put 包装)。
+'       真机实测: 设成 "精加工" -> 新子工序名 = "精加工   刀具 2   FLAT - 5MM" ——
+'       刀具部分由 AlphaCAM 自动附加, 于是加工道次窗口与 NC 注释都回到原样。
+'       这也让 [A] 的分组键有了统一来源。
+'   [C] 【兜底参考点·修复】不再用 drw.GetExtent 当兜底中心 —— 实测它的 Y2 会返回
+'       【确定性错值】: 真实范围 (0,0)-(1600,300) 时它给 (X1,Y1,Z1,X2,Y2,Z2) =
+'       (-2.5,-2.5,-18,1602.5,2679.53,20), 会把"从外往内"的距离基准整体带偏
+'       (排序退化得像"按 Y 距离排")。现在改为两级兜底:
+'         有排版 -> 板件几何中心(最准); 无排版 -> 候选件联合包围盒中心(= 整批料中心)。
+'       整批中心一次算好, 同时传给 SetGeoStartToSheetSide 决定起点落在哪条边。
+'       见 VBA操作问题记录 §4.9。
 '
 ' v2.1.2 变更（2026-09-14 第 3 轮实机反馈）
 '   [A] 【修复·关键】参考中心算错: drw.GetExtent 的参数顺序是 (X1, Y1, Z1, X2, Y2, Z2),
@@ -113,7 +138,7 @@ End Sub
 ' RampVersion - 无副作用, 供部署闭环的项目编译探针 App.Run 调用
 ' ==============================================================================
 Public Function RampVersion() As String
-    RampVersion = "modRamp v2.1.2 (2026-09-14)"
+    RampVersion = "modRamp v2.2.0 (2026-09-14)"
 End Function
 
 ' ==============================================================================
@@ -143,13 +168,14 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     Dim mt As MillTool, tps As Paths, tp As Path
     Dim totalCount As Long, partCount As Long, rampApplied As Long, skipCount As Long
     Dim openSkipped As Long, noDepth As Long
-    Dim slowApplied As Long, markedCount As Long
+    Dim slowApplied As Long, markedCount As Long, reorderApplied As Long
     Dim tpW As Double, tpH As Double, isMatch As Boolean, spPos As Integer
     Dim procName As String, selToolNum As Long
 
     ' 收集用(并行集合)
     Dim colTP As Collection, colSO As Collection, colMT As Collection
     Dim colDepth As Collection, colLen As Collection, colOpNo As Collection
+    Dim colGrpName As Collection          ' [v2.2] 候选刀路的原【加工方式】名(子工序名)
     Dim colDist As Collection
     Dim colBX1 As Collection, colBY1 As Collection, colBX2 As Collection, colBY2 As Collection
 
@@ -213,6 +239,7 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     Set colTP = New Collection: Set colSO = New Collection: Set colMT = New Collection
     Set colDepth = New Collection: Set colLen = New Collection
     Set colOpNo = New Collection
+    Set colGrpName = New Collection
     Set colDist = New Collection
     Set colBX1 = New Collection: Set colBY1 = New Collection
     Set colBX2 = New Collection: Set colBY2 = New Collection
@@ -308,6 +335,7 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
                         partCount = partCount + 1
                         colTP.Add tp: colSO.Add subop: colMT.Add mt: colDepth.Add origDepth
                         colOpNo.Add CLng(tp.OpNo)
+                        colGrpName.Add subop.Name      ' [v2.2] 记原加工方式名
                         ' [10] 周长只累加【非 rapid】元素长度; 并顺带统计 rapid 段数
                         gLen = 0
                         rapidSegs = 0
@@ -373,15 +401,14 @@ NextOp:
     ' [v2.1.1][A] 主键 = 到【本板几何中心】的 L1 距离, 降序 => 远的先切 = 从外往内
     '             次键 = HBT 评分(升序): 距离相同时, 泄漏小/被夹紧的先切
     ReDim dist(1 To n)
-    blnRef = False
+    ' [v2.2.0] 整批中心: 一次算好, 供"从外往内"排序 + 起点选边共用
+    '   (不用 drw.GetExtent —— 实测其 Y2 返回确定性错值, 见 §4.9)
+    blnRef = True
     refX = 0: refY = 0
+    GetRefCenter drw, Nothing, colBX1, colBY1, colBX2, colBY2, refX, refY
     For k = 1 To n
         If Not FindSheetCenter(drw, ni, colTP(k), dcx, dcy) Then
-            ' 没有排版(或该刀路不在任何板上): 退回图纸范围中心
-            If Not blnRef Then
-                GetRefCenter drw, ni, colBX1, colBY1, colBX2, colBY2, refX, refY
-                blnRef = True
-            End If
+            ' 没有排版(或该刀路不在任何板上): 退回"整批料中心"
             dcx = refX: dcy = refY
         End If
         dist(k) = Abs(dcx - (CDbl(colBX1(k)) + CDbl(colBX2(k))) / 2) + _
@@ -507,7 +534,7 @@ NextOp:
         If rampStartDist < 0 Then rampStartDist = 0        ' [7] 非负保护
 
         ' [1] 起点 = 朝向排版中心那一侧的较长边中点
-        SetGeoStartToSheetSide drw, ni, tp, toolGeo
+        SetGeoStartToSheetSide drw, ni, tp, toolGeo, refX, refY
 
         ' [4] 连接点窗口
         Set mdNew = App.CreateMillData
@@ -518,6 +545,17 @@ NextOp:
         mdNew.CutFeed = cutF
         mdNew.DownFeed = downF
         mdNew.FinalDepth = CDbl(finalDepth)
+        ' [v2.2][B] 把新建子工序的【加工方式名】设回原名(否则固定叫"手动输入"):
+        '   文档(MillData.ManualToolPath): "If the Attribute with name
+        '   \"LicomUKDMBOperationName\" is set for the MillData object it will be used as
+        '   the name of the operation in the operation list and the NC code."
+        '   真机实测: 设 "精加工" -> 新子工序名 = "精加工   刀具 2   FLAT - 5MM"
+        On Error Resume Next
+        '   注意写法: Attribute 是【带参属性】(get/put 同 id), VBA 里必须
+        '   用 "对象.Attribute("名") = 值"; 写成 SetAttribute 名, 值 会报
+        '   "方法和数据成员未找到"(typelib 里能看到 SetAttribute, 但 VBA 不认)。
+        mdNew.Attribute("LicomUKDMBOperationName") = MethodNameOf(CStr(colGrpName(idx)))
+        On Error GoTo ErrHandler
 
         If Not toolGeo.PointAtDistanceAlongPathL(rampStartDist, sx, sy, elem0) Then
             Set elem0 = toolGeo.GetFirstElem
@@ -595,6 +633,12 @@ NextOp:
 SkipItem:
     Next k
 
+    ' [v2.2][A] 同一【加工方式+刀具】组内, 未匹配小板件条件的刀路排到小板件【之后】
+    If rampApplied > 0 Then
+        On Error Resume Next
+        If ReorderSmallFirst(drw) Then reorderApplied = 1
+        On Error GoTo ErrHandler
+    End If
     ' [v2.1][B] 改过 OpNo 之后必须重排工序(文档: Operations.OrderAll)
     If markedCount > 0 Then
         On Error Resume Next
@@ -612,6 +656,7 @@ SkipItem:
            "候选: " & totalCount & " 条, 受理: " & partCount & " 条, 已应用: " & rampApplied & " 条" & vbCrLf & _
            "跳过: 已处理过 " & skipCount & " / 开放路径 " & openSkipped & " / 深度不足 " & noDepth & vbCrLf & _
            "道次回填: " & markedCount & " 条刀路已设回原 Op 并重排(ProjectBar 已刷新)" & vbCrLf & _
+           "同组顺序: " & IIf(reorderApplied > 0, "未匹配到小板件条件的刀路已排到小板件之后", "无需重排") & vbCrLf & _
            "抬刀: 每条刀路结束时快速抬到 Z" & SAFE_Z_UP & vbCrLf & _
            IIf(slowSmall, "小件降速: " & slowApplied & " 条" & vbCrLf, "") & _
            "小条范围 = " & IIf(minSize <= 0, "0(全部闭合刀路)", CStr(minSize)) & vbCrLf & _
@@ -663,7 +708,7 @@ Private Function FindSheetCenter(ByVal drw As Drawing, ByVal ni As NestInformati
 End Function
 
 ' ==============================================================================
-' GetRefCenter - 图纸范围中心(没有排版时的兜底参考点)
+' GetRefCenter - 兜底参考点: 板件几何中心 -> 候选件联合包围盒中心
 ' ==============================================================================
 Private Sub GetRefCenter(ByVal drw As Drawing, ByVal ni As NestInformation, _
                          ByVal colBX1 As Collection, ByVal colBY1 As Collection, _
@@ -682,16 +727,12 @@ Private Sub GetRefCenter(ByVal drw As Drawing, ByVal ni As NestInformation, _
             End If
         Next sh
     End If
-    Dim gx1 As Double, gy1 As Double, gz1 As Double
-    Dim gx2 As Double, gy2 As Double, gz2 As Double
-    ' [v2.1.2] 参数顺序 (X1, Y1, Z1, X2, Y2, Z2) —— 第 3 个是 Z1, 不是 X2!
-    drw.GetExtent gx1, gy1, gz1, gx2, gy2, gz2
-    If gx2 > gx1 And gy2 > gy1 Then
-        cx = (gx1 + gx2) / 2
-        cy = (gy1 + gy2) / 2
-        Exit Sub
-    End If
-    ' 兜底: 候选件联合包围盒中心(= 整批料的中心), 不依赖 GetExtent
+    ' [v2.2.0] 不再用 drw.GetExtent 兜底 —— 实测它的 **Y2 会返回确定性错值**:
+    '   真实范围 (0,0)-(1600,300) 时它给出 (X1,Y1,Z1,X2,Y2,Z2) =
+    '   (-2.5, -2.5, -18, 1602.5, 2679.53, 20), 连调 5 次都一样(不是随机垃圾)。
+    '   用它当"从外往内"的距离基准会被整体带偏(顺序退化得像按 Y 距离排)。
+    '   改用候选件联合包围盒中心 —— 只依赖我们自己的候选数据, 永远自洽。
+    '   见 VBA操作问题记录 §4.9。
     Dim kk As Long, ux1 As Double, uy1 As Double, ux2 As Double, uy2 As Double
     If colBX1 Is Nothing Then Exit Sub
     If colBX1.Count = 0 Then Exit Sub
@@ -830,13 +871,12 @@ End Function
 Private Sub SetGeoStartToSheetSide(ByVal drw As Drawing, _
                                    ByVal ni As NestInformation, _
                                    ByVal oldTp As Path, _
-                                   ByVal toolGeo As Path)
+                                   ByVal toolGeo As Path, _
+                                   ByVal fbX As Double, ByVal fbY As Double)
     On Error Resume Next
     Dim scx As Double, scy As Double, found As Boolean
     Dim sh As NestSheet, pInSh As Paths, sg As Path
     Dim pi As Long
-    Dim gx1 As Double, gy1 As Double, gz1 As Double
-    Dim gx2 As Double, gy2 As Double, gz2 As Double
     Dim mx As Double, my As Double, w As Double, h As Double
     Dim startX As Double, startY As Double
     found = False
@@ -861,12 +901,8 @@ Private Sub SetGeoStartToSheetSide(ByVal drw As Drawing, _
         Next sh
     End If
     If Not found Then
-        ' [v2.1.2] 同上: 参数顺序 (X1, Y1, Z1, X2, Y2, Z2)
-        drw.GetExtent gx1, gy1, gz1, gx2, gy2, gz2
-        If gx2 > gx1 And gy2 > gy1 Then
-            scx = (gx1 + gx2) / 2
-            scy = (gy1 + gy2) / 2
-        End If
+        ' [v2.2.0] 无排版: 用调用方给的"整批料中心"(不再用 GetExtent, 见 §4.9)
+        scx = fbX: scy = fbY
     End If
     mx = (toolGeo.MinXL + toolGeo.MaxXL) / 2
     my = (toolGeo.MinYL + toolGeo.MaxYL) / 2
@@ -891,3 +927,128 @@ Private Sub SetGeoStartToSheetSide(ByVal drw As Drawing, _
     End If
     toolGeo.SetStartPoint startX, startY
 End Sub
+
+' ==============================================================================
+' MethodNameOf - 从子工序名里取出【加工方式】部分(v2.2)
+'   名字格式(AlphaCAM 生成): "<加工方式>   刀具 N   <刀具名>"
+'   例: "精加工   刀具 2   FLAT - 5MM" -> "精加工"
+'   容错: 找不到分隔就退化为"截到 刀具 之前", 再不行原样返回。
+' ==============================================================================
+Private Function MethodNameOf(ByVal subName As String) As String
+    Dim p As Long, ch1 As String, ch2 As String
+    MethodNameOf = Trim$(subName)
+    If Len(subName) < 3 Then Exit Function
+    For p = 1 To Len(subName) - 1
+        ch1 = Mid$(subName, p, 1)
+        ch2 = Mid$(subName, p + 1, 1)
+        If (ch1 = " " Or ch1 = vbTab) And (ch2 = " " Or ch2 = vbTab) Then
+            MethodNameOf = Trim$(Left$(subName, p - 1))
+            Exit Function
+        End If
+    Next p
+    p = InStr(subName, "刀具")
+    If p > 1 Then MethodNameOf = Trim$(Left$(subName, p - 1))
+End Function
+
+' ==============================================================================
+' HasKey - Collection 里是否已有该字符串键
+' ==============================================================================
+Private Function HasKey(ByVal col As Collection, ByVal k As String) As Boolean
+    On Error Resume Next
+    Dim v As Variant
+    v = col(k)
+    HasKey = (Err.Number = 0)
+    Err.Clear
+End Function
+
+' ==============================================================================
+' ReorderSmallFirst - 同一【加工方式 + 刀具】内, 把已做斜坡的小板件排到【未匹配刀路之前】
+' ------------------------------------------------------------------------------
+' 分组键 = OpNo + 加工方式名 + 刀具号   (同一 道次/加工方式/刀具 = 用户说的同一组)
+' 手段: Drawing.OrderManual(Ordered) —— ACAMAPI 原文:
+'   "The parameter Ordered contains some or all of the geometries or tool paths
+'    (not both) in the drawing. The paths will be ordered to match the order of the
+'    paths in this collection."
+' 真机实测(2026-09-14): OrderManual 只重新派生【刀路之间的连接 rapid】, 刀路自身的
+'   元素数与 Z 剖面逐元素不变; 被排到首位的那条会去掉引导 rapid —— 这正是
+'   AlphaCAM 对"首条刀路"的固有约定(见 开料小板件防松动算法方案.md §10)。
+' 只在顺序确实需要变化时才调用(逐条比较对象同一性 Is), 避免无谓改写未匹配刀路。
+' ==============================================================================
+Private Function ReorderSmallFirst(ByVal drw As Drawing) As Boolean
+    On Error GoTo Fail
+    Dim ops As Operations, subs As SubOperations, tps As Paths
+    Dim tp As Path, tl As MillTool
+    Dim i As Long, j As Long, k As Long, nProc As Long
+    Dim key As String, kv As Variant, tnum As String
+    Dim keys As Collection, grpProc As Collection, grpUnp As Collection
+    Dim dst As Paths
+    Dim changed As Boolean
+
+    ReorderSmallFirst = False
+    Set keys = New Collection
+    Set grpProc = New Collection
+    Set grpUnp = New Collection
+    Set ops = drw.Operations
+    For i = 1 To ops.Count
+        Set subs = ops(i).SubOperations
+        If Not (subs Is Nothing) Then
+            For j = 1 To subs.Count
+                Set tps = subs(j).ToolPaths
+                If Not (tps Is Nothing) Then
+                    For k = 1 To tps.Count
+                        Set tp = tps(k)
+                        If Not (tp Is Nothing) Then
+                            tnum = ""
+                            Set tl = Nothing
+                            On Error Resume Next
+                            Set tl = tp.GetTool
+                            If Not (tl Is Nothing) Then tnum = CStr(tl.Number)
+                            Err.Clear
+                            On Error GoTo Fail
+                            key = CStr(tp.OpNo) & "|" & MethodNameOf(CStr(subs(j).Name)) & "|" & tnum
+                            If Not HasKey(keys, key) Then
+                                keys.Add key, key
+                                grpProc.Add New Collection, key
+                                grpUnp.Add New Collection, key
+                            End If
+                            If tp.Attribute(ATT_RAMP_DONE) <> 0 Then
+                                grpProc(key).Add tp
+                                nProc = nProc + 1
+                            Else
+                                grpUnp(key).Add tp
+                            End If
+                        End If
+                    Next k
+                End If
+            Next j
+        End If
+    Next i
+    If nProc = 0 Then Exit Function
+
+    Set dst = drw.CreatePathCollection()
+    For Each kv In keys
+        For Each tp In grpProc(CStr(kv))
+            dst.Add tp
+        Next tp
+        For Each tp In grpUnp(CStr(kv))
+            dst.Add tp
+        Next tp
+    Next kv
+
+    If dst.count <> drw.ToolPaths.count Then Exit Function
+    changed = False
+    For k = 1 To dst.count
+        If Not (dst(k) Is drw.ToolPaths(k)) Then
+            changed = True
+            Exit For
+        End If
+    Next k
+    If Not changed Then Exit Function
+
+    drw.OrderManual dst
+    ReorderSmallFirst = True
+    Exit Function
+Fail:
+    ReorderSmallFirst = False
+End Function
+
