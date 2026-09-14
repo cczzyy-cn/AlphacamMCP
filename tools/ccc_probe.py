@@ -33,10 +33,10 @@ MARKERS = {
         ("slow small parts",   "slowApplied = slowApplied + 1"),
         ("undo point",         "App.SetUndoPoint"),
         ("version function",   "Function RampVersion"),
-        # --- v2.1.0 新增 ---
+        # --- v2.1.0 新增（v2.3.0 起改为作用在"原刀路"上, 见下）---
         ("v2.1 finish paths",  "Set newPaths = mtp.Finish"),
-        ("v2.1 OpNo backfill", "newPaths(q).OpNo = CInt(origOpNo)"),
-        ("v2.1 marker on new", "newPaths(q).Attribute(ATT_RAMP_DONE) = 1"),
+        ("v2.3 OpNo keep",     "tp.OpNo = CInt(origOpNo)"),
+        ("v2.3 marker on orig", "tp.Attribute(ATT_RAMP_DONE) = 1"),
         ("v2.1 OrderAll",      "drw.Operations.OrderAll"),
         ("v2.1 collect OpNo",  "colOpNo.Add CLng(tp.OpNo)"),
         # --- v2.1.1 新增（第 2 轮实机反馈）---
@@ -52,7 +52,6 @@ MARKERS = {
         ("v2.1.2 ref fallback", "ux1 = CDbl(colBX1(1))"),
         # --- v2.2.0 新增（第 4 轮实机反馈: 未匹配小板件的刀路要排到小板件之后）---
         ("v2.2 header",        "v2.2.0 \u53d8\u66f4"),
-        ("v2.2 op name attr",  "LicomUKDMBOperationName"),
         ("v2.2 method name fn", "Function MethodNameOf"),
         ("v2.2 reorder call",  "If ReorderSmallFirst(drw) Then"),
         ("v2.2 reorder fn",    "Function ReorderSmallFirst"),
@@ -60,6 +59,13 @@ MARKERS = {
         # v2.2.0: 不看 GetExtent 了, 参考中心改两级兜底
         ("v2.2 batch center",  "GetRefCenter drw, Nothing, colBX1, colBY1, colBX2, colBY2, refX, refY"),
         ("v2.2 start-side center", "SetGeoStartToSheetSide drw, ni, tp, toolGeo, refX, refY"),
+        # --- v2.3.0 新增（第 5 轮实机反馈: 重建刀路不在版件里）---
+        ("v2.3 header",        "v2.3.0 \u53d8\u66f4"),
+        ("v2.3 replace",       "tp.ReplaceElements newPaths(1)"),
+        ("v2.3 addpath merge", "newPaths(1).AddPath newPaths(q)"),
+        ("v2.3 pt tol",        "PT_TOL"),
+        ("v2.3 flag restore",  "tp.ToolInOut = CLng(svToolInOut)"),
+        ("v2.3 empty subop cleanup", "subs(j).Delete"),
     ],
     "frmRamp": [
         ("v2.1 control list",  "\u63a7\u4ef6\u6e05\u5355\uff0811 \u4e2a"),
@@ -83,6 +89,8 @@ ABSENT = {
         "tabZ = -",
         "drw.GetExtent gx1",                         # v2.1.2/v2.2.0: 该 API 不可信, 已不用
         'SetAttribute "LicomUKDMBOperationName"',     # v2.2.1: VBA 里必须用带参属性写法
+        'mdNew.Attribute("LicomUKDMBOperationName")', # v2.3.0: 不再需要给临时刀路命名
+        "tp.Delete",                                 # v2.3.0: 不再删原刀路(改原地 ReplaceElements)
     ],
     "frmRamp": [
         "\u5c0f\u6761\u8303\u56f4\u5fc5\u987b\u5927\u4e8e 0",   # 旧校验(minSize<=0 就报错)

@@ -1,5 +1,5 @@
 ' ==============================================================================
-' CCC功能 - modRamp 斜角下刀（v2.2.0）
+' CCC功能 - modRamp 斜角下刀（v2.3.1）
 ' ==============================================================================
 ' 依据: 开料小板件吸附与斜下刀算法分析.md
 '       开料小板件防松动算法方案.md（HBT 方案）
@@ -15,6 +15,36 @@
 '
 '   该性质是纯几何的, 与坡角无关; 坡角只影响【斜坡段自身】的负载。
 '   只在【闭合刀路】上成立(开放路径的收尾直线会回切到起点)。
+'
+' v2.3.1 变更（2026-09-14）
+'   [A] 深度门槛加容差 DEPTH_EPS=0.05mm: 判据由 Abs(origDepth) >= cutDepth 改为
+'       Abs(origDepth) + DEPTH_EPS >= cutDepth。
+'       为什么: 版件厚度 18.06 存成单精度后刀路 FinalDepth = 18.059999465942383,
+'       用户按名义厚度 18.06 填门槛时, 会一分不差地判"深度不足"而一条都不处理
+'       (提示里只报"深度不足=42", 极易误判为刀路没有深度)。
+'
+' v2.3.0 变更（2026-09-14 第 5 轮实机反馈: 真实排版工件体检）
+'   [A] 【原地重建·关键修复】不再"删掉旧刀路 + 另建新刀路", 改成把新元素
+'       【换进原刀路】: tp.ReplaceElements(临时刀路)。
+'       为什么: 真实排版工件(2 版件/10 工序/80 刀路)上体检发现 ——
+'         * ManualToolPath 造的新刀路【不在任何排版版件里】, 加工道次窗口(按版件分组)
+'           会把它们全部丢进"(不在版件中)"; 签名交叉比对: 重建的 20 条 0 条在版件里,
+'           没动过的 60 条全部在版件里;
+'         * 每件都多出一个子工序(工序5 从 1 个变 7 个)。
+'       ReplaceElements 只换元素、不动刀路身份 -> 版件归属/子工序/道次/加工数据全保住
+'       (真机实测: 版件1 -> 版件1, 刀路总数不变, MillData 完全不变)。
+'       文档: "Replace the elements in the current path with those in given path.
+'              Path2 will be deleted."
+'   [B] 【抬刀并回同一条刀路】Finish 会在 rapid/feed 边界把收尾抬刀切成独立一条;
+'       现在用 Path.AddPath 把尾段并回主干(文档: "Add elements of a path on to the END
+'       of this path ... Path2 will be deleted."), 一件只有一条刀路。
+'   [C] 【零长重复元素】斜坡末点正好落在闭合点时, 那条"回到起点"的收尾线会退化成
+'       零长元素(实测 9/10 条重建刀路中招)。现在"没真的移动就不加元素"(容差 PT_TOL)。
+'   [D] ReplaceElements 会把【源刀路】的标志带过来(实测 ToolInOut 0 -> 1),
+'       所以重建前先存原标志、重建后写回(ToolInOut/NoRapidUpBefore/CompOnRapid/Group/Color)。
+'       注: Closed 是只读属性(_prop_map_put_ 里没有), 存不回去。
+'   [E] 遗留: 不再需要给临时刀路设 LicomUKDMBOperationName(v2.2.0 [B]) ——
+'       临时刀路只是"元素的搬运工", 建完就被 ReplaceElements 消耗, 不会再产生"手动输入"子工序。
 '
 ' v2.2.0 变更（2026-09-14 第 4 轮实机反馈）
 '   [A] 【顺序·新增】同一【加工方式 + 刀具】内, 没有匹配到小板件条件的刀路要
@@ -110,6 +140,8 @@ Private Const ATT_RAMP_DONE    As String = "CCC_RampDone"
 '       1.74532925199433E-02, 于是仓库文本与运行文本永远对不上 ——
 '       部署闭环的读回校验会因此误报失败。改为运行时计算。
 Private Const POINT_STEP       As Double = 0.5
+Private Const PT_TOL           As Double = 0.0001  ' [v2.3.0] 判断"点是否真的移动"
+Private Const DEPTH_EPS        As Double = 0.05    ' [v2.3.1] 深度门槛容差(浮点/名义值)
 Private Const RAMP_MAX_FRAC    As Double = 0.8    ' 斜坡长度上限 = 该值 x 轮廓长度
 ' [v2.1.1] 每条刀路切完抬刀到的安全高度(用户要求 Z20)
 Private Const SAFE_Z_UP        As Double = 20
@@ -138,7 +170,7 @@ End Sub
 ' RampVersion - 无副作用, 供部署闭环的项目编译探针 App.Run 调用
 ' ==============================================================================
 Public Function RampVersion() As String
-    RampVersion = "modRamp v2.2.0 (2026-09-14)"
+    RampVersion = "modRamp v2.3.1 (2026-09-14)"
 End Function
 
 ' ==============================================================================
@@ -176,6 +208,11 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     Dim colTP As Collection, colSO As Collection, colMT As Collection
     Dim colDepth As Collection, colLen As Collection, colOpNo As Collection
     Dim colGrpName As Collection          ' [v2.2] 候选刀路的原【加工方式】名(子工序名)
+    ' [v2.3.0] 原地重建: 原刀路标志快照 + "只在真移动时加元素"的上一点
+    Dim svToolInOut As Long, svGroup As Long, svColor As Long
+    Dim svNoRapidUp As Boolean, svCompOnRapid As Boolean
+    Dim hasLast As Boolean, lx As Double, ly As Double, lz As Double
+    Dim okReplace As Boolean, replFailed As Long
     Dim colDist As Collection
     Dim colBX1 As Collection, colBY1 As Collection, colBX2 As Collection, colBY2 As Collection
 
@@ -327,7 +364,9 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
                     Set mdCheck = tp.GetMillData
                     If Not (mdCheck Is Nothing) Then
                         origDepth = CDbl(mdCheck.FinalDepth)
-                        If origDepth < 0 And Abs(origDepth) >= cutDepth Then depthOk = True
+                        ' [v2.3.1] 加容差: 名义厚度(18.06)与浮点实际值(18.0599994)差一丝,
+                        '   原来会判"深度不足"而整批拒绝。
+                        If origDepth < 0 And (Abs(origDepth) + DEPTH_EPS) >= cutDepth Then depthOk = True
                     Else
                         depthOk = True          ' 取不到 MillData 也执行(原行为)
                     End If
@@ -545,16 +584,17 @@ NextOp:
         mdNew.CutFeed = cutF
         mdNew.DownFeed = downF
         mdNew.FinalDepth = CDbl(finalDepth)
-        ' [v2.2][B] 把新建子工序的【加工方式名】设回原名(否则固定叫"手动输入"):
-        '   文档(MillData.ManualToolPath): "If the Attribute with name
-        '   \"LicomUKDMBOperationName\" is set for the MillData object it will be used as
-        '   the name of the operation in the operation list and the NC code."
-        '   真机实测: 设 "精加工" -> 新子工序名 = "精加工   刀具 2   FLAT - 5MM"
+        ' [v2.3.0][E] 不再给临时刀路命名 —— 它只是"元素的搬运工", 建完就被
+        '   ReplaceElements 消耗掉, 不会再产生"手动输入"子工序(原名自然保留)。
+        ' [v2.3.0][D] 改为【快照原刀路的可写标志】, 稍后写回 —— 实测 ReplaceElements
+        '   会把源(临时)刀路的标志带过来(尤其 ToolInOut 0 -> 1)。
+        '   注: Closed 是只读属性, 存不回去, 只能接受。
         On Error Resume Next
-        '   注意写法: Attribute 是【带参属性】(get/put 同 id), VBA 里必须
-        '   用 "对象.Attribute("名") = 值"; 写成 SetAttribute 名, 值 会报
-        '   "方法和数据成员未找到"(typelib 里能看到 SetAttribute, 但 VBA 不认)。
-        mdNew.Attribute("LicomUKDMBOperationName") = MethodNameOf(CStr(colGrpName(idx)))
+        svToolInOut = CLng(tp.ToolInOut)
+        svNoRapidUp = tp.NoRapidUpBefore
+        svCompOnRapid = tp.CompOnRapid
+        svGroup = CLng(tp.Group)
+        svColor = CLng(tp.Color)
         On Error GoTo ErrHandler
 
         If Not toolGeo.PointAtDistanceAlongPathL(rampStartDist, sx, sy, elem0) Then
@@ -569,19 +609,29 @@ NextOp:
         Set mtp = mdNew.ManualToolPath(sx, sy, 0#)
 
         ' 斜坡段: 沿路径逐步下刀
+        ' [v2.3.0][C] 只在该点【真的移动了】时才加元素 —— 否则斜坡末点正好落在闭合点上时,
+        '   后面那条"回到起点"的收尾线会退化成零长元素(实测 9/10 条重建刀路中招)。
+        lx = sx: ly = sy: lz = 0#
+        hasLast = True
         For s = 1 To rampSteps
             dd = rampStartDist + POINT_STEP * s
             If dd > geoLen Then dd = geoLen
             actDist = dd - rampStartDist
             zz = -actualDepthAbs * (actDist / sloopDist)
             If toolGeo.PointAtDistanceAlongPathL(dd, px, py, pelem) Then
-                mtp.Add3DLine px, py, zz
+                If Abs(px - lx) > PT_TOL Or Abs(py - ly) > PT_TOL Or Abs(zz - lz) > PT_TOL Then
+                    mtp.Add3DLine px, py, zz
+                    lx = px: ly = py: lz = zz
+                End If
             End If
         Next s
 
         startX = toolGeo.GetFirstElem.StartXL
         startY = toolGeo.GetFirstElem.StartYL
-        mtp.Add3DLine startX, startY, finalDepth
+        If Abs(startX - lx) > PT_TOL Or Abs(startY - ly) > PT_TOL Or Abs(finalDepth - lz) > PT_TOL Then
+            mtp.Add3DLine startX, startY, finalDepth
+            lx = startX: ly = startY: lz = finalDepth
+        End If
 
             Set elems2 = toolGeo.Elements
             If Not (elems2 Is Nothing) Then
@@ -589,10 +639,15 @@ NextOp:
                     Set elem2 = elems2(ei)
                     If Not (elem2 Is Nothing) Then
                         If elem2.IsLine Then
-                            mtp.Add3DLine elem2.EndXL, elem2.EndYL, finalDepth
+                            If Abs(elem2.EndXL - lx) > PT_TOL Or Abs(elem2.EndYL - ly) > PT_TOL _
+                               Or Abs(finalDepth - lz) > PT_TOL Then
+                                mtp.Add3DLine elem2.EndXL, elem2.EndYL, finalDepth
+                                lx = elem2.EndXL: ly = elem2.EndYL: lz = finalDepth
+                            End If
                         ElseIf elem2.IsArc Then
                             mtp.Add3DArcPointCenter elem2.EndXL, elem2.EndYL, finalDepth, _
                                                      elem2.CenterXL, elem2.CenterYL, elem2.CW
+                            lx = elem2.EndXL: ly = elem2.EndYL: lz = finalDepth
                         End If
                     End If
                 Next ei
@@ -601,38 +656,77 @@ NextOp:
         ' [v2.1.1][B] 切完抬刀到安全高度 Z20 (Add3DRapid = 快速移动, 不是进给)
         mtp.Add3DRapid startX, startY, SAFE_Z_UP
 
-        ' [v2.1][B][C] Finish 返回新建的 Paths:
-        '   把 OpNo 设回原加工道次 (ACAMAPI: "OpNo - Operation number of this path.
-        '   Call Operations.OrderAll if this is changed"), 并把幂等标记打在【新】刀路上 ——
-        '   这样重复执行会跳过已处理的刀路, 而不是把已经做过斜坡的再做一遍。
+        ' [v2.3.0][A][B] 原地重建:
+        '   1) Finish 返回临时刀路(会按 rapid/feed 边界切成多条, 收尾抬刀常被单独切出来)
+        '   2) Path.AddPath 把尾段并回主干 -> 一件只剩一条刀路
+        '      (文档: "Add elements of a path on to the END of this path ... Path2 will be deleted.")
+        '   3) Path.ReplaceElements 把这条完整刀路的元素【换进原刀路】
+        '      (文档: "Replace the elements in the current path with those in given path.
+        '       Path2 will be deleted.") —— 刀路身份不变, 于是
+        '      【版件归属 / 子工序 / 道次 OpNo / 加工数据 MillData】全部保住。
+        '   4) ReplaceElements 会带入源刀路的标志 -> 把第 [4] 步存的标志写回。
+        okReplace = False
         Set newPaths = Nothing
         Set newPaths = mtp.Finish
         If Not (newPaths Is Nothing) Then
-            For q = 1 To newPaths.Count
+            If newPaths.Count >= 2 Then
+                ' 逆序并回主干: 每并一条, 集合就少一条, 尾部索引始终有效
+                For q = newPaths.Count To 2 Step -1
+                    On Error Resume Next
+                    newPaths(1).AddPath newPaths(q)
+                    On Error GoTo ErrHandler
+                Next q
+            End If
+            On Error Resume Next
+            tp.ReplaceElements newPaths(1)
+            If Err.Number = 0 Then
+                okReplace = True
+                tp.ToolInOut = CLng(svToolInOut)
+                tp.NoRapidUpBefore = svNoRapidUp
+                tp.CompOnRapid = svCompOnRapid
+                tp.Group = CLng(svGroup)
+                tp.Color = CLng(svColor)
+                tp.OpNo = CInt(origOpNo)
+                tp.Attribute(ATT_RAMP_DONE) = 1
+            End If
+            On Error GoTo ErrHandler
+            If Not okReplace Then
+                ' 换不进去: 原刀路保持原样, 把临时刀路删掉(宁可不动, 也不要改坏)
                 On Error Resume Next
-                newPaths(q).OpNo = CInt(origOpNo)
-                newPaths(q).Attribute(ATT_RAMP_DONE) = 1
+                newPaths(1).Delete
                 On Error GoTo ErrHandler
-                markedCount = markedCount + 1
-            Next q
-        Else
-            ' 兜底: Finish 没返回集合时, 用图纸里最后一条刀路
-            Set lastTp = drw.GetLastToolPath
-            If Not (lastTp Is Nothing) Then
-                On Error Resume Next
-                lastTp.OpNo = CInt(origOpNo)
-                lastTp.Attribute(ATT_RAMP_DONE) = 1
-                On Error GoTo ErrHandler
-                markedCount = markedCount + 1
             End If
         End If
         toolGeo.Selected = True
         toolGeo.Delete
-        tp.Delete
-        rampApplied = rampApplied + 1
+        If okReplace Then
+            markedCount = markedCount + 1
+            rampApplied = rampApplied + 1
+        Else
+            replFailed = replFailed + 1
+        End If
 SkipItem:
     Next k
 
+    ' [v2.3.0] 清理: 临时刀路可能留下【空子工序】(没有刀路的子工序)
+    If rampApplied > 0 Then
+        On Error Resume Next
+        Set ops = drw.Operations
+        For i = ops.Count To 1 Step -1
+            Set subs = ops(i).SubOperations
+            If Not (subs Is Nothing) Then
+                For j = subs.Count To 1 Step -1
+                    Set tps = subs(j).ToolPaths
+                    If tps Is Nothing Then
+                        subs(j).Delete
+                    ElseIf tps.Count = 0 Then
+                        subs(j).Delete
+                    End If
+                Next j
+            End If
+        Next i
+        On Error GoTo ErrHandler
+    End If
     ' [v2.2][A] 同一【加工方式+刀具】组内, 未匹配小板件条件的刀路排到小板件【之后】
     If rampApplied > 0 Then
         On Error Resume Next
@@ -655,7 +749,8 @@ SkipItem:
     MsgBox "斜角下刀处理完成！" & vbCrLf & _
            "候选: " & totalCount & " 条, 受理: " & partCount & " 条, 已应用: " & rampApplied & " 条" & vbCrLf & _
            "跳过: 已处理过 " & skipCount & " / 开放路径 " & openSkipped & " / 深度不足 " & noDepth & vbCrLf & _
-           "道次回填: " & markedCount & " 条刀路已设回原 Op 并重排(ProjectBar 已刷新)" & vbCrLf & _
+           "原地重建: " & markedCount & " 条刀路已换入斜坡元素(版件/子工序/道次保持不变)" & vbCrLf & _
+           IIf(replFailed > 0, "!! 有 " & replFailed & " 条换不进去, 原刀路未改动" & vbCrLf, "") & _
            "同组顺序: " & IIf(reorderApplied > 0, "未匹配到小板件条件的刀路已排到小板件之后", "无需重排") & vbCrLf & _
            "抬刀: 每条刀路结束时快速抬到 Z" & SAFE_Z_UP & vbCrLf & _
            IIf(slowSmall, "小件降速: " & slowApplied & " 条" & vbCrLf, "") & _
