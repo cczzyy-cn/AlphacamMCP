@@ -1,5 +1,5 @@
 ' ==============================================================================
-' CCC功能 - modRamp 斜角下刀（v2.1.0）
+' CCC功能 - modRamp 斜角下刀（v2.1.2）
 ' ==============================================================================
 ' 依据: 开料小板件吸附与斜下刀算法分析.md
 '       开料小板件防松动算法方案.md（HBT 方案）
@@ -15,6 +15,29 @@
 '
 '   该性质是纯几何的, 与坡角无关; 坡角只影响【斜坡段自身】的负载。
 '   只在【闭合刀路】上成立(开放路径的收尾直线会回切到起点)。
+'
+' v2.1.2 变更（2026-09-14 第 3 轮实机反馈）
+'   [A] 【修复·关键】参考中心算错: drw.GetExtent 的参数顺序是 (X1, Y1, Z1, X2, Y2, Z2),
+'       第 3 个是 Z1 而不是 X2。原先写成 GetExtent(x1,y1,x2,y2,0,0) 后,
+'       X2 位取回的是 Z1(负的切深)、Y2 位取回的是真正的 X2, 于是"参考中心"
+'       = (-10, 800) 这种完全错位的点, 排序退化成【按原顺序倒序】。
+'       改为正确参数并在取回后校验 (X2>X1 And Y2>Y1), 不合法则用
+'       【候选件联合包围盒中心】(整批料的中心)兜底。见 VBA操作问题记录 §4.9。
+'   [B] 同一处错误在 SetGeoStartToSheetSide 里也有一份(决定起点落在板件哪条边), 一并修。
+'   说明: 抬刀 Z20 在 v2.1.1 实测【已经生效】—— Finish 会把收尾的
+'         Add3DRapid 单列成一条 1 元素刀路(rapid, Z -18 -> 20), 紧跟在轮廓刀路后面。
+'         设备视角等价, 不是缺陷; 验证脚本要按【子工序内所有刀路拼接】去看末尾元素。
+'
+' v2.1.1 变更（2026-09-13 第 2 轮实机反馈）
+'   [A] 【顺序】主键改回"从外往内": 按【到本板几何中心的 L1 距离】降序(远的先切),
+'       HBT 评分降为次键(距离相同才用它)。v2.1.0 拿 HBT 评分当主键, 实机顺序不对。
+'   [B] 【抬刀】每条刀路切完补一条 Add3DRapid 到安全高度 Z = 20(用户要求);
+'       并把 MillData.SafeRapidLevel 也设成 20 —— 原来沿用原工序, 没保证是 20。
+'   [C] 【刷新加工道次窗口】用 Frame.ProjectBarUpdating = False/True 包住整个修改过程。
+'       ACAMAPI 原文: "Set to False to stop the project bar being updated ...
+'       Set to True when the macro has finished adding paths, the project bar will
+'       then be updated" —— ProjectBar 就是加工道次窗口。原先只恢复了 ScreenUpdating,
+'       所以窗口一直没刷新。错误分支也保证恢复。
 '
 ' v2.1.0 变更（2026-09-13, 按用户要求）
 '   [A] 【移除】微连接(留连接点)/留皮功能 —— 模块与窗体一并删除。
@@ -63,6 +86,8 @@ Private Const ATT_RAMP_DONE    As String = "CCC_RampDone"
 '       部署闭环的读回校验会因此误报失败。改为运行时计算。
 Private Const POINT_STEP       As Double = 0.5
 Private Const RAMP_MAX_FRAC    As Double = 0.8    ' 斜坡长度上限 = 该值 x 轮廓长度
+' [v2.1.1] 每条刀路切完抬刀到的安全高度(用户要求 Z20)
+Private Const SAFE_Z_UP        As Double = 20
 
 ' ---- 小件降速(v2.0): 包围盒面积分档(mm^2) ----
 Private Const SLOW_A1          As Double = 200000 ' >= 0.20 m^2  不降速
@@ -88,7 +113,7 @@ End Sub
 ' RampVersion - 无副作用, 供部署闭环的项目编译探针 App.Run 调用
 ' ==============================================================================
 Public Function RampVersion() As String
-    RampVersion = "modRamp v2.1.0 (2026-09-13)"
+    RampVersion = "modRamp v2.1.2 (2026-09-14)"
 End Function
 
 ' ==============================================================================
@@ -125,11 +150,14 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     ' 收集用(并行集合)
     Dim colTP As Collection, colSO As Collection, colMT As Collection
     Dim colDepth As Collection, colLen As Collection, colOpNo As Collection
+    Dim colDist As Collection
     Dim colBX1 As Collection, colBY1 As Collection, colBX2 As Collection, colBY2 As Collection
 
     ' HBT 评分
     Dim n As Long
     Dim score() As Double, eArr() As Long, ord() As Long
+    Dim dist() As Double
+    Dim dcx As Double, dcy As Double, refX As Double, refY As Double, blnRef As Boolean
     Dim minL As Double, maxL As Double, minE As Double, maxE As Double
     Dim lv As Double, nl As Double, ne As Double
     Dim a As Long, b As Long, tmpI As Long
@@ -185,6 +213,7 @@ Public Sub ApplyRampEntry(ByVal minSize As Double, _
     Set colTP = New Collection: Set colSO = New Collection: Set colMT = New Collection
     Set colDepth = New Collection: Set colLen = New Collection
     Set colOpNo = New Collection
+    Set colDist = New Collection
     Set colBX1 = New Collection: Set colBY1 = New Collection
     Set colBX2 = New Collection: Set colBY2 = New Collection
     totalCount = 0: partCount = 0: rampApplied = 0: skipCount = 0
@@ -341,13 +370,31 @@ NextOp:
         If maxE > minE Then ne = (CDbl(eArr(k)) - minE) / (maxE - minE)
         score(k) = nl + ne
     Next k
+    ' [v2.1.1][A] 主键 = 到【本板几何中心】的 L1 距离, 降序 => 远的先切 = 从外往内
+    '             次键 = HBT 评分(升序): 距离相同时, 泄漏小/被夹紧的先切
+    ReDim dist(1 To n)
+    blnRef = False
+    refX = 0: refY = 0
+    For k = 1 To n
+        If Not FindSheetCenter(drw, ni, colTP(k), dcx, dcy) Then
+            ' 没有排版(或该刀路不在任何板上): 退回图纸范围中心
+            If Not blnRef Then
+                GetRefCenter drw, ni, colBX1, colBY1, colBX2, colBY2, refX, refY
+                blnRef = True
+            End If
+            dcx = refX: dcy = refY
+        End If
+        dist(k) = Abs(dcx - (CDbl(colBX1(k)) + CDbl(colBX2(k))) / 2) + _
+                  Abs(dcy - (CDbl(colBY1(k)) + CDbl(colBY2(k))) / 2)
+    Next k
     ReDim ord(1 To n)
     For k = 1 To n: ord(k) = k: Next k
     For a = 2 To n
         tmpI = ord(a)
         b = a - 1
         Do While b >= 1
-            If score(ord(b)) > score(tmpI) Then
+            If (dist(ord(b)) < dist(tmpI)) Or _
+               (dist(ord(b)) = dist(tmpI) And score(ord(b)) > score(tmpI)) Then
                 ord(b + 1) = ord(b)
                 b = b - 1
             Else
@@ -357,8 +404,13 @@ NextOp:
         ord(b + 1) = tmpI
     Next a
 
+    ' [v2.1.1][C] 包住整个修改过程: 结束后 ProjectBar(加工道次窗口) 会随 True 刷新
+    On Error Resume Next
+    Frame.ProjectBarUpdating = False
+    On Error GoTo ErrHandler
+
     ' --------------------------------------------------------------------------
-    ' 第三遍: 按 HBT 顺序逐个重建刀路
+    ' 第三遍: 按【从外往内】(到本板中心距离降序) 逐个重建刀路
     ' --------------------------------------------------------------------------
     For k = 1 To n
         idx = ord(k)
@@ -459,7 +511,8 @@ NextOp:
 
         ' [4] 连接点窗口
         Set mdNew = App.CreateMillData
-        mdNew.SafeRapidLevel = safeR
+        ' [v2.1.1][B] 安全高度固定 20(用户要求); safeR 仍读出来但不采用
+        mdNew.SafeRapidLevel = SAFE_Z_UP
         mdNew.RapidDownTo = 10
         mdNew.SpindleSpeed = spindle
         mdNew.CutFeed = cutF
@@ -507,6 +560,9 @@ NextOp:
                 Next ei
             End If
 
+        ' [v2.1.1][B] 切完抬刀到安全高度 Z20 (Add3DRapid = 快速移动, 不是进给)
+        mtp.Add3DRapid startX, startY, SAFE_Z_UP
+
         ' [v2.1][B][C] Finish 返回新建的 Paths:
         '   把 OpNo 设回原加工道次 (ACAMAPI: "OpNo - Operation number of this path.
         '   Call Operations.OrderAll if this is changed"), 并把幂等标记打在【新】刀路上 ——
@@ -545,25 +601,110 @@ SkipItem:
         drw.Operations.OrderAll
         On Error GoTo ErrHandler
     End If
+    ' [v2.1.1][C] 恢复 ProjectBar -> 加工道次窗口随之更新
+    On Error Resume Next
+    Frame.ProjectBarUpdating = True
+    On Error GoTo ErrHandler
     drw.ScreenUpdating = True
     drw.Redraw
     If rampApplied > 0 Then drw.ZoomAll: DoEvents
     MsgBox "斜角下刀处理完成！" & vbCrLf & _
            "候选: " & totalCount & " 条, 受理: " & partCount & " 条, 已应用: " & rampApplied & " 条" & vbCrLf & _
            "跳过: 已处理过 " & skipCount & " / 开放路径 " & openSkipped & " / 深度不足 " & noDepth & vbCrLf & _
-           "道次回填: " & markedCount & " 条刀路已设回原 Op 并重排" & vbCrLf & _
+           "道次回填: " & markedCount & " 条刀路已设回原 Op 并重排(ProjectBar 已刷新)" & vbCrLf & _
+           "抬刀: 每条刀路结束时快速抬到 Z" & SAFE_Z_UP & vbCrLf & _
            IIf(slowSmall, "小件降速: " & slowApplied & " 条" & vbCrLf, "") & _
            "小条范围 = " & IIf(minSize <= 0, "0(全部闭合刀路)", CStr(minSize)) & vbCrLf & _
            "出错或误操作可用一次 Ctrl+Z 整体撤销。", _
            vbInformation, "斜角下刀"
     Exit Sub
 ErrHandler:
+    ' 先存 Err 再处理(On Error Resume Next 会清空 Err, 见 VBA操作问题记录 4.4)
+    Dim en As Long, ed As String
+    en = Err.Number: ed = Err.Description
     If Not (drw Is Nothing) Then
+        On Error Resume Next
+        Frame.ProjectBarUpdating = True
         drw.ScreenUpdating = True
         drw.Redraw
     End If
-    MsgBox "斜角下刀出错：" & Err.Description & vbCrLf & _
+    MsgBox "斜角下刀出错：" & ed & vbCrLf & _
            "(可用一次 Ctrl+Z 撤销本次改动)", vbCritical, "斜角下刀"
+End Sub
+
+' ==============================================================================
+' FindSheetCenter - 找【该刀路所在排版板】的几何中心(与 v1.x 同口径: 按 OpNo 匹配)
+'   返回 False 表示没排版或该刀路不在任何板上 -> 调用方退回图纸范围中心
+'   注意: SetGeoStartToSheetSide 里有一段等价的内联查找(为不动已验证代码而保留副本)
+' ==============================================================================
+Private Function FindSheetCenter(ByVal drw As Drawing, ByVal ni As NestInformation, _
+                                 ByVal oldTp As Path, ByRef cx As Double, ByRef cy As Double) As Boolean
+    On Error Resume Next
+    Dim sh As NestSheet, ps As Paths, sg As Path, pi As Long
+    FindSheetCenter = False
+    cx = 0: cy = 0
+    If ni Is Nothing Then Exit Function
+    For Each sh In ni.Sheets
+        Set ps = sh.Paths
+        If Not (ps Is Nothing) Then
+            For pi = 1 To ps.Count
+                If ps(pi).OpNo = oldTp.OpNo Then
+                    Set sg = sh.Geometry
+                    If Not (sg Is Nothing) Then
+                        cx = (sg.MinXL + sg.MaxXL) / 2
+                        cy = (sg.MinYL + sg.MaxYL) / 2
+                        FindSheetCenter = True
+                    End If
+                    Exit Function
+                End If
+            Next pi
+        End If
+    Next sh
+End Function
+
+' ==============================================================================
+' GetRefCenter - 图纸范围中心(没有排版时的兜底参考点)
+' ==============================================================================
+Private Sub GetRefCenter(ByVal drw As Drawing, ByVal ni As NestInformation, _
+                         ByVal colBX1 As Collection, ByVal colBY1 As Collection, _
+                         ByVal colBX2 As Collection, ByVal colBY2 As Collection, _
+                         ByRef cx As Double, ByRef cy As Double)
+    On Error Resume Next
+    Dim sh As NestSheet, sg As Path
+    cx = 0: cy = 0
+    If Not (ni Is Nothing) Then
+        For Each sh In ni.Sheets
+            Set sg = sh.Geometry
+            If Not (sg Is Nothing) Then
+                cx = (sg.MinXL + sg.MaxXL) / 2
+                cy = (sg.MinYL + sg.MaxYL) / 2
+                Exit Sub
+            End If
+        Next sh
+    End If
+    Dim gx1 As Double, gy1 As Double, gz1 As Double
+    Dim gx2 As Double, gy2 As Double, gz2 As Double
+    ' [v2.1.2] 参数顺序 (X1, Y1, Z1, X2, Y2, Z2) —— 第 3 个是 Z1, 不是 X2!
+    drw.GetExtent gx1, gy1, gz1, gx2, gy2, gz2
+    If gx2 > gx1 And gy2 > gy1 Then
+        cx = (gx1 + gx2) / 2
+        cy = (gy1 + gy2) / 2
+        Exit Sub
+    End If
+    ' 兜底: 候选件联合包围盒中心(= 整批料的中心), 不依赖 GetExtent
+    Dim kk As Long, ux1 As Double, uy1 As Double, ux2 As Double, uy2 As Double
+    If colBX1 Is Nothing Then Exit Sub
+    If colBX1.Count = 0 Then Exit Sub
+    ux1 = CDbl(colBX1(1)): uy1 = CDbl(colBY1(1))
+    ux2 = CDbl(colBX2(1)): uy2 = CDbl(colBY2(1))
+    For kk = 2 To colBX1.Count
+        If CDbl(colBX1(kk)) < ux1 Then ux1 = CDbl(colBX1(kk))
+        If CDbl(colBX2(kk)) > ux2 Then ux2 = CDbl(colBX2(kk))
+        If CDbl(colBY1(kk)) < uy1 Then uy1 = CDbl(colBY1(kk))
+        If CDbl(colBY2(kk)) > uy2 Then uy2 = CDbl(colBY2(kk))
+    Next kk
+    cx = (ux1 + ux2) / 2
+    cy = (uy1 + uy2) / 2
 End Sub
 
 ' ==============================================================================
@@ -694,7 +835,8 @@ Private Sub SetGeoStartToSheetSide(ByVal drw As Drawing, _
     Dim scx As Double, scy As Double, found As Boolean
     Dim sh As NestSheet, pInSh As Paths, sg As Path
     Dim pi As Long
-    Dim gx1 As Double, gy1 As Double, gx2 As Double, gy2 As Double
+    Dim gx1 As Double, gy1 As Double, gz1 As Double
+    Dim gx2 As Double, gy2 As Double, gz2 As Double
     Dim mx As Double, my As Double, w As Double, h As Double
     Dim startX As Double, startY As Double
     found = False
@@ -719,9 +861,12 @@ Private Sub SetGeoStartToSheetSide(ByVal drw As Drawing, _
         Next sh
     End If
     If Not found Then
-        drw.GetExtent gx1, gy1, gx2, gy2, 0, 0
-        scx = (gx1 + gx2) / 2
-        scy = (gy1 + gy2) / 2
+        ' [v2.1.2] 同上: 参数顺序 (X1, Y1, Z1, X2, Y2, Z2)
+        drw.GetExtent gx1, gy1, gz1, gx2, gy2, gz2
+        If gx2 > gx1 And gy2 > gy1 Then
+            scx = (gx1 + gx2) / 2
+            scy = (gy1 + gy2) / 2
+        End If
     End If
     mx = (toolGeo.MinXL + toolGeo.MaxXL) / 2
     my = (toolGeo.MinYL + toolGeo.MaxYL) / 2

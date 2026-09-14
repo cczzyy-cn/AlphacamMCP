@@ -39,6 +39,19 @@ MARKERS = {
         ("v2.1 marker on new", "newPaths(q).Attribute(ATT_RAMP_DONE) = 1"),
         ("v2.1 OrderAll",      "drw.Operations.OrderAll"),
         ("v2.1 collect OpNo",  "colOpNo.Add CLng(tp.OpNo)"),
+        # --- v2.1.1 新增（第 2 轮实机反馈）---
+        ("v2.1.1 header",      "v2.1.1 \u53d8\u66f4"),
+        ("v2.1.1 outside-in",  "\u8fdc\u7684\u5148\u5207 = \u4ece\u5916\u5f80\u5185"),
+        ("v2.1.1 sheet center", "Function FindSheetCenter"),
+        ("v2.1.1 retract Z20", "mtp.Add3DRapid startX, startY, SAFE_Z_UP"),
+        ("v2.1.1 safe level",  "mdNew.SafeRapidLevel = SAFE_Z_UP"),
+        ("v2.1.1 pbar off",    "Frame.ProjectBarUpdating = False"),
+        ("v2.1.1 pbar on",     "Frame.ProjectBarUpdating = True"),
+        # --- v2.1.2 新增（第 3 轮实机反馈: 参考中心算错）---
+        ("v2.1.2 header",      "v2.1.2 \u53d8\u66f4"),
+        ("v2.1.2 extent order", "drw.GetExtent gx1, gy1, gz1, gx2, gy2, gz2"),
+        ("v2.1.2 ref fallback", "ux1 = CDbl(colBX1(1))"),
+        ("v2.1.2 extent guard", "If gx2 > gx1 And gy2 > gy1 Then"),
     ],
     "frmRamp": [
         ("v2.1 control list",  "\u63a7\u4ef6\u6e05\u5355\uff0811 \u4e2a"),
@@ -60,6 +73,7 @@ ABSENT = {
         "doTabsUse",
         "tabApplied",
         "tabZ = -",
+        "GetExtent gx1, gy1, gx2, gy2, 0, 0",        # v2.1.2 修掉的错误参数顺序
     ],
     "frmRamp": [
         "\u5c0f\u6761\u8303\u56f4\u5fc5\u987b\u5927\u4e8e 0",   # 旧校验(minSize<=0 就报错)

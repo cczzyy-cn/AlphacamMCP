@@ -440,6 +440,62 @@ print([n for n in dir(el) if "Z" in n])                    # Element 79 个成�
 `Length` / `StartZL` / `EndZL` / `StartZG` / `EndZG` / `LeadIn` / `LeadOut` 等反编译文件里看不到的成员，
 而这些正是"读回 Z 剖面做验收"的关键（见 §5.5）。
 
+### 4.9 `Drawing.GetExtent` 的参数**不是** `(x1,y1,x2,y2,...)`：第 3 个是 **Z1**（2026-09-14 实测，重要）
+
+**官方签名**（`tempacamapi\Objects\Drawing\Drawing_GetExtent.htm`）：
+
+```
+drw.GetExtent (X1, Y1, Z1, X2, Y2, Z2)     ' 6 个都是 ByRef Double, 顺序是 X, Y, Z, X, Y, Z
+```
+
+**犯错写法**（我按"最小 XY / 最大 XY"的直觉排的）：
+
+```vba
+drw.GetExtent gx1, gy1, gx2, gy2, 0, 0     ' ← 错
+```
+
+它把第 3 个参数当成了 X2，于是实际取回的东西是：
+
+| 变量 | 我以为 | 实际拿到 |
+|---|---|---|
+| `gx1` | MinX = -2.5 | MinX = -2.5 ✓ |
+| `gy1` | MinY = -2.5 | MinY = -2.5 ✓ |
+| `gx2` | MaxX = 1602.5 | **Z1 = -18.0**（负的切深！）|
+| `gy2` | MaxY = 302.5 | **X2 = 1602.5** |
+
+于是 `(gx1+gx2)/2 = -10.25`、`(gy1+gy2)/2 = 800` —— 一个完全错位的"中心点"。
+后面两个字面量 `0, 0` 把 Y2/Z2 丢掉了：**VBA 允许给 ByRef 出参传表达式**（静默生成临时变量），
+**不报错**，所以编译器不会救你。
+
+**后果**：`modRamp` v2.1.1 用这个中心做"从外往内"排序的基准，距离几乎被 X 方向支配，
+排序退化成**「把原顺序倒过来」**——实测序列 `700, 250, 100, 600`，与"错误中心"的预测**逐位吻合**。
+真机表现就是用户说的"顺序没有从外往内"。
+
+**修法**：按真实顺序取回，并且**取回后校验**，不合法的盒子退化为自洽的兜底值：
+
+```vba
+Dim gx1 As Double, gy1 As Double, gz1 As Double
+Dim gx2 As Double, gy2 As Double, gz2 As Double
+drw.GetExtent gx1, gy1, gz1, gx2, gy2, gz2
+If gx2 > gx1 And gy2 > gy1 Then          ' 合法性校验: X2>X1 且 Y2>Y1
+    cx = (gx1 + gx2) / 2
+    cy = (gy1 + gy2) / 2
+    Exit Sub
+End If
+' 不合法 -> 用候选件联合包围盒中心(整批料的中心), 不依赖 GetExtent
+```
+
+**一般化教训（比这一个 bug 值钱）：**
+
+1. **"取值型"COM 调用（全是 ByRef 出参）必须先去 `tempacamapi` 查签名**，别按参数名的直觉排。
+   `GetExtent` / `GetFeedExtent` / `Paths.GetExtentL` 名字很像但顺序各不相同
+   （只有 `Paths.GetExtentL` 才是 `(MinX, MinY, MaxX, MaxY)`）。
+2. **传字面量给 ByRef 出参不报错**，所以这类错误只能靠"**把取回的值原样打出来看**"发现 ——
+   本次就是先写了一个只读诊断把 6 个值全打出来才定位到的（不要靠推理猜）。
+3. **对任何"基准点 / 基准值"都要加合法性校验**（盒子 `X2>X1 And Y2>Y1`、中心点在范围内……），
+   不合法就走一个自洽的兜底，**不要让错误值静默传播到算法里**——否则算法"看起来在跑"，
+   结果却是无意义的（这里排序确实执行了，只是按错误的基准排）。
+
 ---
 
 ## 5. 验证技巧（无法直接调 `AdoorMain` 时）
@@ -531,6 +587,29 @@ Err.Clear
   `系统错误 &H80070006 … 句柄无效`（本次第一版清理脚本就因此中断，只清掉一半）；
 - 每次跑完用 `tools/running_snapshot.py <tag> <工程名>` **全量导出一次**，
   看组件数是否回到原值（`CCC功能` 正常是 **12 个**）。
+
+### 5.6 静态"配平"检查先把**计数器自己的 bug**排除掉（2026-09-14，我的检查工具骗了我一次）
+
+自己写的 `tmp/check_vba2.py` 用正则数结构配平，v2.1.2 改完报：
+
+```
+If / End If            65   / 65    OK
+For / Next             21   / 20    *** 不配平 ***
+```
+
+**代码是好的，是计数器错了。** 三个错：
+
+1. 数 `Next` 时把 **`On Error Resume Next`** 也算进去了；
+2. 数 `For` 时把 **`Exit For`** 也算进去了；
+3. **行中**的 `Next` 漏了（`For k = 1 To n: ord(k) = k: Next k` 这种单行写法，
+   正则只匹配行首 `^Next`）。
+
+修法：先去掉行尾注释 → 删掉 `On Error Resume Next` 与 `Exit For` →
+再用 `\bFor\b` / `\bNext\b` **全文计数**（而不是只看行首）。改完 `For / Next 21 / 21 OK`。
+
+**教训**：静态检查报"不配平 / 不一致"时，**先怀疑计数器**（尤其是自己刚写的），再去改代码 ——
+否则会把好代码改坏。真值来源是 **VBA 编译器**（§5.3，以及部署探针里那次
+`RampVersion()` 的"编译+运行"往返，见 `tools/ccc_probe.py`）。
 
 ---
 ## 6. 门板宏常见操作要点
@@ -966,6 +1045,80 @@ If Ni Is Nothing Then ' 退回"图纸范围中心"等兜底
 | **加工道次 `OpNo`** | ✅ **已回填**：`Finish` 返回新建的 `Paths` → 逐条 `OpNo = 原道次` → 收尾 `Operations.OrderAll`。实测基线 `opNo=1` → 处理后仍是 `1` |
 | **幂等标记 `CCC_RampDone`** | ✅ **已修复**：原先写在被删除的旧刀路上（丢失）→ 现在写在 `Finish` 返回的**新**刀路上。实测第二次执行报「候选=2, 已处理过=2」，刀路元素数 `[210,211]` **未变** |
 | **子工序名（加工方式）** | ❌ **仍会变成「手动输入」**（实测 `精加工` → `手动输入`）—— 道次保住了，但名字没保住。按"加工方式"筛选的流程仍要按「手动输入」去找
+
+**2026-09-14 补证：不是"改名"，而是【为每条新刀路各建了一个子工序】，且名字【改不回来】。**
+
+- 加工道次窗口实测：处理前 `Op 1` 下 **1 个子项**（`精加工 刀具 2 FLAT - 5MM`）；
+  `modRamp` 处理 4 个件之后变成 **4 个子项**，每个都叫 `手动输入 刀具 2 FLAT - 5MM`。
+  所以 `Finish` **不是原地替换**，是**另建子工序**（原先那句"未确证"到此确证）。
+- `SubOperation.Name` 是 **只读** —— `tempacamapi\Objects\SubOperation\SubOperationProperties.htm`：
+  > `Name - (String) The name of this sub-operation, as in the Operation List dialog box (read-only)`
+
+  所以**无法把「手动输入」改回「精加工」**，这条没有代码解法。
+- 影响可控：`OpNo` 已回填（见上表），刀路顺序由 `Operations.OrderAll` + 插件自己的排序决定，
+  NC 输出仍按道次 `1` 分组。只是加工道次窗口里**一行变四行、名字统一叫「手动输入」**。
+- 若将来一定要保住子工序结构/名字，唯一方向是**别用 `ManualToolPath` 重建**：
+  改成 AlphaCAM **原生斜坡参数**（`MillData.AutoZ` / `AutoZRampAngle`，见
+  `开料小板件防松动算法方案.md` §11）—— 那是"改参数重算刀路"，工序结构天然保留。
+
+#### (g) `MillManualToolPath.Finish` 会把**收尾的抬刀 rapid 单列成一条 1 元素刀路**（2026-09-14 实测）
+
+`modRamp` v2.1.1 在轮廓切完后补一条 `Add3DRapid(起点X, 起点Y, 20)`，
+`Finish` 返回的是**两条** `Path`：
+
+| Path | 元素数 | 内容 |
+|---|---|---|
+| `ToolPaths(1)` | 210 / 211 | 斜坡 + 轮廓（末元素 `EndZL = -18`）|
+| `ToolPaths(2)` | **1** | `IsRapid=True`，`Z -18 → 20`，XY 与上一条的末点相同 |
+
+**后果（验收脚本的坑）**：我第一版验收只检查"每条刀路末元素是不是 Z20 的 rapid"，
+于是把**轮廓刀路**（末元素 Z=-18）判成"抬刀失败"，其实功能是好的 ——
+**差点去修一个不存在的 bug**。
+
+**正确判据**：把**同一子工序内所有刀路按顺序拼接**，看整体末尾元素；
+或断言"子工序内恰有 1 条 Z20 抬刀 rapid，且它是最后一条刀路的唯一元素"。
+设备视角两者完全等价（抬刀本来就是一个独立的快速移动段）。
+**顺带**：跨子工序交接时，下一条子工序的**首元素**是一条 `Z 20 → 0` 的 rapid，
+可用来交叉验证"上一件的抬刀真的生效了"。
+
+**顺带 2**：`GetFeedExtent` 对这种 1 元素 rapid 刀路返回 `False`（没有进给段），
+`MinXL==MaxXL`；算包围盒/中心时必须跳过这种空进给刀路（`If Not blnExt`）。
+
+### 7.10 加工道次窗口（ProjectBar）不刷新 → 用 `Frame.ProjectBarUpdating`（2026-09-14 实测）
+
+**现象**（用户反馈）：插件跑完，**加工道次窗口还是旧的**（`Op 1` 下仍显示 1 个子项），
+要点一下窗口 / 重新选中才能看到新建的刀路。用户原话："op刷新失败加工道次窗口没有更新"。
+
+**根因**：`modRamp` 只恢复了 `Drawing.ScreenUpdating`（§7.6），**没管 ProjectBar**。
+`Frame.ProjectBar` 就是**加工道次窗口**。
+
+**ACAMAPI 原文**（`Frame.ProjectBarUpdating`）：
+
+> Set to `False` to stop the project bar being updated ...
+> Set to `True` when the macro has finished adding paths, the project bar will then be updated.
+
+**修法**：用 `False` / `True` 把**整个修改过程**包起来，**错误分支里也必须恢复**
+（先存 `Err` 再动别的，见 §4.4）：
+
+```vba
+Frame.ProjectBarUpdating = False            ' 处理前
+On Error GoTo ErrHandler
+...  增删刀路 ...
+drw.Operations.OrderAll
+Frame.ProjectBarUpdating = True             ' ← 这一句才触发窗口刷新
+drw.ScreenUpdating = True
+Exit Sub
+ErrHandler:
+    Dim en As Long, ed As String
+    en = Err.Number: ed = Err.Description    ' 先存 Err, 见 §4.4
+    Frame.ProjectBarUpdating = True          ' 出错也要恢复, 否则窗口永久冻结
+    drw.ScreenUpdating = True
+```
+
+**验收**：光读 `Frame.ProjectBarUpdating = True` 只是**间接证据**（那是我们自己写的值）。
+**直接证据是看窗口**：处理前 `Op 1` 下 1 行 `精加工…`，处理后 **4 行** `手动输入…`（§7.9(f) 的截图核对）。
+取图用 `see` 抓 AlphaCAM **主窗口句柄**即可（`list_windows` 里标题如 `3D 5-轴鉋花机专业版`），
+**不需要切前台**，也就不会像 §1.2 那样把按键送到别的程序里去。
 
 ---
 
